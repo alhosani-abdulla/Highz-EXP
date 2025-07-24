@@ -1,1 +1,2 @@
 # Highz-EXP
+This is a preliminary version for analyzing data collected from the HighZ-EXP experiment. It includes modules for loading files, processing reflection data, plotting spectra, and converting units.
