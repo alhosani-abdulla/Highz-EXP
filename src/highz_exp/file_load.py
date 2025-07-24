@@ -81,8 +81,16 @@ def load_npy(dir_path, pattern='*state*.npy'):
         states.append(np.load(file, allow_pickle=True).item())
     return states
 
-def load_npy_spec(dir_path, pick_snapshot=None):
-    """Load all non-empty .npy files from a specified relative directory path and return them as a list of states."""
+def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
+    """Load all calibration state files from a specified directory and return them as a dictionary.
+
+    Parameters:
+        pick_snapshot (list, optional): List of indices specifying which snapshot to load for each state.
+        cal_names (list, optional): List of calibration state names.
+
+    Returns:
+        dict: Dictionary containing the loaded calibration states.
+    """
     data_full_path = pjoin(dir_path)
     state_files = []
     _ = get_and_clean_nonempty_files(data_full_path, f'*state1*.npy')
@@ -91,18 +99,29 @@ def load_npy_spec(dir_path, pick_snapshot=None):
         state_files.append(get_and_clean_nonempty_files(data_full_path, f'*state{i}*.npy'))
     state_files.append(get_and_clean_nonempty_files(data_full_path, "*stateOC*.npy"))
 
-    load_states = []
+    load_states = {}
+    def get_state_name(i):
+        if cal_names is not None:
+            return cal_names[i]
+        else:
+            return f'state{i+2}'
+
     for i, file_list in enumerate(state_files):
+        state_name = get_state_name(i)
+        if not file_list:
+            continue  # skip if no files found for this state
+
         if isinstance(pick_snapshot, list):
-            load_states.append(np.load(file_list[pick_snapshot[i]], allow_pickle=True).item())
+            idx = pick_snapshot[i]
         elif pick_snapshot is not None:
             spikes = [count_spikes(dbm_convert(np.load(file, allow_pickle=True).item()['spectrum']), height=20) for file in file_list]
             if min(spikes) > 0:
-                print(f"All the recorded spectrum files for state{i+2} have spikes with more than 20 dB of height")
-            indx_least_spikes = np.argmin(spikes)
-            load_states.append(np.load(file_list[indx_least_spikes], allow_pickle=True).item())
+                print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
+            idx = int(np.argmin(spikes))
         else:
-            load_states.append(np.load(file_list[0], allow_pickle=True).item())
+            idx = 0
+
+        load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
 
     return load_states
 

@@ -80,11 +80,17 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(faxis, loaded_states, save_dir, cal_states=None, scale='log', ylabel=None, suffix='', remove_spikes=True, ymin=-75, legend=LEGEND, freq_range=None):
-    """Plot the spectrum of loaded states and save the figure."""
+def plot_spectrum(loaded_states, save_dir, cal_states=None, scale='log', ylabel=None, suffix='', remove_spikes=True, ymin=-75, legend=LEGEND, freq_range=None):
+    """Plot the spectrum of loaded states and save the figure.
+    
+    Parameters:
+    - loaded_states (dict): Dictionary of states with frequency and spectrum data, {"state_name": {"frequency": np.array, "spectrum": np.array}}
+    - scale (str): 'log' or 'linear' for the y-axis scale
+    """
     plt.figure(figsize=(12, 8), )
     ymax = -75
-    for state in loaded_states:
+    for state_name, state in loaded_states.items():
+        faxis = state['frequency']
         if remove_spikes:
             spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
         else: spectrum = state['spectrum']
@@ -103,7 +109,7 @@ def plot_spectrum(faxis, loaded_states, save_dir, cal_states=None, scale='log', 
     else: ylabel=ylabel
     plt.ylim(*ylim)
     plt.xlim(*freq_range)
-    plt.legend(legend, fontsize=12)
+    plt.legend(loaded_states.keys(), fontsize=12)
     plt.ylabel(ylabel)
     plt.xlabel('Frequency [MHz]')
     plt.savefig(f'{save_dir}/calibration_states_{scale}{suffix}.png')
