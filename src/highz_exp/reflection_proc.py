@@ -29,24 +29,34 @@ def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk):
     a_lna_ntwk = rf.Network(s=a_lna, f=rho_cable_ntwk.f)
     return a_lna_ntwk
 
-def fit_reflection_coeff(s1p_ntwk, guess_A, guess_delay) -> tuple[float, float, np.ndarray]:
-    """Fit the reflection coefficient from an S1P network to a model of the form A * exp(j*2*pi*f*t_delay).
-    
+def fit_reflection_coeff(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, save_path=None) -> tuple[complex, float, rf.Network]:
+    """Fit the reflection coefficient from an S1P network to a model of the form (A_real + 1j*A_imag) * exp(j*2*pi*f*t_delay).
+
     Returns
-    - A_fitted (float): Fitted amplitude.
+    - A_fitted (complex): Fitted amplitude (complex).
     - t_delay_fitted (float): Fitted time delay.
-    - s1p_fitted (np.ndarray): Fitted reflection coefficient."""
+    - s1p_fitted_ntwk (rf.Network): Fitted reflection coefficient as a Network object.
+    """
     f = s1p_ntwk.f
     gamma_meas = s1p_ntwk.s[:, 0, 0]
     gamma_meas_comb = np.concatenate([gamma_meas.real, gamma_meas.imag])
-    def reflection_model(freq, A, t_delay):
-        model = A * np.exp(1j*2*np.pi*freq*t_delay)
+
+    def reflection_model(freq, A_real, A_imag, t_delay):
+        A = A_real + 1j * A_imag
+        model = A * np.exp(1j * 2 * np.pi * freq * t_delay)
         return np.concatenate([model.real, model.imag])
-    popt, pcov = curve_fit(reflection_model, f, gamma_meas_comb, p0=[guess_A, guess_delay])
-    A_fitted = popt[0]
-    t_delay_fitted = popt[1]
-    s1p_fitted = A_fitted * np.exp(1j*2*np.pi*f*t_delay_fitted)
-    return A_fitted, t_delay_fitted, s1p_fitted
+
+    popt, pcov = curve_fit(
+        reflection_model, f, gamma_meas_comb, p0=[guess_A_real, guess_A_imag, guess_delay]
+    )
+    A_fitted = popt[0] + 1j * popt[1]
+    t_delay_fitted = popt[2]
+    s1p_fitted = A_fitted * np.exp(1j * 2 * np.pi * f * t_delay_fitted)
+    # Create a new Network object with the same frequency and fitted S-parameters
+    s1p_fitted_ntwk = rf.Network(s=s1p_fitted, f=f)
+    if save_path is not None:
+        s1p_fitted_ntwk.write_touchstone(save_path, overwrite=True)
+    return A_fitted, t_delay_fitted, s1p_fitted_ntwk
 
 def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None):
     """
@@ -54,10 +64,6 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
 
     Parameters:
     - ntwk_dict (dict): {label: skrf.Network}
-    - scale (str): 'linear' or 'log' for magnitude scale
-    - save_plot (bool): If True, save the plot
-    - show_phase (bool): If True, plot phase in degrees
-    - save_path (str): File path to save the plot
     """
 
     nrows = 2 if show_phase else 1
