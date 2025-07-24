@@ -108,3 +108,47 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
             print("! Save path not entered.")
 
     plt.show()
+    
+def plot_smith_chart(s1p_files, suffix='LNA', labels=None, save_plot=True, legend_loc='best', individual=True):
+    """
+    Plot Smith chart from one or more S1P files.
+
+    Parameters:
+    - s1p_files (list of str): Paths to .s1p files.
+    - suffix (str): Used for output filename if saving.
+    - labels (list of str, optional): Labels for legend.
+    - save_plot (bool): Whether to save the figure.
+    - legend_loc (str): Location of the legend. Default is 'best'.
+    """
+    fig, ax = plt.subplots()
+    fig.set_size_inches(10, 8)
+
+    if labels is None:
+        labels = [pbase(f) for f in s1p_files]
+
+    for file, label in zip(s1p_files, labels):
+        ntwk = rf.Network(file)
+        ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+
+    ax.set_title(f'{suffix} Smith Chart')
+    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+    plt.tight_layout()
+
+    if save_plot:
+        suffix = suffix.replace(' ', '_')
+        fig.savefig(pjoin(os.path.dirname(s1p_files[0]), f'{suffix}_smith_chart.png'))
+
+    plt.show()
+    if individual:
+        for file, label in zip(s1p_files, labels):
+            ntwk = rf.Network(file)
+            fig, ax = plt.subplots()
+            fig.set_size_inches(8, 8)
+            ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+
+            ax.set_title(f'Smith Chart: {label}')
+
+            if save_plot:
+                label = label.replace(' ', '_')
+                outname = f'{suffix}_smith_{label}.png'
+                fig.savefig(pjoin(os.path.dirname(file), outname), bbox_inches='tight')
