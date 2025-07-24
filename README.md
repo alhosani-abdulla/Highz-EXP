@@ -8,11 +8,7 @@ This is a preliminary version for analyzing data collected from the HighZ-EXP ex
 ```python
 !pip install git+https://github.com/3aboooody56/Highz-EXP.git
 ```
-For editable install, do 
-```python
-!pip install -e git+https://github.com/3aboooody56/Highz-EXP.git
-```
-
+Noe that `-e` flat does not work in Google Colab, as it's designed for local dev where changes to the source code is immediately reflected in the installed package without reinstallation. Google Colab does not provide persistent access to the source code.
 
 ### For development (editable install)
 
