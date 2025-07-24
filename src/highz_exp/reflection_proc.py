@@ -1,10 +1,11 @@
 import skrf as rf
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 import os
 from os.path import join as pjoin, basename as pbase
 
-def load_file(s1p_files, labels=None):
+def load_s1p(s1p_files, labels=None) -> dict:
     """
     Load S1P files and return a dictionary of label: rf.Network objects.
 
@@ -27,6 +28,25 @@ def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk):
     a_lna = rho_cable * 1 / (1 - rho_cable*rho_LNA)
     a_lna_ntwk = rf.Network(s=a_lna, f=rho_cable_ntwk.f)
     return a_lna_ntwk
+
+def fit_reflection_coeff(s1p_ntwk, guess_A, guess_delay) -> tuple[float, float, np.ndarray]:
+    """Fit the reflection coefficient from an S1P network to a model of the form A * exp(j*2*pi*f*t_delay).
+    
+    Returns
+    - A_fitted (float): Fitted amplitude.
+    - t_delay_fitted (float): Fitted time delay.
+    - s1p_fitted (np.ndarray): Fitted reflection coefficient."""
+    f = s1p_ntwk.f
+    gamma_meas = s1p_ntwk.s[:, 0, 0]
+    gamma_meas_comb = np.concatenate([gamma_meas.real, gamma_meas.imag])
+    def reflection_model(freq, A, t_delay):
+        model = A * np.exp(1j*2*np.pi*freq*t_delay)
+        return np.concatenate([model.real, model.imag])
+    popt, pcov = curve_fit(reflection_model, f, gamma_meas_comb, p0=[guess_A, guess_delay])
+    A_fitted = popt[0]
+    t_delay_fitted = popt[1]
+    s1p_fitted = A_fitted * np.exp(1j*2*np.pi*f*t_delay_fitted)
+    return A_fitted, t_delay_fitted, s1p_fitted
 
 def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None):
     """
