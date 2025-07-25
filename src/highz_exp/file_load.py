@@ -136,12 +136,12 @@ def states_to_ntwk(f, loaded_states):
             ntwk_dict[state_name].s[:, 0, 0] = spec_to_dbm(spectrum)
         return ntwk_dict
 
-def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
+def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
     """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required
     
     Parameters:
-        faxis: np.ndarray, frequency points in Hz. 
-        df: in MHz, the channel width."""
+        faxis: np.ndarray, frequency points in MHz. """
+    df = float(faxis[1] - faxis[0])
     loaded_states_copy = copy.deepcopy(load_states)
     for i, state in enumerate(loaded_states_copy):
         if remove_spikes:
@@ -153,7 +153,7 @@ def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', of
         if unit == 'dBm':
             state['spectrum'] = spectrum_dBm
         elif unit == 'kelvin':
-            spectrum = dbm_to_kelvin(spectrum_dBm, df*10**6)
+            spectrum = dbm_to_kelvin(spectrum_dBm, df * 10**6)
             if normalize is not None:
                 state['spectrum'] =  spectrum * normalize
             else:
@@ -163,8 +163,16 @@ def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', of
     return loaded_states_copy
 
 def norm_states(f, loaded_states, ref_state_indx=3, ref_temp=300, system_gain=100):
-    """Normalize loaded states to a reference state and convert to Kelvin."""
+    """Normalize loaded states to a reference state and convert to Kelvin.
+
+    Parameters:
+        f: np.ndarray. Frequency points in MHz.
+    
+    Return
+    loaded_states_kelvin: dict
+        Dictionary of loaded states with spectra converted to Kelvin.
+    """
     dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_indx]['spectrum'])))-system_gain
     gain = norm_factor(dbm, ref_temp)
-    loaded_states_kelvin = preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
+    loaded_states_kelvin = preprocess_states(f, loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
     return loaded_states_kelvin
