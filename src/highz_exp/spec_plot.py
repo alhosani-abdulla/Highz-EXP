@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from .file_load import remove_spikes_from_psd
-from .unit_convert import dbm_convert
+from .unit_convert import spec_to_dbm
 from os.path import join as pjoin
 import os
 import skrf as rf
