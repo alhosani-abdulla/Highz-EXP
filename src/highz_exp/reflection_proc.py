@@ -29,6 +29,19 @@ def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk):
     a_lna_ntwk = rf.Network(s=a_lna, f=rho_cable_ntwk.f)
     return a_lna_ntwk
 
+def s11_reflected_power(s11_db, p_in_k=50):
+    """Compute reflected power (in Kelvin) given S11 in dB and input power.
+    
+    Parameters:
+    - s11_db: S11 in dB (can be float or NumPy array)
+    - p_in_k: input power in Kelvin (default is 50 K)
+
+    Returns:
+    - Reflected power in Kelvin
+    """
+    R = 10 ** (s11_db / 10)  # power reflection coefficient
+    return p_in_k * R
+
 def fit_exp_decay(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, guess_alpha, save_path=None) -> tuple[complex, float, rf.Network]:
     """Fit the reflection coefficient from an S1P network to a model of the form (A_real + 1j*A_imag) * exp(j*2*pi*f*t_delay).
 
@@ -89,7 +102,7 @@ def fit_reflection_coeff(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, save
         s1p_fitted_ntwk.write_touchstone(save_path, overwrite=True)
     return A_fitted, t_delay_fitted, s1p_fitted_ntwk
 
-def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None):
+def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='S11 Reflection Coefficient'):
     """
     Plot S11 magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
 
@@ -121,7 +134,7 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
             ax_phase.plot(freq / 1e6, phase, label=f'{label} ∠S11', color=color, linestyle='--')
 
     # Format magnitude plot
-    ax_mag.set_ylabel('Magnitude [dB]' if scale == 'log' else 'Magnitude')
+    ax_mag.set_ylabel(ylabel)
     ax_mag.grid(True)
     ax_mag.legend(loc='best')
 
@@ -135,7 +148,7 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
     else:
         ax_mag.set_xlabel('Frequency [MHz]')
 
-    fig.suptitle('S11 Reflection Coefficient')
+    fig.suptitle(title)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:

@@ -32,10 +32,35 @@ def get_and_clean_nonempty_files(directory, pattern="*.npy"):
 
     return nonempty_files
 
-def count_spikes(y, height=None, threshold=None, distance=None):
-    """Count the number of peaks in a signal that exceed a specified height and threshold."""
-    peaks, _ = find_peaks(y, height=height, threshold=threshold, distance=distance)
-    return len(peaks)
+def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False):
+    """
+    Count the number of peaks in a signal that exceed a specified height and threshold.
+    Optionally return the heights and print a table of (x, height).
+
+    Parameters:
+        y (array-like): The signal data.
+        x (array-like, optional): The x-axis values corresponding to y. If None, indices are used.
+        height (float or None): Required height of peaks.
+        threshold (float or None): Required threshold of peaks.
+        distance (int or None): Required minimal horizontal distance (in samples) between neighboring peaks.
+        print_table (bool): If True, print a table of (x, height) for each detected spike.
+
+    Returns:
+        count (int): Number of detected spikes.
+        heights (np.ndarray): Heights of the detected spikes.
+    """
+    peaks, properties = find_peaks(y, height=height, threshold=threshold, distance=distance)
+    heights = properties.get('peak_heights', np.array([]))
+    if print_table:
+        if x is None:
+            x_vals = peaks
+        else:
+            x_vals = np.asarray(x)[peaks]
+        print("Spike # |    x    |  height")
+        print("---------------------------")
+        for i, (xi, hi) in enumerate(zip(x_vals, heights)):
+            print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
+    return len(peaks), heights
 
 def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
     """
