@@ -1,5 +1,6 @@
 import numpy as np
 import os, glob, copy
+import skrf as rf
 from scipy.signal import find_peaks
 from scipy.ndimage import median_filter
 from scipy.constants import Boltzmann as k_B
@@ -125,6 +126,16 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
 
     return load_states
 
+def states_to_ntwk(f, loaded_states):
+    """Convert loaded states to a dictionary of rf.Network objects with frequency f."""
+    if isinstance(loaded_states, dict):
+        ntwk_dict = {}
+        for state_name, state in loaded_states.items():
+            spectrum = state['spectrum']
+            ntwk_dict[state_name] = rf.Network(f=f, name=state_name)
+            ntwk_dict[state_name].s[:, 0, 0] = spec_to_dbm(spectrum)
+        return ntwk_dict
+
 def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
     """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required
     
@@ -152,8 +163,8 @@ def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', of
     return loaded_states_copy
 
 def norm_states(f, loaded_states, ref_state_indx=3, ref_temp=300, system_gain=100):
+    """Normalize loaded states to a reference state and convert to Kelvin."""
     dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_indx]['spectrum'])))-system_gain
-    kelvin = dbm_to_kelvin(dbm)
     gain = norm_factor(dbm, ref_temp)
     loaded_states_kelvin = preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
     return loaded_states_kelvin
