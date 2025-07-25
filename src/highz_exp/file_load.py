@@ -3,7 +3,7 @@ import os, glob, copy
 from scipy.signal import find_peaks
 from scipy.ndimage import median_filter
 from scipy.constants import Boltzmann as k_B
-from .unit_convert import dbm_convert, dbm_to_power, kelvin_convert
+from .unit_convert import kelvin_to_dbm, dbm_to_watt, spec_to_dbm, dbm_to_kelvin, norm_factor
 
 pjoin = os.path.join
 
@@ -114,7 +114,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
         if isinstance(pick_snapshot, list):
             idx = pick_snapshot[i]
         elif pick_snapshot is not None:
-            spikes = [count_spikes(dbm_convert(np.load(file, allow_pickle=True).item()['spectrum']), height=20) for file in file_list]
+            spikes = [count_spikes(spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum']), height=20) for file in file_list]
             if min(spikes) > 0:
                 print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
             idx = int(np.argmin(spikes))
@@ -137,12 +137,12 @@ def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', of
             spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
         else: spectrum = state['spectrum']
 
-        spectrum_dB = dbm_convert(spectrum, offset=offset) - system_gain
+        spectrum_dBm = spec_to_dbm(spectrum, offset=offset) - system_gain
 
         if unit == 'dBm':
-            state['spectrum'] = spectrum_dB
+            state['spectrum'] = spectrum_dBm
         elif unit == 'kelvin':
-            spectrum = kelvin_convert(spectrum_dB, df*10**6)
+            spectrum = dbm_to_kelvin(spectrum_dBm, df*10**6)
             if normalize is not None:
                 state['spectrum'] =  spectrum * normalize
             else:
@@ -150,3 +150,10 @@ def preprocess_states(faxis, df, load_states, remove_spikes=True, unit='dBm', of
         else:
             raise ValueError("unit must be dBm or kelvin.")
     return loaded_states_copy
+
+def norm_states(f, loaded_states, ref_state_indx=3, ref_temp=300, system_gain=100):
+    dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_indx]['spectrum'])))-system_gain
+    kelvin = dbm_to_kelvin(dbm)
+    gain = norm_factor(dbm, ref_temp)
+    loaded_states_kelvin = preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
+    return loaded_states_kelvin

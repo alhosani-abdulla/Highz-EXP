@@ -27,3 +27,8 @@ import highz_exp
 # Or import specific modules
 from highz_exp import file_load, reflection_proc, spec_plot, unit_convert
 ```
+
+If run into import issues, try 
+```bash
+pip install --force-reinstall git+https://github.com/3aboooody56/Highz-EXP.git#egg=highz-exp
+```
