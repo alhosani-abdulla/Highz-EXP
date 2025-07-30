@@ -107,7 +107,7 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
     Plot S11 magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
 
     Parameters:
-    - ntwk_dict (dict): {label: skrf.Network}
+    - ntwk_dict (dict): {label: skrf.Network}. Frequency points are in Hz.
     """
 
     nrows = 2 if show_phase else 1
@@ -129,9 +129,9 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
 
         color = color_cycle[idx % len(color_cycle)]
 
-        ax_mag.plot(freq / 1e6, magnitude, label=f'{label} |S11|', color=color)
+        ax_mag.plot(freq / 1e6, magnitude, label=f'{label}', color=color)
         if show_phase:
-            ax_phase.plot(freq / 1e6, phase, label=f'{label} ∠S11', color=color, linestyle='--')
+            ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
     # Format magnitude plot
     ax_mag.set_ylabel(ylabel)
@@ -159,25 +159,21 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
 
     plt.show()
     
-def plot_smith_chart(s1p_files, suffix='LNA', labels=None, save_plot=True, legend_loc='best', individual=True):
+def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, legend_loc='best', individual=True):
     """
-    Plot Smith chart from one or more S1P files.
+    Plot Smith chart from one or more scikit-rf Network objects.
 
     Parameters:
-    - s1p_files (list of str): Paths to .s1p files.
+    - ntwk_dict (dict): {label: rf.Network} pairs.
     - suffix (str): Used for output filename if saving.
-    - labels (list of str, optional): Labels for legend.
     - save_plot (bool): Whether to save the figure.
     - legend_loc (str): Location of the legend. Default is 'best'.
+    - individual (bool): Whether to plot/save individual Smith charts for each network.
     """
     fig, ax = plt.subplots()
     fig.set_size_inches(10, 8)
 
-    if labels is None:
-        labels = [pbase(f) for f in s1p_files]
-
-    for file, label in zip(s1p_files, labels):
-        ntwk = rf.Network(file)
+    for label, ntwk in ntwk_dict.items():
         ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
 
     ax.set_title(f'{suffix} Smith Chart')
@@ -186,19 +182,21 @@ def plot_smith_chart(s1p_files, suffix='LNA', labels=None, save_plot=True, legen
 
     if save_plot:
         suffix = suffix.replace(' ', '_')
-        fig.savefig(pjoin(os.path.dirname(s1p_files[0]), f'{suffix}_smith_chart.png'))
+        # Save to current directory if no path info is available
+        if save_dir is None:
+            save_dir = os.getcwd()
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        fig.savefig(pjoin(save_dir, f'{suffix}_smith_chart.png'), bbox_inches='tight')
 
     plt.show()
     if individual:
-        for file, label in zip(s1p_files, labels):
-            ntwk = rf.Network(file)
+        for label, ntwk in ntwk_dict.items():
             fig, ax = plt.subplots()
             fig.set_size_inches(8, 8)
             ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
-
             ax.set_title(f'Smith Chart: {label}')
-
             if save_plot:
-                label = label.replace(' ', '_')
-                outname = f'{suffix}_smith_{label}.png'
-                fig.savefig(pjoin(os.path.dirname(file), outname), bbox_inches='tight')
+                label_safe = label.replace(' ', '_')
+                outname = f'{suffix}_smith_{label_safe}.png'
+                fig.savefig(outname, bbox_inches='tight')
