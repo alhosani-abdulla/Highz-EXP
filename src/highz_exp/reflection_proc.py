@@ -102,6 +102,53 @@ def fit_reflection_coeff(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, save
         s1p_fitted_ntwk.write_touchstone(save_path, overwrite=True)
     return A_fitted, t_delay_fitted, s1p_fitted_ntwk
 
+def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum'):
+    """
+    Plot magnitude for measured and fitted spectrum data, and a ratio panel (measured/fitted).
+
+    Parameters:
+    - ntwk_dict (dict): {'measured': skrf.Network, 'fitted': skrf.Network}
+    """
+    assert len(ntwk_dict) == 2, "ntwk_dict must contain exactly two items: measured and fitted."
+    keys = list(ntwk_dict.keys())
+    measured_ntwk = ntwk_dict[keys[0]]
+    fitted_ntwk = ntwk_dict[keys[1]]
+
+    freq = measured_ntwk.f
+    spec_measured = measured_ntwk.s[:, 0, 0]
+    spec_fitted = fitted_ntwk.s[:, 0, 0]
+
+    mag_measured = 20 * np.log10(np.abs(spec_measured)) if scale == 'log' else np.abs(spec_measured)
+    mag_fitted = 20 * np.log10(np.abs(spec_fitted)) if scale == 'log' else np.abs(spec_fitted)
+    ratio = mag_measured / mag_fitted
+
+    fig, axes = plt.subplots(nrows=2, figsize=(10, 7), sharex=True)
+    ax_mag, ax_ratio = axes
+
+    ax_mag.plot(freq / 1e6, mag_measured, label=f'{keys[0]}', color='C0')
+    ax_mag.plot(freq / 1e6, mag_fitted, label=f'{keys[1]}', color='C1', linestyle='--')
+    ax_mag.set_ylabel(ylabel)
+    ax_mag.legend(loc='best')
+    ax_mag.grid(True)
+
+    ax_ratio.plot(freq / 1e6, 1 / ratio, color='C2')
+    ax_ratio.axhline(1, color='red', linestyle='-', linewidth=1.5, label='measured/fitted =1)')
+    ax_ratio.set_ylabel('Fitted/Measured')
+    ax_ratio.set_xlabel('Frequency [MHz]')
+    ax_ratio.grid(True)
+    ax_ratio.legend(loc='best')
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    if save_plot:
+        if save_path is not None:
+            plt.savefig(save_path)
+        else:
+            print("! Save path not entered.")
+
+    plt.show()
+
 def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='S11 Reflection Coefficient'):
     """
     Plot S11 magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.

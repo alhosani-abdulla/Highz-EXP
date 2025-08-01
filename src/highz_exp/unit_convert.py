@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.constants import Boltzmann as k_B
 import copy
+import skrf as rf
 
 # Define some helper functions
 def s11_to_dB(s11):
@@ -51,3 +52,22 @@ def remove_freq_range(ntwk, freq_range_to_remove):
     new_ntwk = copy.deepcopy(ntwk)[indices_to_keep]
     
     return new_ntwk
+
+def interpolate_ntwk_dict(ntwk_dict, target_freqs):
+    """
+    Interpolate all ntwk objects in a dictionary to the target frequencies.
+
+    Parameters:
+    - ntwk_dict (dict): Dictionary of {'label': skrf.Network}
+    - target_freqs (array-like): Frequencies to interpolate to (in Hz)
+
+    Returns:
+    - dict: New dictionary with deepcopied and interpolated skrf.Network objects
+    """
+
+    new_ntwk_dict = {}
+    for label, ntwk in ntwk_dict.items():
+        ntwk_copy = copy.deepcopy(ntwk)
+        interp_ntwk = ntwk_copy.interpolate(target_freqs)
+        new_ntwk_dict[label] = interp_ntwk
+    return new_ntwk_dict
