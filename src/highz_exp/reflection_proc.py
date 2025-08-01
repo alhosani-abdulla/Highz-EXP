@@ -34,7 +34,7 @@ def s11_reflected_power(s11_db, p_in_k=50):
     
     Parameters:
     - s11_db: S11 in dB (can be float or NumPy array)
-    - p_in_k: input power in Kelvin (default is 50 K)
+    - p_in_k: Input power in Kelvin (default is 50 K)
 
     Returns:
     - Reflected power in Kelvin

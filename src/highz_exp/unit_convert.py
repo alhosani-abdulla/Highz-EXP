@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import find_peaks
 from scipy.constants import Boltzmann as k_B
+import copy
 
 # Define some helper functions
 def s11_to_dB(s11):
@@ -32,3 +33,21 @@ def norm_factor(psd_ref, temperature=300):
     """Calculate the normalization factor for psd_ref in dBm to temperature"""
     gain = temperature / dbm_to_kelvin(psd_ref)
     return gain
+
+def remove_freq_range(ntwk, freq_range_to_remove):
+    """Removes a specified frequency range from a skrf.Network object.
+
+    Parameters:
+    - ntwk (skrf.Network): The input network.
+    - freq_range_to_remove (tuple): A tuple (min_freq, max_freq) specifying the frequency range to remove.
+
+    Returns:
+    - skrf.Network: A new network with the specified frequency range removed.
+    """
+    # Find the indices of the frequencies to keep
+    indices_to_keep = np.where((ntwk.f < freq_range_to_remove[0]) | (ntwk.f > freq_range_to_remove[1]))[0]
+
+    # Create a new network with the filtered data
+    new_ntwk = copy.deepcopy(ntwk)[indices_to_keep]
+    
+    return new_ntwk
