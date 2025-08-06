@@ -77,7 +77,6 @@ def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_ta
         print("---------------------------")
         for i, (xi, hi) in enumerate(zip(x_vals, heights)):
             print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
-    return len(peaks), heights
 
 def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
     """
