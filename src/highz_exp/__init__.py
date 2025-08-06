@@ -14,7 +14,6 @@ __version__ = "0.1.0"
 from . import file_load
 from . import spec_plot  
 from . import unit_convert
-from . import spec_proc
 
 # Import reflection_proc conditionally (requires scikit-rf)
 try:
