@@ -32,7 +32,7 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     impd_source = impedance_from_s11(rho_source, Z0)
     impd_load = impedance_from_s11(rho_load, Z0)
    
-    keep_indx = np.where((np.real(impd_load) > 0)) & (np.real(impd_source) > 0)
+    keep_indx = np.where((np.real(impd_load) > 0) & (np.real(impd_source) > 0))
     impd_source = impd_source[keep_indx]
     impd_load = impd_load[keep_indx]
     f = source_ntwk.f[keep_indx]
