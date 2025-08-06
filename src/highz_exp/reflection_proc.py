@@ -5,22 +5,6 @@ from scipy.optimize import curve_fit
 import os
 from os.path import join as pjoin, basename as pbase
 
-def load_s1p(s1p_files, labels=None) -> dict:
-    """
-    Load S1P files and return a dictionary of label: rf.Network objects.
-
-    Parameters:
-    - s1p_files (list of str): Paths to .s1p files.
-    - labels (list of str, optional): Labels for the files.
-
-    Returns:
-    - dict: {label: rf.Network}
-    """
-    if labels is None:
-        labels = [pbase(f) for f in s1p_files]
-
-    return {label: rf.Network(file) for file, label in zip(s1p_files, labels)}
-
 def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk):
     """Return the total reflection coefficient with multiple reflections between cable and LNA interfaces"""
     rho_cable = rho_cable_ntwk.s[:, 0, 0]
@@ -41,6 +25,10 @@ def s11_reflected_power(s11_db, p_in_k=50):
     """
     R = 10 ** (s11_db / 10)  # power reflection coefficient
     return p_in_k * R
+
+def impedance_from_s11(rho, Z0=50):
+    """Convert reflection coefficient to impedance."""
+    return Z0 * (1+rho)/(1-rho)
 
 def fit_exp_decay(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, guess_alpha, save_path=None) -> tuple[complex, float, rf.Network]:
     """Fit the reflection coefficient from an S1P network to a model of the form (A_real + 1j*A_imag) * exp(j*2*pi*f*t_delay).

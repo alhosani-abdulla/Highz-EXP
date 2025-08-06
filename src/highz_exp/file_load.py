@@ -7,6 +7,23 @@ from scipy.constants import Boltzmann as k_B
 from .unit_convert import spec_to_dbm, dbm_to_kelvin, norm_factor
 
 pjoin = os.path.join
+pbase = os.path.basename
+
+def load_s1p(s1p_files, labels=None) -> dict:
+    """
+    Load S1P files and return a dictionary of label: rf.Network objects.
+
+    Parameters:
+    - s1p_files (list of str): Paths to .s1p files.
+    - labels (list of str, optional): Labels for the files.
+
+    Returns:
+    - dict: {label: rf.Network}
+    """
+    if labels is None:
+        labels = [pbase(f) for f in s1p_files]
+
+    return {label: rf.Network(file) for file, label in zip(s1p_files, labels)}
 
 def get_and_clean_nonempty_files(directory, pattern="*.npy"):
     """

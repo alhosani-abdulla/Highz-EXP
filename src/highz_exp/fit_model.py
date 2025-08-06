@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import skrf as rf
 from .unit_convert import *
+from .reflection_proc import impedance_from_s11
 from scipy.constants import Boltzmann as k_B
 
 def johnson_voltage(T, Z, B=1):
@@ -15,6 +16,31 @@ def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
     return np.abs(V_load)**2 / np.real(Z_load)
+
+def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
+    """
+    Calculate the power delivered to a load from a source with reflection coefficient rho_source,
+    load reflection coefficient rho_load, source temperature T_source, and characteristic impedance Z0.
+    
+    Returns power in Watts per B Hz.
+    """
+    rho_source = source_ntwk.s[:, 0, 0]
+    rho_load = load_ntwk.s[:, 0, 0]
+    
+    impd_source = impedance_from_s11(rho_source, Z0)
+    impd_load = impedance_from_s11(rho_load, Z0)
+   
+    keep_indx = np.where((np.real(impd_load) > 0)) & (np.real(impd_source) > 0)
+    impd_source = impd_source[keep_indx]
+    impd_load = impd_load[keep_indx]
+    f = source_ntwk.f[keep_indx]
+    
+    V_src = johnson_voltage(T_source, impd_source, B)
+    P_transferred = load_power(V_src, impd_source, impd_load) # Power delivered to load
+    P_dbm = watt_to_dbm(P_transferred)
+    
+    print("Returning Power delivered to load in dBm per B Hz.")
+    return P_dbm
 
 def fit_s11_spectrum(measured_data: rf.Network, theory_data: rf.Network, gain_func,
     extra_func, p0, n_gain_params,):
