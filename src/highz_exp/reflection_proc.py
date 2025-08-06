@@ -201,7 +201,6 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
     Parameters:
     - ntwk_dict (dict): {label: rf.Network} pairs.
     - suffix (str): Used for output filename if saving.
-    - save_plot (bool): Whether to save the figure.
     - legend_loc (str): Location of the legend. Default is 'best'.
     - individual (bool): Whether to plot/save individual Smith charts for each network.
     """

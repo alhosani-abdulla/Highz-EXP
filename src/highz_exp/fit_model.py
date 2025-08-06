@@ -23,8 +23,8 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     """
     Calculate the power delivered to a load from a source with reflection coefficient rho_source,
     load reflection coefficient rho_load, source temperature T_source, and characteristic impedance Z0.
-    
-    Returns power in Watts per B Hz.
+
+    Returns a Network object with power in dBm per B Hz.
     """
     rho_source = source_ntwk.s[:, 0, 0]
     rho_load = load_ntwk.s[:, 0, 0]
@@ -40,9 +40,10 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     V_src = johnson_voltage(T_source, impd_source, B)
     P_transferred = load_power(V_src, impd_source, impd_load) # Power delivered to load
     P_dbm = watt_to_dbm(P_transferred)
+    power_ntwk = rf.Network(s=P_dbm.reshape(-1, 1, 1), f=f)
     
     print("Returning Power delivered to load in dBm per B Hz.")
-    return P_dbm
+    return power_ntwk
 
 def fit_s11_spectrum(measured_data: rf.Network, theory_data: rf.Network, gain_func,
     extra_func, p0, n_gain_params,):
