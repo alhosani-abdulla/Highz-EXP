@@ -4,15 +4,20 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import skrf as rf
 from .unit_convert import *
+from scipy.constants import Boltzmann as k_B
 
-def fit_s11_spectrum(
-    measured_data: rf.Network,
-    theory_data: rf.Network,
-    gain_func,
-    extra_func,
-    p0,
-    n_gain_params,
-):
+def johnson_voltage(T, Z, B=1):
+    """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz)."""
+    R = np.real(Z) if isinstance(Z, complex) else Z
+    return np.sqrt(4 * k_B * T * B * R)
+
+def load_power(V_source, Z_source, Z_load):
+    """Calculate the power delivered to a load from a source voltage."""
+    V_load = V_source * (Z_load / (Z_source + Z_load))
+    return np.abs(V_load)**2 / np.real(Z_load)
+
+def fit_s11_spectrum(measured_data: rf.Network, theory_data: rf.Network, gain_func,
+    extra_func, p0, n_gain_params,):
     """
     Fit the measured S11 spectrum to a model of the form:
         corrected_mag = |theory_s11 * gain_func(f, ...) + extra_func(f, ...)|

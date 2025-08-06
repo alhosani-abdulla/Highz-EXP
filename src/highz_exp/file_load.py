@@ -4,7 +4,7 @@ import skrf as rf
 from scipy.signal import find_peaks
 from scipy.ndimage import median_filter
 from scipy.constants import Boltzmann as k_B
-from .unit_convert import kelvin_to_dbm, dbm_to_watt, spec_to_dbm, dbm_to_kelvin, norm_factor
+from .unit_convert import spec_to_dbm, dbm_to_kelvin, norm_factor
 
 pjoin = os.path.join
 

@@ -10,20 +10,23 @@ def s11_to_dB(s11):
     return 20 * np.log10(np.abs(s11))
 
 def spec_to_dbm(spectrum, offset=-135):
-    """Convert recorded spectrum to dBm with an offset obtained from calibration."""
+    """Convert recorded spectrum from digital spectrometer to dBm with an offset obtained from calibration."""
     spectrum = np.array(spectrum)
     finalSpectrum = 10 * np.log10(spectrum)+offset
     return finalSpectrum
 
-def dbm_to_watt(spectrum):
+def dbm_to_milliwatt(spectrum):
     """Convert spectrum in dBm to power in Watts."""
-    spectrum = np.array(spectrum)
     return 10**(spectrum/10)
+
+def watt_to_dbm(spectrum):
+    """Convert power in Watts to dBm."""
+    return 10 * np.log10(spectrum) + 30
 
 def dbm_to_kelvin(spectrum, channel_width=25*1000):
     """Convert spectrum in dBm/channel_width to noise temperature. """
     spectrum = np.array(spectrum)
-    return dbm_to_watt(spectrum) * 10**(-3) / channel_width / k_B
+    return dbm_to_milliwatt(spectrum) * 10**(-3) / channel_width / k_B
 
 def kelvin_to_dbm(spectrum, channel_width=25*1000):
     """Convert noise temperature to dBm/channel_width."""
