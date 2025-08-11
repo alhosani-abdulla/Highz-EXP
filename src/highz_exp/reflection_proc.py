@@ -137,12 +137,20 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     plt.show()
 
-def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='S11 Reflection Coefficient'):
+def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='Network Data', s_param=(0, 0)):
     """
-    Plot S11 magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
+    Plot magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
+    Can be used for S11, gain, power spectrum, or any S-parameter data.
 
     Parameters:
     - ntwk_dict (dict): {label: skrf.Network}. Frequency points are in Hz.
+    - scale (str): 'linear' or 'log' for magnitude scaling.
+    - save_plot (bool): Whether to save the plot.
+    - show_phase (bool): Whether to show phase subplot.
+    - save_path (str): Path to save the plot.
+    - ylabel (str): Y-axis label for magnitude plot.
+    - title (str): Plot title.
+    - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
 
     nrows = 2 if show_phase else 1
@@ -157,10 +165,10 @@ def plot_s11_reflect(ntwk_dict, scale='linear', save_plot=True, show_phase=True,
 
     for idx, (label, ntwk) in enumerate(ntwk_dict.items()):
         freq = ntwk.f  # in Hz
-        s11 = ntwk.s[:, 0, 0]
+        s_data = ntwk.s[:, s_param[0], s_param[1]]
 
-        magnitude = 20 * np.log10(np.abs(s11)) if scale == 'log' else np.abs(s11)
-        phase = np.angle(s11, deg=True)
+        magnitude = 20 * np.log10(np.abs(s_data)) if scale == 'log' else np.abs(s_data)
+        phase = np.angle(s_data, deg=True)
 
         color = color_cycle[idx % len(color_cycle)]
 
