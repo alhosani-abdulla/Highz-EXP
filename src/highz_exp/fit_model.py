@@ -16,8 +16,9 @@ def johnson_voltage(T, Z, B=1):
 def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
+    I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
-    return np.abs(V_load)**2 / np.real(Z_load)
+    return np.abs(I)**2 * np.real(Z_load)
 
 def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     """
