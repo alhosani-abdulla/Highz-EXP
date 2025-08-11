@@ -20,6 +20,13 @@ def load_power(V_source, Z_source, Z_load):
     print("Calculating power delivered to load in Watts.")
     return np.abs(I)**2 * np.real(Z_load)
 
+def apply_gain_to_power(gain_ntwk, input_power):
+    """Return the output power as rf.ntwk object given an input power level and a gain network."""
+    ratio_mag = np.abs(gain_ntwk.s[:, 0, 0])
+    output_power = input_power * ratio_mag
+    output_ntwk = rf.Network(s=output_power.reshape(-1, 1, 1), f=gain_ntwk.f)
+    return output_ntwk
+
 def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     """
     Calculate the power delivered to a load from a source with reflection coefficient rho_source,
