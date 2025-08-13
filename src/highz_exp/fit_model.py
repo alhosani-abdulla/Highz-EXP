@@ -18,7 +18,7 @@ def load_power(V_source, Z_source, Z_load):
     V_load = V_source * (Z_load / (Z_source + Z_load))
     I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
-    return np.abs(I)**2 * np.real(Z_load)
+    return np.real(V_load * np.conj(I))
 
 def apply_gain_to_power(gain_ntwk, input_power, in_offset=0, out_offset=0):
     """Return the output power (minus out_offset) as rf.ntwk object given an input power level and a gain network."""
@@ -28,9 +28,8 @@ def apply_gain_to_power(gain_ntwk, input_power, in_offset=0, out_offset=0):
     return output_ntwk
 
 def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
-    """
-    Calculate the power delivered to a load from a source with reflection coefficient rho_source,
-    load reflection coefficient rho_load, source temperature T_source, and characteristic impedance Z0.
+    """Calculate the power delivered to a load from a Johnson noise source with reflection coefficient rho_source,
+    load reflection coefficient rho_load, temperature T_source, and characteristic impedance Z0.
 
     Returns a Network object with power in dBm per B Hz.
     """

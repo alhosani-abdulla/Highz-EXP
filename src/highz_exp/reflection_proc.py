@@ -90,12 +90,14 @@ def fit_reflection_coeff(s1p_ntwk, guess_A_real, guess_A_imag, guess_delay, save
         s1p_fitted_ntwk.write_touchstone(save_path, overwrite=True)
     return A_fitted, t_delay_fitted, s1p_fitted_ntwk
 
-def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum'):
+def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum', show_residual=False, show_bottom_panel=True):
     """
-    Plot magnitude for measured and fitted spectrum data, and a ratio panel (measured/fitted).
+    Plot magnitude for measured and fitted spectrum data, and optionally a ratio panel (measured/fitted) or residual panel.
 
     Parameters:
     - ntwk_dict (dict): {'measured': skrf.Network, 'fitted': skrf.Network}
+    - show_residual (bool): If True, show residual (measured - fitted). If False, show ratio (fitted/measured).
+    - show_bottom_panel (bool): Whether to show the bottom panel (ratio or residual).
     """
     assert len(ntwk_dict) == 2, "ntwk_dict must contain exactly two items: measured and fitted."
     keys = list(ntwk_dict.keys())
@@ -108,10 +110,13 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     mag_measured = 20 * np.log10(np.abs(spec_measured)) if scale == 'log' else np.abs(spec_measured)
     mag_fitted = 20 * np.log10(np.abs(spec_fitted)) if scale == 'log' else np.abs(spec_fitted)
-    ratio = mag_measured / mag_fitted
 
-    fig, axes = plt.subplots(nrows=2, figsize=(10, 7), sharex=True)
-    ax_mag, ax_ratio = axes
+    nrows = 2 if show_bottom_panel else 1
+    fig, axes = plt.subplots(nrows=nrows, figsize=(10, 7), sharex=True)
+    if nrows == 1:
+        axes = [axes]  # Make it iterable for consistency
+
+    ax_mag = axes[0]
 
     ax_mag.plot(freq / 1e6, mag_measured, label=f'{keys[0]}', color='C0')
     ax_mag.plot(freq / 1e6, mag_fitted, label=f'{keys[1]}', color='C1', linestyle='--')
@@ -119,12 +124,25 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
     ax_mag.legend(loc='best')
     ax_mag.grid(True)
 
-    ax_ratio.plot(freq / 1e6, 1 / ratio, color='C2')
-    ax_ratio.axhline(1, color='red', linestyle='-', linewidth=1.5, label='measured/fitted =1)')
-    ax_ratio.set_ylabel('Fitted/Measured')
-    ax_ratio.set_xlabel('Frequency [MHz]')
-    ax_ratio.grid(True)
-    ax_ratio.legend(loc='best')
+    if show_bottom_panel:
+        ax_bottom = axes[1]
+        
+        if show_residual:
+            residual = mag_measured - mag_fitted
+            ax_bottom.plot(freq / 1e6, residual, color='C2')
+            ax_bottom.axhline(0, color='red', linestyle='-', linewidth=1.5, label='residual = 0')
+            ax_bottom.set_ylabel('Residual (Measured - Fitted)')
+        else:
+            ratio = mag_measured / mag_fitted
+            ax_bottom.plot(freq / 1e6, 1 / ratio, color='C2')
+            ax_bottom.axhline(1, color='red', linestyle='-', linewidth=1.5, label='fitted/measured = 1')
+            ax_bottom.set_ylabel('Fitted/Measured')
+        
+        ax_bottom.set_xlabel('Frequency [MHz]')
+        ax_bottom.grid(True)
+        ax_bottom.legend(loc='best')
+    else:
+        ax_mag.set_xlabel('Frequency [MHz]')
 
     fig.suptitle(title)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
