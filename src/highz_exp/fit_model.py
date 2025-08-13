@@ -18,7 +18,7 @@ def load_power(V_source, Z_source, Z_load):
     V_load = V_source * (Z_load / (Z_source + Z_load))
     I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
-    return np.real(V_load * np.conj(I))
+    return np.abs(V_load * np.conj(I))
 
 def apply_gain_to_power(gain_ntwk, input_power, in_offset=0, out_offset=0):
     """Return the output power (minus out_offset) as rf.ntwk object given an input power level and a gain network."""
