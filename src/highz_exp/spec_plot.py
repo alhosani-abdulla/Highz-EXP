@@ -49,12 +49,12 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
             residual = mag_measured - mag_fitted
             ax_bottom.plot(freq / 1e6, residual, color='C2')
             ax_bottom.axhline(0, color='red', linestyle='-', linewidth=1.5, label='residual = 0')
-            ax_bottom.set_ylabel('Residual (Measured - Fitted)')
+            ax_bottom.set_ylabel('Residual (Measured - Theory)')
         else:
             ratio = mag_measured / mag_fitted
             ax_bottom.plot(freq / 1e6, 1 / ratio, color='C2')
-            ax_bottom.axhline(1, color='red', linestyle='-', linewidth=1.5, label='fitted/measured = 1')
-            ax_bottom.set_ylabel('Fitted/Measured')
+            ax_bottom.axhline(1, color='red', linestyle='-', linewidth=1.5, label='measured/theory = 1')
+            ax_bottom.set_ylabel('Measured/Theory')
         
         ax_bottom.set_xlabel('Frequency [MHz]')
         ax_bottom.grid(True)
