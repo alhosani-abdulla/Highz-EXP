@@ -9,7 +9,7 @@ from scipy.constants import Boltzmann as k_B
 
 def johnson_voltage(T, Z, B=1):
     """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz)."""
-    R = np.real(Z) if isinstance(Z, complex) else Z
+    R = np.real(Z)
     print("Calculating Johnson-Nyquist noise voltage in Volts/sqrt(B Hz).")
     return np.sqrt(4 * k_B * T * B * R)
 
@@ -18,7 +18,7 @@ def load_power(V_source, Z_source, Z_load):
     V_load = V_source * (Z_load / (Z_source + Z_load))
     I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
-    return np.abs(V_load * np.conj(I))
+    return np.real(V_load * np.conj(I))
 
 def apply_gain_to_power(gain_ntwk, input_power, in_offset=0, out_offset=0):
     """Return the output power (minus out_offset) as rf.ntwk object given an input power level and a gain network."""
