@@ -22,7 +22,7 @@ def remove_freq_range(ntwk, freq_range_to_remove):
     
     return new_ntwk
 
-def interpolate_ntwk_dict(ntwk_dict, target_freqs):
+def interpolate_ntwk_dict(ntwk_dict, target_freqs) -> dict:
     """
     Interpolate all ntwk objects in a dictionary to the target frequencies.
 
@@ -34,9 +34,14 @@ def interpolate_ntwk_dict(ntwk_dict, target_freqs):
     - dict: New dictionary with deepcopied and interpolated skrf.Network objects
     """
 
+    # Find the common frequency range across all networks
+    min_freq = max(np.min(ntwk.f) for ntwk in ntwk_dict.values())
+    max_freq = min(np.max(ntwk.f) for ntwk in ntwk_dict.values())
+    clipped_freqs = np.clip(target_freqs, min_freq, max_freq)
+
     new_ntwk_dict = {}
     for label, ntwk in ntwk_dict.items():
         ntwk_copy = copy.deepcopy(ntwk)
-        interp_ntwk = ntwk_copy.interpolate(target_freqs)
+        interp_ntwk = ntwk_copy.interpolate(clipped_freqs)
         new_ntwk_dict[label] = interp_ntwk
     return new_ntwk_dict
