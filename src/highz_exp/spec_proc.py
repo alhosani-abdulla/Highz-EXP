@@ -4,23 +4,22 @@ import copy
 import numpy as np
 import skrf as rf
 
-def remove_freq_range(ntwk, freq_range_to_remove):
+def remove_freq_range(ntwk, freq_band_to_remove) -> rf.Network:
     """Removes a specified frequency range from a skrf.Network object.
 
     Parameters:
     - ntwk (skrf.Network): The input network.
-    - freq_range_to_remove (tuple): A tuple (min_freq, max_freq) specifying the frequency range to remove.
-
-    Returns:
-    - skrf.Network: A new network with the specified frequency range removed.
+    - freq_band_to_remove (tuple): A tuple (min_freq, max_freq) specifying the frequency range to remove.
     """
-    # Find the indices of the frequencies to keep
-    indices_to_keep = np.where((ntwk.f < freq_range_to_remove[0]) | (ntwk.f > freq_range_to_remove[1]))[0]
-
-    # Create a new network with the filtered data
+    indices_to_keep = np.where((ntwk.f < freq_band_to_remove[0]) | (ntwk.f > freq_band_to_remove[1]))[0]
     new_ntwk = copy.deepcopy(ntwk)[indices_to_keep]
-    
     return new_ntwk
+
+def HP_filter(ntwk, faxis_hz, cutoff_hz):
+    """High-pass filter: remove all frequencies below cutoff_hz."""
+    filtered_data = remove_freq_range(ntwk, (0, cutoff_hz))
+    faxis_filtered = faxis_hz[faxis_hz > cutoff_hz]
+    return filtered_data, faxis_filtered
 
 def interpolate_ntwk_dict(ntwk_dict, target_freqs) -> dict:
     """
