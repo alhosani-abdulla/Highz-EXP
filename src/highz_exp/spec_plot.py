@@ -38,7 +38,7 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     ax_mag.plot(freq / 1e6, mag_measured, label=f'{keys[0]}', color='C0')
     ax_mag.plot(freq / 1e6, mag_fitted, label=f'{keys[1]}', color='C1', linestyle='--')
-    ax_mag.set_ylabel(ylabel)
+    ax_mag.set_ylabel(ylabel, fontsize=14)
     ax_mag.legend(loc='best')
     ax_mag.grid(True)
 
@@ -49,20 +49,20 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
             residual = mag_measured - mag_fitted
             ax_bottom.plot(freq / 1e6, residual, color='C2')
             ax_bottom.axhline(0, color='red', linestyle='-', linewidth=1.5, label='residual = 0')
-            ax_bottom.set_ylabel('Residual (Measured - Theory)')
+            ax_bottom.set_ylabel('Residual (Measured - Theory)', fontsize=14)
         else:
             ratio = mag_measured / mag_fitted
             ax_bottom.plot(freq / 1e6, 1 / ratio, color='C2')
             ax_bottom.axhline(1, color='red', linestyle='-', linewidth=1.5, label='measured/theory = 1')
-            ax_bottom.set_ylabel('Measured/Theory')
+            ax_bottom.set_ylabel('Measured/Theory', fontsize=14)
         
-        ax_bottom.set_xlabel('Frequency [MHz]')
+        ax_bottom.set_xlabel('Frequency [MHz]', fontsize=14)
         ax_bottom.grid(True)
         ax_bottom.legend(loc='best')
     else:
-        ax_mag.set_xlabel('Frequency [MHz]')
+        ax_mag.set_xlabel('Frequency [MHz]', fontsize=14)
 
-    fig.suptitle(title)
+    fig.suptitle(title, fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:
@@ -113,21 +113,21 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
             ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
     # Format magnitude plot
-    ax_mag.set_ylabel(ylabel)
+    ax_mag.set_ylabel(ylabel, fontsize=14)
     ax_mag.grid(True)
-    ax_mag.legend(loc='best')
+    ax_mag.legend(loc='best', fontsize=12)
 
     # Format phase plot
     if show_phase:
-        ax_phase.set_xlabel('Frequency [MHz]')
-        ax_phase.set_ylabel('Phase [deg]')
+        ax_phase.set_xlabel('Frequency [MHz]', fontsize=14)
+        ax_phase.set_ylabel('Phase [deg]', fontsize=14)
         ax_phase.grid(True)
-        ax_phase.legend(loc='best')
+        ax_phase.legend(loc='best', fontsize=12)
 
     else:
-        ax_mag.set_xlabel('Frequency [MHz]')
+        ax_mag.set_xlabel('Frequency [MHz]', fontsize=14)
 
-    fig.suptitle(title)
+    fig.suptitle(title, fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:
@@ -154,8 +154,8 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
     for label, ntwk in ntwk_dict.items():
         ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
 
-    ax.set_title(f'{suffix} Smith Chart')
-    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+    ax.set_title(f'{suffix} Smith Chart', fontsize=16)
+    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0., fontsize=12)
     plt.tight_layout()
 
     if save_plot:
@@ -173,7 +173,7 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
             fig, ax = plt.subplots()
             fig.set_size_inches(8, 8)
             ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
-            ax.set_title(f'Smith Chart: {label}')
+            ax.set_title(f'Smith Chart: {label}', fontsize=16)
             if save_plot:
                 label_safe = label.replace(' ', '_')
                 outname = f'{suffix}_smith_{label_safe}.png'
