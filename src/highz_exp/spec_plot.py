@@ -112,12 +112,10 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
         if show_phase:
             ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
-    # Format magnitude plot
     ax_mag.set_ylabel(ylabel, fontsize=14)
     ax_mag.grid(True)
     ax_mag.legend(loc='best', fontsize=12)
 
-    # Format phase plot
     if show_phase:
         ax_phase.set_xlabel('Frequency [MHz]', fontsize=14)
         ax_phase.set_ylabel('Phase [deg]', fontsize=14)

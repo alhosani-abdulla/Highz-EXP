@@ -7,18 +7,18 @@ from .unit_convert import *
 from .reflection_proc import impedance_from_s11
 from scipy.constants import Boltzmann as k_B
 
-def johnson_voltage(T, Z, B=1):
-    """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz)."""
-    R = np.real(Z)
-    print("Calculating Johnson-Nyquist noise voltage in Volts/sqrt(B Hz).")
-    return np.sqrt(4 * k_B * T * B * R)
-
 def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
     I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
     return np.real(V_load * np.conj(I))
+
+def johnson_voltage(T, Z, B=1):
+    """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz)."""
+    R = np.real(Z)
+    print("Calculating Johnson-Nyquist noise voltage in Volts/sqrt(B Hz).")
+    return np.sqrt(4 * k_B * T * B * R)
 
 def apply_gain_to_power(gain_ntwk, input_power, in_offset=0, out_offset=0):
     """Return the output power (minus out_offset) as rf.ntwk object given an input power level and a gain network."""
@@ -38,18 +38,16 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     
     impd_source = impedance_from_s11(rho_source, Z0)
     impd_load = impedance_from_s11(rho_load, Z0)
-   
-    keep_indx = np.where((np.real(impd_load) > 0) & (np.real(impd_source) > 0))
-    impd_source = impd_source[keep_indx]
-    impd_load = impd_load[keep_indx]
-    f = source_ntwk.f[keep_indx]
-    
+
+    f = source_ntwk.f
+
     V_src = johnson_voltage(T_source, impd_source, B)
     P_transferred = load_power(V_src, impd_source, impd_load) # Power delivered to load
     P_dbm = watt_to_dbm(P_transferred)
-    power_ntwk = rf.Network(s=P_dbm.reshape(-1, 1, 1), f=f)
+    P_kelvin = dbm_to_kelvin(P_dbm)
+    power_ntwk = rf.Network(s=P_kelvin.reshape(-1, 1, 1), f=f)
     
-    print("Returning Power delivered to load in dBm per B Hz.")
+    print("Returning Power network delivered to load in Kelvin per B Hz.")
     return power_ntwk
 
 def fit_s11_spectrum(measured_data: rf.Network, theory_data: rf.Network, gain_func,
