@@ -123,7 +123,7 @@ def load_npy(dir_path, pattern='*state*.npy'):
         states.append(np.load(file, allow_pickle=True).item())
     return states
 
-def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
+def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
     """Load all calibration state files from a specified directory and return them as a dictionary.
 
     Parameters:
@@ -156,7 +156,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
         if isinstance(pick_snapshot, list):
             idx = pick_snapshot[i]
         elif pick_snapshot is not None:
-            spikes = [count_spikes(spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum']), height=20) for file in file_list]
+            spikes = [count_spikes(spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum'], offset=offset), height=20) for file in file_list]
             if min(spikes) > 0:
                 print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
             idx = int(np.argmin(spikes))
@@ -164,17 +164,18 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None):
             idx = 0
 
         load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
+    
+    print("Loading calibration states measurements in digital spectrometer box.")
 
     return load_states
 
-def states_to_ntwk(f, loaded_states):
+def states_to_ntwk(f, loaded_states, offset=-135):
     """Convert loaded states to a dictionary of rf.Network objects with frequency f."""
     if isinstance(loaded_states, dict):
         ntwk_dict = {}
         for state_name, state in loaded_states.items():
-            spectrum = state['spectrum']
-            ntwk_dict[state_name] = rf.Network(f=f, name=state_name)
-            ntwk_dict[state_name].s[:, 0, 0] = spec_to_dbm(spectrum)
+            spectrum = spec_to_dbm(state['spectrum'], offset=offset)
+            ntwk_dict[state_name] = rf.Network(f=f, name=state_name, s=spectrum.reshape(-1, 1, 1))
         return ntwk_dict
 
 def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
