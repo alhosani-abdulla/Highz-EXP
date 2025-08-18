@@ -169,13 +169,14 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
 
     return load_states
 
-def states_to_ntwk(f, loaded_states, offset=-135):
+def states_to_ntwk(f, loaded_states):
     """Convert loaded spectrum states to a dictionary of rf.Network objects with frequency f."""
     if isinstance(loaded_states, dict):
         ntwk_dict = {}
         for state_name, state in loaded_states.items():
-            spectrum = spec_to_dbm(state['spectrum'], offset=offset)
+            spectrum = state['spectrum']
             ntwk_dict[state_name] = rf.Network(f=f, name=state_name, s=spectrum.reshape(-1, 1, 1))
+        print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
 def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
@@ -185,7 +186,8 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
         faxis: np.ndarray, frequency points in MHz. """
     df = float(faxis[1] - faxis[0])
     loaded_states_copy = copy.deepcopy(load_states)
-    for i, state in enumerate(loaded_states_copy):
+    ntwk_dict = {}
+    for label, state in enumerate(loaded_states_copy):
         if remove_spikes:
             spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
         else: spectrum = state['spectrum']
@@ -202,19 +204,22 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
                 state['spectrum'] = spectrum
         else:
             raise ValueError("unit must be dBm or kelvin.")
-    return loaded_states_copy
-
-def norm_states(f, loaded_states, ref_state_indx=3, ref_temp=300, system_gain=100):
-    """Normalize loaded states to a reference state and convert to Kelvin.
-
-    Parameters:
-        f: np.ndarray. Frequency points in MHz.
     
-    Return
+    for label, state in enumerate(loaded_states_copy):
+        spectrum = state['spectrum']
+        ntwk_dict[label] = rf.Network(f=faxis*1e6, name=label, s=spectrum.reshape(-1, 1, 1))
+
+    return ntwk_dict
+    
+
+def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100):
+    """Normalize loaded raw spectra from digital spectrometer to a reference state and convert to Kelvin.
+
+    Returns:
     loaded_states_kelvin: dict
         Dictionary of loaded states with spectra converted to Kelvin.
     """
-    dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_indx]['spectrum'])))-system_gain
+    dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_label]['spectrum'])))-system_gain
     gain = norm_factor(dbm, ref_temp)
     loaded_states_kelvin = preprocess_states(f, loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
     return loaded_states_kelvin
