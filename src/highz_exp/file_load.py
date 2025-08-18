@@ -187,7 +187,7 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
     df = float(faxis[1] - faxis[0])
     loaded_states_copy = copy.deepcopy(load_states)
     ntwk_dict = {}
-    for label, state in enumerate(loaded_states_copy):
+    for label, state in loaded_states_copy.items():
         if remove_spikes:
             spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
         else: spectrum = state['spectrum']
@@ -197,7 +197,7 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
         if unit == 'dBm':
             state['spectrum'] = spectrum_dBm
         elif unit == 'kelvin':
-            spectrum = dbm_to_kelvin(spectrum_dBm, df * 10**6)
+            spectrum = dbm_to_kelvin(spectrum_dBm, df)
             if normalize is not None:
                 state['spectrum'] =  spectrum * normalize
             else:
@@ -205,9 +205,9 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
         else:
             raise ValueError("unit must be dBm or kelvin.")
     
-    for label, state in enumerate(loaded_states_copy):
+    for label, state in loaded_states_copy.items():
         spectrum = state['spectrum']
-        ntwk_dict[label] = rf.Network(f=faxis*1e6, name=label, s=spectrum.reshape(-1, 1, 1))
+        ntwk_dict[label] = rf.Network(f=faxis, name=label, s=spectrum.reshape(-1, 1, 1))
 
     return ntwk_dict
     
