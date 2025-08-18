@@ -170,7 +170,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
     return load_states
 
 def states_to_ntwk(f, loaded_states, offset=-135):
-    """Convert loaded states to a dictionary of rf.Network objects with frequency f."""
+    """Convert loaded spectrum states to a dictionary of rf.Network objects with frequency f."""
     if isinstance(loaded_states, dict):
         ntwk_dict = {}
         for state_name, state in loaded_states.items():
