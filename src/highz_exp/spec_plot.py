@@ -274,11 +274,11 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
         
         ymax_state = np.max(spectrum)
         if ymax_state > ymax: 
-            ymax = ymax_state + 10
+            ymax = ymax_state
     
     # Adjust ymax with some padding
     
-    ylim = (ymin, ymax)
+    ylim = (ymin, ymax+10)
     if ylabel is None:
         ylabel = 'PSD [dBm]'
 
@@ -288,11 +288,13 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     plt.legend(fontsize=12)
     plt.ylabel(ylabel, fontsize=14)
     plt.xlabel('Frequency [MHz]', fontsize=14)
+    plt.title("Recorded Spectrum")
     plt.grid(True)
     plt.tight_layout()
     
     # Save the plot
-    os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
+    if save_dir is not None:
+      os.makedirs(save_dir, exist_ok=True)
+      plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
     plt.show()
     
