@@ -249,29 +249,50 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_states, save_dir, ylabel=None, suffix='', remove_spikes=True, ymin=-75, freq_range=None):
-    """Plot the spectrum of loaded states and save the figure.
+def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, freq_range=None):
+    """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure.
     
     Parameters:
-        - loaded_states (dict): Dictionary of states with frequency and spectrum data, {"state_name": {"frequency": np.array, "spectrum": np.array}}. Frequency must be in MHz.
+        - ymin (float): Minimum y-axis value
+        - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
+        - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
-    plt.figure(figsize=(12, 8), )
-    ymax = -75
-    for state_name, state in loaded_states.items():
-        faxis = state['frequency']
-        if remove_spikes:
-            spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
-        else: spectrum = state['spectrum']
-        ymax_state = max(np.max(spectrum) * 1.1, np.max(spectrum))
-        if ymax_state > ymax: ymax = ymax_state
+    plt.figure(figsize=(12, 8))
+    ymax = ymin
+    
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    
+    for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
+        freq = ntwk.f  # in Hz
+        spectrum = np.real(ntwk.s[:, 0, 0])
+        
+        # Convert frequency to MHz for plotting
+        faxis_mhz = freq / 1e6
+        
+        color = color_cycle[idx % len(color_cycle)]
+        plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
+        
+        ymax_state = np.max(spectrum)
+        if ymax_state > ymax: 
+            ymax = ymax_state + 10
+    
+    # Adjust ymax with some padding
+    
     ylim = (ymin, ymax)
     if ylabel is None:
-        ylabel = 'Recorded Spectrum'
-    else: ylabel=ylabel
+        ylabel = 'PSD [dBm]'
+
     plt.ylim(*ylim)
-    plt.xlim(*freq_range)
-    plt.legend(loaded_states.keys(), fontsize=12)
-    plt.ylabel(ylabel)
-    plt.xlabel('Frequency [MHz]')
-    plt.savefig(f'{save_dir}/calibration_states_{suffix}.png')
+    if freq_range is not None:
+        plt.xlim(*freq_range)
+    plt.legend(fontsize=12)
+    plt.ylabel(ylabel, fontsize=14)
+    plt.xlabel('Frequency [MHz]', fontsize=14)
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Save the plot
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
+    plt.show()
     

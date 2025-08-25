@@ -124,7 +124,7 @@ def load_npy(dir_path, pattern='*state*.npy'):
     return states
 
 def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
-    """Load all calibration state files from a specified directory and return them as a dictionary.
+    """Load all calibration state files from a specified directory and return them as a dictionary. This doesn't return antenna states. 
 
     Parameters:
         pick_snapshot (list, optional): List of indices specifying which snapshot to load for each state.
@@ -165,7 +165,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
 
         load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
     
-    print("Loading calibration states measurements in digital spectrometer box.")
+    print("Loading calibration states measurements in digital spectrometer box, in the recorded power with no conversion.")
 
     return load_states
 
@@ -179,11 +179,16 @@ def states_to_ntwk(f, loaded_states):
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
-def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None):
-    """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required
+def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> dict:
+    """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
     
     Parameters:
-        faxis: np.ndarray, frequency points in MHz. """
+        faxis: np.ndarray, frequency points in MHz.
+        system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
+
+    Returns:
+        dict: A dictionary of processed network objects.
+    """
     df = float(faxis[1] - faxis[0])
     loaded_states_copy = copy.deepcopy(load_states)
     ntwk_dict = {}
