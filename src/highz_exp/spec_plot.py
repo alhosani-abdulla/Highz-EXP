@@ -249,7 +249,7 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, freq_range=None):
+def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure.
     
     Parameters:
@@ -258,8 +258,8 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
     plt.figure(figsize=(12, 8))
-    ymax = ymin
-    
+    ymax = ymin if ymax is None else ymax
+
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     
     for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
@@ -277,8 +277,8 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
             ymax = ymax_state
     
     # Adjust ymax with some padding
-    
-    ylim = (ymin, ymax+10)
+    ymax += 10
+    ylim = (ymin, ymax)
     if ylabel is None:
         ylabel = 'PSD [dBm]'
 
