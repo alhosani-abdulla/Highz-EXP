@@ -133,13 +133,18 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
     Returns:
         dict: Dictionary containing the loaded calibration states.
     """
-    data_full_path = pjoin(dir_path)
     state_files = []
-    _ = get_and_clean_nonempty_files(data_full_path, f'*state1*.npy')
-    _ = get_and_clean_nonempty_files(data_full_path, f'*state0*.npy')
+    if not os.path.exists(dir_path):
+        raise FileNotFoundError(f"Directory does not exist: {dir_path}")
+        
+    if not get_and_clean_nonempty_files(dir_path, '*state*.npy'):
+        raise FileNotFoundError(f"No '*state*.npy' files found in directory: {dir_path}")
+    
+    _ = get_and_clean_nonempty_files(dir_path, f'*state1*.npy')
+    _ = get_and_clean_nonempty_files(dir_path, f'*state0*.npy')
     for i in range(2, 8):
-        state_files.append(get_and_clean_nonempty_files(data_full_path, f'*state{i}*.npy'))
-    state_files.append(get_and_clean_nonempty_files(data_full_path, "*stateOC*.npy"))
+        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state{i}*.npy'))
+    state_files.append(get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
 
     load_states = {}
     def get_state_name(i):
