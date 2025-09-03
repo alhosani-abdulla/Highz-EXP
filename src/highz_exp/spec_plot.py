@@ -249,7 +249,7 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None):
+def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum'):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure.
     
     Parameters:
@@ -300,7 +300,7 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     plt.legend(fontsize=12)
     plt.ylabel(ylabel, fontsize=14)
     plt.xlabel('Frequency [MHz]', fontsize=14)
-    plt.title("Recorded Spectrum")
+    plt.title(title)
     plt.grid(True)
     plt.tight_layout()
     
