@@ -278,7 +278,6 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
                 ymax = ymax_state
         
         # Adjust ymax with some padding
-        ymax += 10
     else:
         for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
             freq = ntwk.f  # in Hz

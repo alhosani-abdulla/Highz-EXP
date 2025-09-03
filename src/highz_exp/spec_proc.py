@@ -4,6 +4,14 @@ import copy
 import numpy as np
 import skrf as rf
 
+def apply_to_all_ntwks(func, ntwk_dict):
+    """Apply a function to the S-parameters of all networks in a dictionary."""
+    for key, value in ntwk_dict.items():
+        spectrum = ntwk_dict[key].s[:, 0, 0]
+        updated_spectrum = func(spectrum)
+        ntwk_dict[key].s[:, 0, 0] = updated_spectrum
+    return ntwk_dict
+
 def remove_freq_range(ntwk, freq_band_to_remove) -> rf.Network:
     """Removes a specified frequency range from a skrf.Network object.
 
