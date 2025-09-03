@@ -258,26 +258,38 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
     plt.figure(figsize=(12, 8))
-    ymax = ymin if ymax is None else ymax
-
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     
-    for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
-        freq = ntwk.f  # in Hz
-        spectrum = np.real(ntwk.s[:, 0, 0])
+    if ymax is None:
+        ymax = ymin  # Initialize with ymin
         
-        # Convert frequency to MHz for plotting
-        faxis_mhz = freq / 1e6
+        for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
+            freq = ntwk.f  # in Hz
+            spectrum = np.real(ntwk.s[:, 0, 0])
+            
+            # Convert frequency to MHz for plotting
+            faxis_mhz = freq / 1e6
+            
+            color = color_cycle[idx % len(color_cycle)]
+            plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
+            
+            ymax_state = np.max(spectrum)
+            if ymax_state > ymax: 
+                ymax = ymax_state
         
-        color = color_cycle[idx % len(color_cycle)]
-        plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
-        
-        ymax_state = np.max(spectrum)
-        if ymax_state > ymax: 
-            ymax = ymax_state
+        # Adjust ymax with some padding
+        ymax += 10
+    else:
+        for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
+            freq = ntwk.f  # in Hz
+            spectrum = np.real(ntwk.s[:, 0, 0])
+            
+            # Convert frequency to MHz for plotting
+            faxis_mhz = freq / 1e6
+            
+            color = color_cycle[idx % len(color_cycle)]
+            plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
     
-    # Adjust ymax with some padding
-    ymax += 10
     ylim = (ymin, ymax)
     if ylabel is None:
         ylabel = 'PSD [dBm]'

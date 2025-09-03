@@ -135,8 +135,8 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
     """
     state_files = []
     if not os.path.exists(dir_path):
-        raise FileNotFoundError(f"Directory does not exist: {dir_path}")
-        
+        raise FileNotFoundError(f"Directory does not exist: {dir_path}. Double check the path.")
+
     if not get_and_clean_nonempty_files(dir_path, '*state*.npy'):
         raise FileNotFoundError(f"No '*state*.npy' files found in directory: {dir_path}")
     
@@ -222,7 +222,7 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
     return ntwk_dict
     
 
-def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100):
+def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
     """Normalize loaded raw spectra from digital spectrometer to a reference state and convert to Kelvin.
 
     Returns:
@@ -232,4 +232,4 @@ def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100
     dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_label]['spectrum'])))-system_gain
     gain = norm_factor(dbm, ref_temp)
     loaded_states_kelvin = preprocess_states(f, loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
-    return loaded_states_kelvin
+    return loaded_states_kelvin, gain
