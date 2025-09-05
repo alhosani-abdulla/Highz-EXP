@@ -7,6 +7,25 @@ from .unit_convert import *
 from .reflection_proc import impedance_from_s11
 from scipy.constants import Boltzmann as k_B
 
+def fit_lines(y1, y2, x1=70, x2=300):
+    """
+    Given arrays of y-values at x1 and x2, return arrays of slope g and intercept b
+    for lines y = g*x + b.
+
+    Returns
+    -------
+    g : ndarray
+        Slopes for each pair
+    b : ndarray
+        Intercepts for each pair
+    """
+    y1 = np.asarray(y1, dtype=float)
+    y2 = np.asarray(y2, dtype=float)
+
+    g = (y2 - y1) / (x2 - x1)
+    b = y1 - g * x1
+    return g, b
+
 def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
