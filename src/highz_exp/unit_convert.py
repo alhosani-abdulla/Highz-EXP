@@ -21,7 +21,7 @@ def dbm_to_milliwatt(spectrum):
 
 def watt_to_dbm(spectrum):
     """Convert power in Watts to dBm."""
-    return 10 * np.log10(spectrum) + 30
+    return 10 * np.log10(spectrum * 1000)
 
 def dbm_to_kelvin(spectrum, channel_width=25*1000):
     """Convert spectrum in dBm/channel_width to noise temperature. """

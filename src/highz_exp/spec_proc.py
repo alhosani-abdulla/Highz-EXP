@@ -32,22 +32,32 @@ def HP_filter(ntwk, faxis_hz, cutoff_hz):
     faxis_filtered = faxis_hz[faxis_hz > cutoff_hz]
     return filtered_data, faxis_filtered
 
-def interpolate_ntwk_dict(ntwk_dict, target_freqs) -> dict:
+def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
     """
     Interpolate all ntwk objects in a dictionary to the target frequencies.
 
     Parameters:
     - ntwk_dict (dict): Dictionary of {'label': skrf.Network}
     - target_freqs (array-like): Frequencies to interpolate to (in Hz)
+    - freq_range (tuple, optional): (min_freq, max_freq) to override common range
 
     Returns:
     - dict: New dictionary with deepcopied and interpolated skrf.Network objects
     """
 
     # Find the common frequency range across all networks
-    min_freq = max(np.min(ntwk.f) for ntwk in ntwk_dict.values())
-    max_freq = min(np.max(ntwk.f) for ntwk in ntwk_dict.values())
-    clipped_freqs = np.clip(target_freqs, min_freq, max_freq)
+    common_min_freq = max(np.min(ntwk.f) for ntwk in ntwk_dict.values())
+    common_max_freq = min(np.max(ntwk.f) for ntwk in ntwk_dict.values())
+    
+    # Use user-specified range if provided and within common range
+    if freq_range is not None:
+        min_freq, max_freq = freq_range
+        if common_min_freq <= min_freq <= max_freq <= common_max_freq:
+            clipped_freqs = np.clip(target_freqs, min_freq, max_freq)
+        else:
+            clipped_freqs = np.clip(target_freqs, common_min_freq, common_max_freq)
+    else:
+        clipped_freqs = np.clip(target_freqs, common_min_freq, common_max_freq)
 
     new_ntwk_dict = {}
     for label, ntwk in ntwk_dict.items():
