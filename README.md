@@ -6,14 +6,14 @@ This is a preliminary version for analyzing data collected from the HighZ-EXP ex
 ### From GitHub (for Google Colab or local installation)
 
 ```python
-!pip install git+https://github.com/3aboooody56/Highz-EXP.git
+!pip install git+https://github.com/alhosani-abdulla/Highz-EXP.git
 ```
 Noe that `-e` flat does not work in Google Colab, as it's designed for local dev where changes to the source code is immediately reflected in the installed package without reinstallation. Google Colab does not provide persistent access to the source code.
 
 ### For development (editable install)
 
 ```bash
-git clone https://github.com/3aboooody56/Highz-EXP.git
+git clone https://github.com/alhosani-abdulla/Highz-EXP.git
 cd Highz-EXP
 pip install -e .
 ```
@@ -30,5 +30,5 @@ from highz_exp import file_load, reflection_proc, spec_plot, unit_convert
 
 If run into import issues, try 
 ```bash
-pip install --force-reinstall git+https://github.com/3aboooody56/Highz-EXP.git#egg=highz-exp
+pip install --force-reinstall git+https://github.com/alhosani-abdulla/Highz-EXP.git
 ```

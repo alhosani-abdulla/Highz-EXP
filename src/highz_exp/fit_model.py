@@ -29,7 +29,7 @@ def fit_lines(y1, y2, x1=70, x2=300):
 def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
-    I = V_load / Z_load
+    I = V_load / 50
     print("Calculating power delivered to load in Watts.")
     return np.real(V_load * np.conj(I))
 
@@ -50,6 +50,10 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     """Calculate the power delivered to a load from a Johnson noise source with reflection coefficient rho_source,
     load reflection coefficient rho_load, temperature T_source, and characteristic impedance Z0.
 
+    Parameters:
+    - `source_ntwk`: Network object with source reflection coefficient (S11).
+    - `load_ntwk`: Network object with load reflection coefficient (S11).
+
     Returns a Network object with power in dBm per B Hz.
     """
     rho_source = source_ntwk.s[:, 0, 0]
@@ -64,7 +68,7 @@ def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
     P_transferred = load_power(V_src, impd_source, impd_load) # Power delivered to load
     P_dbm = watt_to_dbm(P_transferred)
     P_kelvin = dbm_to_kelvin(P_dbm)
-    power_ntwk = rf.Network(s=P_kelvin.reshape(-1, 1, 1), f=f)
+    power_ntwk = rf.Network(s=P_kelvin, f=f)
     
     print("Returning Power network delivered to load in Kelvin per B Hz.")
     return power_ntwk

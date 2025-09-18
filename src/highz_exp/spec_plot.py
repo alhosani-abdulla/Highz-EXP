@@ -135,27 +135,55 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
             print("! Save path not entered.")
 
     plt.show()
-    
-def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, legend_loc='best', individual=True):
+
+def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, legend_loc='best', 
+                     individual=True, freq_range=None):
     """
     Plot Smith chart from one or more scikit-rf Network objects.
-
     Parameters:
     - ntwk_dict (dict): {label: rf.Network} pairs.
     - suffix (str): Used for output filename if saving.
     - legend_loc (str): Location of the legend. Default is 'best'.
     - individual (bool): Whether to plot/save individual Smith charts for each network.
+    - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
+                         If None, plots all frequencies.
     """
+    # Filter networks by frequency range if specified
+    if freq_range is not None:
+        min_freq, max_freq = freq_range
+        filtered_ntwk_dict = {}
+        for label, ntwk in ntwk_dict.items():
+            # Create frequency mask
+            freq_mask = (ntwk.f >= min_freq) & (ntwk.f <= max_freq)
+            if np.any(freq_mask):
+                # Create new network with filtered frequencies
+                filtered_ntwk = ntwk.copy()
+                filtered_ntwk.f = ntwk.f[freq_mask]
+                filtered_ntwk.s = ntwk.s[freq_mask]
+                filtered_ntwk_dict[label] = filtered_ntwk
+            else:
+                print(f"Warning: No frequencies in range for {label}")
+        ntwk_dict = filtered_ntwk_dict
+    
+    if not ntwk_dict:
+        print("No networks to plot after frequency filtering")
+        return
+    
     fig, ax = plt.subplots()
     fig.set_size_inches(10, 8)
-
     for label, ntwk in ntwk_dict.items():
         ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+    
+    # Update title to include frequency range if specified
+    if freq_range is not None:
+        min_freq_mhz = freq_range[0] / 1e6
+        max_freq_mhz = freq_range[1] / 1e6
+        title = f' {min_freq_mhz:.0f}-{max_freq_mhz:.0f} MHz'
 
-    ax.set_title(f'{suffix} Smith Chart', fontsize=16)
+    ax.set_title(title, fontsize=14)
     ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0., fontsize=12)
     plt.tight_layout()
-
+    
     if save_plot:
         suffix = suffix.replace(' ', '_')
         # Save to current directory if no path info is available
@@ -163,20 +191,37 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
             save_dir = os.getcwd()
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-        fig.savefig(pjoin(save_dir, f'{suffix}_smith_chart.png'), bbox_inches='tight')
-
+        
+        # Add frequency range to filename if specified
+        filename = f'{suffix}_smith_chart'
+        filename += '.png'
+        
+        fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
     plt.show()
+    
     if individual:
         for label, ntwk in ntwk_dict.items():
             fig, ax = plt.subplots()
             fig.set_size_inches(8, 8)
             ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
-            ax.set_title(f'Smith Chart: {label}', fontsize=16)
+            
+            # Update individual title to include frequency range if specified
+            individual_title = f'Smith Chart: {label}'
+            if freq_range is not None:
+                min_freq_mhz = freq_range[0] / 1e6
+                max_freq_mhz = freq_range[1] / 1e6
+                individual_title += f' ({min_freq_mhz:.0f}-{max_freq_mhz:.0f} MHz)'
+            
+            ax.set_title(individual_title, fontsize=16)
+            
             if save_plot:
                 label_safe = label.replace(' ', '_')
-                outname = f'{suffix}_smith_{label_safe}.png'
+                outname = f'{suffix}_smith_{label_safe}'
+                if freq_range is not None:
+                    outname += '_filtered'
+                outname += '.png'
                 fig.savefig(outname, bbox_inches='tight')
-
+ 
 def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', show_phase=False, attenuation=0, save_plot=True, save_name='S21_Measurement'):
     """
     Load and plot gain (S21) from an S2P file.
@@ -250,7 +295,7 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
     return network
 
 def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum'):
-    """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure.
+    """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
         - ymin (float): Minimum y-axis value
