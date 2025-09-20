@@ -112,7 +112,7 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
         if show_phase:
             ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
-    ax_mag.set_ylabel(ylabel, fontsize=18)
+    ax_mag.set_ylabel(ylabel, fontsize=20)
     ax_mag.grid(True)
     ax_mag.legend(loc='best', fontsize=18)
     ax_mag.tick_params(axis='both', labelsize=18, which='major')
@@ -126,8 +126,7 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
         ax_phase.grid(True)
         ax_phase.legend(loc='best', fontsize=18)
 
-    else:
-        ax_mag.set_xlabel('Frequency [MHz]', fontsize=14)
+    ax_mag.set_xlabel('Frequency [MHz]', fontsize=18)
 
     fig.suptitle(title, fontsize=20)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
