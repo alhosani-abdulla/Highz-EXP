@@ -302,7 +302,7 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(14, 8))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     
     if ymax is None:
@@ -341,16 +341,18 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     plt.ylim(*ylim)
     if freq_range is not None:
         plt.xlim(*freq_range)
-    plt.legend(fontsize=12)
-    plt.ylabel(ylabel, fontsize=14)
-    plt.xlabel('Frequency [MHz]', fontsize=14)
+    plt.legend(fontsize=18, ncol=2, loc='best')
+    plt.ylabel(ylabel, fontsize=20)
+    plt.xlabel('Frequency [MHz]', fontsize=20)
+    plt.tick_params(axis='both', which='major', labelsize=18)
     plt.title(title)
     plt.grid(True)
     plt.tight_layout()
     
     # Save the plot
     if save_dir is not None:
-      os.makedirs(save_dir, exist_ok=True)
-      plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
     plt.show()
-    
+
+
