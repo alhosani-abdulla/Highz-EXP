@@ -114,19 +114,19 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
 
     ax_mag.set_ylabel(ylabel, fontsize=20)
     ax_mag.grid(True)
-    ax_mag.legend(loc='best', fontsize=18)
-    ax_mag.tick_params(axis='both', labelsize=18, which='major')
+    ax_mag.legend(loc='best', fontsize=20)
+    ax_mag.tick_params(axis='both', labelsize=20, which='major')
 
     if ylim is not None:
         ax_mag.set_ylim(ylim)
 
     if show_phase:
-        ax_phase.set_xlabel('Frequency [MHz]', fontsize=18)
+        ax_phase.set_xlabel('Frequency [MHz]', fontsize=20)
         ax_phase.set_ylabel('Phase [deg]', fontsize=18)
         ax_phase.grid(True)
         ax_phase.legend(loc='best', fontsize=18)
 
-    ax_mag.set_xlabel('Frequency [MHz]', fontsize=18)
+    ax_mag.set_xlabel('Frequency [MHz]', fontsize=20)
 
     fig.suptitle(title, fontsize=20)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
