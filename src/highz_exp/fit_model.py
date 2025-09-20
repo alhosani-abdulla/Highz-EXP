@@ -29,7 +29,7 @@ def fit_lines(y1, y2, x1=70, x2=300):
 def load_power(V_source, Z_source, Z_load):
     """Calculate the power delivered to a load from a source voltage."""
     V_load = V_source * (Z_load / (Z_source + Z_load))
-    I = V_load / 50
+    I = V_load / Z_load
     print("Calculating power delivered to load in Watts.")
     return np.real(V_load * np.conj(I))
 

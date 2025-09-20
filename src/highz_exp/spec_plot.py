@@ -73,14 +73,14 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     plt.show()
 
-def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='Network Data', s_param=(0, 0)):
+def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='Network Data', s_param=(0, 0),
+                      ylim=None):
     """
     Plot magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
     Can be used for S11, gain, power spectrum, or any S-parameter data.
 
     Parameters:
     - ntwk_dict (dict): {label: skrf.Network}. Frequency points are in Hz.
-    - scale (str): 'linear' or 'log' for magnitude scaling.
     - save_plot (bool): Whether to save the plot.
     - show_phase (bool): Whether to show phase subplot.
     - save_path (str): Path to save the plot.
@@ -90,7 +90,7 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
     """
 
     nrows = 2 if show_phase else 1
-    fig, axes = plt.subplots(nrows=nrows, figsize=(10, 6), sharex=True)
+    fig, axes = plt.subplots(nrows=nrows, figsize=(12, 8), sharex=True)
     if nrows == 1:
         axes = [axes]  # Make it iterable for consistency
 
@@ -103,7 +103,7 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
         freq = ntwk.f  # in Hz
         s_data = ntwk.s[:, s_param[0], s_param[1]]
 
-        magnitude = 20 * np.log10(np.abs(s_data)) if scale == 'log' else np.abs(s_data)
+        magnitude = np.abs(s_data)
         phase = np.angle(s_data, deg=True)
 
         color = color_cycle[idx % len(color_cycle)]
@@ -112,20 +112,24 @@ def plot_network_data(ntwk_dict, scale='linear', save_plot=True, show_phase=True
         if show_phase:
             ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
-    ax_mag.set_ylabel(ylabel, fontsize=14)
+    ax_mag.set_ylabel(ylabel, fontsize=18)
     ax_mag.grid(True)
-    ax_mag.legend(loc='best', fontsize=12)
+    ax_mag.legend(loc='best', fontsize=18)
+    ax_mag.tick_params(axis='both', labelsize=18, which='major')
+
+    if ylim is not None:
+        ax_mag.set_ylim(ylim)
 
     if show_phase:
-        ax_phase.set_xlabel('Frequency [MHz]', fontsize=14)
-        ax_phase.set_ylabel('Phase [deg]', fontsize=14)
+        ax_phase.set_xlabel('Frequency [MHz]', fontsize=18)
+        ax_phase.set_ylabel('Phase [deg]', fontsize=18)
         ax_phase.grid(True)
-        ax_phase.legend(loc='best', fontsize=12)
+        ax_phase.legend(loc='best', fontsize=18)
 
     else:
         ax_mag.set_xlabel('Frequency [MHz]', fontsize=14)
 
-    fig.suptitle(title, fontsize=16)
+    fig.suptitle(title, fontsize=20)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:
