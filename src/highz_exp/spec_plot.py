@@ -174,15 +174,15 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
         ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
     
     for text in ax.texts:
-        text.set_fontsize(16)
+        text.set_fontsize(18)
 
     # Update axis labels (Real and Imaginary)
-    ax.set_xlabel(ax.get_xlabel(), fontsize=16, labelpad=18)
-    ax.set_ylabel(ax.get_ylabel(), fontsize=16, labelpad=18)
+    ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=18)
+    ax.set_ylabel(ax.get_ylabel(), fontsize=18, labelpad=18)
 
     ax.set_title(title, fontsize=20)
     
-    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0, fontsize=16)
+    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0, fontsize=18)
     plt.tight_layout()
     
     if save_plot:
@@ -199,7 +199,7 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
         
         fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
     plt.show()
- 
+    
 def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', show_phase=False, attenuation=0, save_plot=True, save_name='S21_Measurement'):
     """
     Load and plot gain (S21) from an S2P file.
