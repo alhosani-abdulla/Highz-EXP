@@ -345,7 +345,7 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     plt.ylabel(ylabel, fontsize=20)
     plt.xlabel('Frequency [MHz]', fontsize=20)
     plt.tick_params(axis='both', which='major', labelsize=18)
-    plt.title(title)
+    plt.title(title, fontsize=22)
     plt.grid(True)
     plt.tight_layout()
     
