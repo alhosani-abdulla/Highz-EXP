@@ -24,6 +24,6 @@ if __name__ == "__main__":
         spec_path = pjoin(os.getcwd(), spec_path)
         
     loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128)
-    dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, loaded_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
+    dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
     spec_plot.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix='raw', freq_range=freq_range, ymin=-80, ymax=-30)
     print(f"Image saved to {spec_path}")
