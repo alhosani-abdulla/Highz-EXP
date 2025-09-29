@@ -31,10 +31,9 @@ def HP_filter(ntwk, faxis_hz, cutoff_hz):
     filtered_data = remove_freq_range(ntwk, (0, cutoff_hz))
     faxis_filtered = faxis_hz[faxis_hz > cutoff_hz]
     return filtered_data, faxis_filtered
-
 def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
     """
-    Interpolate all ntwk objects in a dictionary to the target frequencies.
+    Interpolate all ntwk objects in a dictionary to the target frequencies and remove frequencies outside the specified range.
 
     Parameters:
     - ntwk_dict (dict): Dictionary of {'label': skrf.Network}
@@ -43,25 +42,45 @@ def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
 
     Returns:
     - dict: New dictionary with deepcopied and interpolated skrf.Network objects
+            with frequencies outside freq_range removed
     """
-
     # Find the common frequency range across all networks
     common_min_freq = max(np.min(ntwk.f) for ntwk in ntwk_dict.values())
     common_max_freq = min(np.max(ntwk.f) for ntwk in ntwk_dict.values())
     
-    # Use user-specified range if provided and within common range
+    # Determine the frequency range to use
     if freq_range is not None:
         min_freq, max_freq = freq_range
-        if common_min_freq <= min_freq <= max_freq <= common_max_freq:
-            clipped_freqs = np.clip(target_freqs, min_freq, max_freq)
-        else:
-            clipped_freqs = np.clip(target_freqs, common_min_freq, common_max_freq)
+        if not (common_min_freq <= min_freq <= max_freq <= common_max_freq):
+            print(f"Warning: Requested range {freq_range[0]/1e6:.1f}-{freq_range[1]/1e6:.1f} MHz is outside common range "
+                  f"{common_min_freq/1e6:.1f}-{common_max_freq/1e6:.1f} MHz")
+            # Clip the requested range to the available data range
+            min_freq = max(min_freq, common_min_freq)
+            max_freq = min(max_freq, common_max_freq)
     else:
-        clipped_freqs = np.clip(target_freqs, common_min_freq, common_max_freq)
+        min_freq, max_freq = common_min_freq, common_max_freq
 
     new_ntwk_dict = {}
     for label, ntwk in ntwk_dict.items():
+        # Get the actual frequency range for this specific network
+        ntwk_min_freq = np.min(ntwk.f)
+        ntwk_max_freq = np.max(ntwk.f)
+        
+        # Clip target frequencies to both the desired range AND the network's actual range
+        effective_min = max(min_freq, ntwk_min_freq)
+        effective_max = min(max_freq, ntwk_max_freq)
+        
+        # Filter target frequencies to the effective range
+        mask = (target_freqs >= effective_min) & (target_freqs <= effective_max)
+        clipped_freqs = target_freqs[mask]
+        
+        if len(clipped_freqs) == 0:
+            print(f"Warning: No target frequencies within valid range for {label}")
+            continue
+            
+        # Create a copy and interpolate to the clipped frequencies
         ntwk_copy = copy.deepcopy(ntwk)
         interp_ntwk = ntwk_copy.interpolate(clipped_freqs)
         new_ntwk_dict[label] = interp_ntwk
+    
     return new_ntwk_dict

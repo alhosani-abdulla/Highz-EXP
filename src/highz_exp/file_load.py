@@ -221,13 +221,14 @@ def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset
 
     return ntwk_dict
     
-
 def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
-    """Normalize loaded raw spectra from digital spectrometer to a reference state and convert to Kelvin.
+    """Normalize loaded RAW! spectra from digital spectrometer to a reference state and convert to Kelvin.
 
     Returns:
     loaded_states_kelvin: dict
         Dictionary of loaded states with spectra converted to Kelvin.
+    gain: np.ndarray
+        Normalization factor applied to convert from dBm to Kelvin.
     """
     dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_label]['spectrum'])))-system_gain
     gain = norm_factor(dbm, ref_temp)
