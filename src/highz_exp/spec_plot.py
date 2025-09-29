@@ -275,7 +275,7 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum'):
+def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum', show_plot=True):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
@@ -334,6 +334,7 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    if show_plot:
+        plt.show()
 
 
