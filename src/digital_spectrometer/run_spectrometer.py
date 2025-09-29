@@ -34,8 +34,8 @@ NCHANNELS = 4                # Number of channels
 NFFT = 32768                 # FFT length
 
 # Calibration and observation parameters
-CAL_ACC_N = 5                # Number of spectra per calibration state per cycle
-ANT_ACC_N = 5                # Number of spectra for antenna state per cycle
+CAL_ACC_N = 15                # Number of spectra per calibration state per cycle
+ANT_ACC_N = 15                # Number of spectra for antenna state per cycle
 FB_N = 0                     # Number of spectra for filter bank calibration
 SAVE_EACH_ACC = False        # True: save each accumulation, False: sum accumulations
 
@@ -201,7 +201,6 @@ def write_filename(state, acc_n):
 
 def sum_spectrum(spectrum):
   return np.array([sum(x) for x in zip(*spectrum)], dtype=np.float64)
-
 
 def save_data(dataDict, filename):
   """
