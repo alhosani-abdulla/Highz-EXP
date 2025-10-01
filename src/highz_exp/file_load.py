@@ -1,7 +1,7 @@
 import numpy as np
 import os, glob, copy
 import skrf as rf
-from scipy.signal import find_peaks
+
 from scipy.ndimage import median_filter
 from scipy.constants import Boltzmann as k_B
 from .unit_convert import spec_to_dbm, dbm_to_kelvin, norm_factor
@@ -49,7 +49,7 @@ def get_and_clean_nonempty_files(directory, pattern="*.npy"):
 
     return nonempty_files
 
-def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False):
+def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False) -> np.ndarray:
     """
     Count the number of peaks in a signal that exceed a specified height and threshold.
     Optionally return the heights and print a table of (x, height).
@@ -63,20 +63,30 @@ def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_ta
         print_table (bool): If True, print a table of (x, height) for each detected spike.
 
     Returns:
-        count (int): Number of detected spikes.
-        heights (np.ndarray): Heights of the detected spikes.
+        spike_data (np.ndarray): 2D array with shape (n_spikes, 2) containing [x_vals, heights].
     """
+    from scipy.signal import find_peaks
     peaks, properties = find_peaks(y, height=height, threshold=threshold, distance=distance)
     heights = properties.get('peak_heights', np.array([]))
+    
+    if x is None:
+        x_vals = peaks
+    else:
+        x_vals = np.asarray(x)[peaks]
+    
+    # Create 2D array with x_vals and heights
+    if len(x_vals) > 0:
+        spike_data = np.column_stack((x_vals, heights))
+    else:
+        spike_data = np.empty((0, 2))
+    
     if print_table:
-        if x is None:
-            x_vals = peaks
-        else:
-            x_vals = np.asarray(x)[peaks]
         print("Spike # |    x    |  height")
         print("---------------------------")
         for i, (xi, hi) in enumerate(zip(x_vals, heights)):
             print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
+    
+    return spike_data
 
 def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
     """
