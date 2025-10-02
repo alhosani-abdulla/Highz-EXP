@@ -22,6 +22,8 @@ if __name__ == "__main__":
         pass
     else:
         spec_path = pjoin(os.getcwd(), spec_path)
+    
+    print(f"Loading files saved to {spec_path}")
         
     loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128)
     dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)

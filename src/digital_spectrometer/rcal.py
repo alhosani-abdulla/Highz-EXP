@@ -5,20 +5,20 @@ import time
 gpio_pin0 = LED(21)
 gpio_pin1 = LED(20)
 gpio_pin2 = LED(16)
-gpio_pin3 = LED(12)
+#gpio_pin3 = LED(12)
 
 #each pin represents one bit iirc
 #2^3 bits = 8 calibration states
 
 def gpio_switch(n,t):
-    global gpio_pin0, gpio_pin1, gpio_pin2, gpio_pin3
+    global gpio_pin0, gpio_pin1, gpio_pin2
     if (n < 0 or n > 7) and n != 10:
         return "Invalid calibration index. Please choose a number between 0 and 7, or 10."
     
     idx = 7 - n
-    idx2 = 10 - n #for extra state
+    #idx2 = 10 - n #for extra state
 
-    pin3 = idx2 & 8
+    #pin3 = idx2 & 8
     pin2 = idx & 4
     pin1 = idx & 2
     pin0 = idx & 1
@@ -40,10 +40,10 @@ def gpio_switch(n,t):
     else:
         gpio_pin2.off()
 
-    if pin3:
-        gpio_pin3.on()
-    else:
-        gpio_pin3.off()
+    # if pin3:
+    #     gpio_pin3.on()
+    # else:
+    #     gpio_pin3.off()
 
     # wait for 3 seconds just to allow the hw to catchup
     time.sleep(t)
