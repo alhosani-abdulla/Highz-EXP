@@ -25,8 +25,9 @@ if __name__ == "__main__":
         print(f"Interpreting path as {spec_path}")
         
     loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[0,0,0,0,0,0,0], cal_names=LEGEND, offset=-128)
+    print(loaded_spec_states)
     dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
     print("Loaded and preprocessed spectrum states...")
-    print(dbm_spec_states.keys())
+    print(dbm_spec_states)
     spec_plot.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix='raw', freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
     print(f"Image saved to {spec_path}")
