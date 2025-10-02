@@ -5,6 +5,59 @@ from scipy.optimize import curve_fit
 import os
 from os.path import join as pjoin, basename as pbase
 
+def compute_spike_height_ratios(spike_data1, spike_data2, tolerance=0.1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the ratio of spike heights between two datasets with tolerance matching.
+
+    Parameters:
+    -----------
+    spike_data1 : np.ndarray
+        2D array with shape (n_spikes, 2) containing [x_vals, heights]
+    spike_data2 : np.ndarray
+        2D array with shape (m_spikes, 2) containing [x_vals, heights]
+    tolerance : float
+        Maximum absolute difference in x_vals to consider as a match
+
+    Returns:
+    --------
+    ratios : np.ndarray
+        Array of ratios (spike_data1_height / spike_data2_height) for matched spikes
+    matched_x1 : np.ndarray
+        x_vals from spike_data1 that were matched
+    matched_x2 : np.ndarray
+        x_vals from spike_data2 that were matched
+    """
+    x1, h1 = spike_data1[:, 0], spike_data1[:, 1]
+    x2, h2 = spike_data2[:, 0], spike_data2[:, 1]
+
+    ratios = []
+    matched_x1 = []
+    matched_x2 = []
+
+    # For each spike in dataset 1, find closest match in dataset 2
+    for i in range(len(x1)):
+        # Calculate absolute differences
+        diffs = np.abs(x2 - x1[i])
+        min_idx = np.argmin(diffs)
+        min_diff = diffs[min_idx]
+
+        # Check if within tolerance
+        if min_diff <= tolerance:
+            # Avoid division by zero
+            if h2[min_idx] != 0:
+                ratios.append(h1[i] / h2[min_idx])
+                matched_x1.append(x1[i])
+                matched_x2.append(x2[min_idx])
+
+    # Print results
+    print("Matched spikes:")
+    print(f"{'x1':>8} {'x2':>8} {'h1/h2':>8}")
+    print("-" * 26)
+    for x1_val, x2_val, r in zip(matched_x1, matched_x2, ratios):
+        print(f"{x1_val:8.2f} {x2_val:8.2f} {r:8.2f}")
+
+    return np.array(ratios), np.array(matched_x1), np.array(matched_x2)
+
 def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk):
     """Return the total reflection coefficient with multiple reflections between cable and LNA interfaces"""
     rho_cable = rho_cable_ntwk.s[:, 0, 0]
