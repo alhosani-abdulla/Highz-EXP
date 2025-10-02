@@ -16,8 +16,6 @@ def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
     Returns:
     - skrf.Network: New network with S11 = ntwk1.S11 - ntwk2.S11
     """
-    import numpy as np
-    import copy
 
     # Verify frequencies match
     if not np.allclose(ntwk1.f, ntwk2.f):
