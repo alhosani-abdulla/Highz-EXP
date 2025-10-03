@@ -126,8 +126,7 @@ def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
 
 def load_npy(dir_path, pattern='*state*.npy'):
     """Load all non-empty .npy files from a specified directory and return them as a list"""
-    data_full_path = pjoin(dir_path)
-    state_files = get_and_clean_nonempty_files(data_full_path, pattern)
+    state_files = get_and_clean_nonempty_files(dir_path, pattern)
     states = []
     for file in state_files:
         states.append(np.load(file, allow_pickle=True).item())
