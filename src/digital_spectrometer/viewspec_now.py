@@ -19,7 +19,6 @@ faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'6" open']
-
 def start_live_spectrum_view(base_path, ylabel=None, title='Live Spectrum', update_interval=1000):
     """Start a live spectrum view window that automatically finds the latest spectrum file"""
     
@@ -74,16 +73,34 @@ def start_live_spectrum_view(base_path, ylabel=None, title='Live Spectrum', upda
         except Exception as e:
             print(f"Error updating plot: {e}")
     
-    # Create window and plot
-    root = tk.Tk()
-    root.title("Live Spectrum Viewer")
+    def on_closing():
+        """Handle window closing"""
+        root.quit()
+        root.destroy()
     
-    fig, ax = plt.subplots(figsize=(14, 8))
-    canvas = FigureCanvasTkAgg(fig, master=root)
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    ani = animation.FuncAnimation(fig, update_plot, interval=update_interval, blit=False)
-    root.mainloop()
+    try:
+        # Create window and plot
+        root = tk.Tk()
+        root.title("Live Spectrum Viewer")
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+        
+        fig, ax = plt.subplots(figsize=(14, 8))
+        canvas = FigureCanvasTkAgg(fig, master=root)
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        ani = animation.FuncAnimation(fig, update_plot, interval=update_interval, blit=False)
+        root.mainloop()
+        
+    except KeyboardInterrupt:
+        print("\nProgram interrupted by user (Ctrl+C)")
+        if 'root' in locals():
+            root.quit()
+            root.destroy()
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        if 'root' in locals():
+            root.quit()
+            root.destroy()
     
 if __name__ == "__main__":
     # Find the most recently created directory in DATA_PATH
