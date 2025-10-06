@@ -12,7 +12,7 @@ setup(
     author_email="highz.team@example.com",
     packages=find_packages(),
     install_requires=requirements,
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
