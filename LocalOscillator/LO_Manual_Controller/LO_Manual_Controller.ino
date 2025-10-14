@@ -11,6 +11,8 @@ static const int PIN_CE    = 2;   // Chip Enable
 static const int PIN_LOSET = 6;   // (unused here) external trigger
 static const int PIN_RESET = 7;   // (unused here) external reset
 static const int PIN_CALIB = 8;   // (unused here) external band toggle
+static const int PIN_MUX = 9;     // MUXOUT (Multiplexer Output)
+
 
 /* ---------- Sweep bands ---------- */
 static const double A_MIN  = 650.0, A_MAX  = 850.0, A_STEP  = 1.0;
@@ -20,7 +22,10 @@ static const double B_MIN  = 900.0, B_MAX  = 960.0, B_STEP  = 0.2;
 static bool   bandHigh      = false;   // false=A band, true=B band
 static double curFreq       = A_MIN;
 static bool   mtld          = false;   // Mute Till Lock Detect
-static bool   muxIsLD       = false;    // true = MUXOUT is DigitalLockDetect
+static bool   muxIsLD       = true;    // true = MUXOUT is DigitalLockDetect
+
+// NEW: user-settable RF output power for MAIN output (allowed: -4, -1, +2, +5 dBm)
+static int8_t output_power_dBm = +5;
 
 /* ---------- Utils ---------- */
 static double quantizeToStep(double f, double fmin, double step) {
@@ -112,7 +117,7 @@ static bool programLO(double freqMHz) {
   pp.phase_word   = 1;
 
   // R2 (set MUXOUT so the board LED likely shows lock)
-  pp.n_s_mode                 = LowSpurMode;                         // try spur mode first
+  pp.n_s_mode                 = LowSpurMode;       // try spur mode first
   pp.mux_out                  = muxIsLD ? Mux_DigitalLockDetect : Mux_ThreeState;
   pp.ref_doubler              = false;
   pp.ref_div_2                = false;
@@ -141,7 +146,7 @@ static bool programLO(double freqMHz) {
   pp.aux_output_enable    = false;
   pp.aux_output_power_dBm = -4;
   pp.output_enable        = true;
-  pp.output_power_dBm     = +5;
+  pp.output_power_dBm     = output_power_dBm;
 
   // R5
   pp.ld_pin_mode          = LD_Digital;
@@ -166,7 +171,9 @@ static bool programLO(double freqMHz) {
 
   Serial.print(F("Prog: "));
   Serial.print(freqMHz, 3);
-  Serial.println(F(" MHz"));
+  Serial.print(F(" MHz, Pout="));
+  Serial.print(output_power_dBm);
+  Serial.println(F(" dBm"));
   return true;
 }
 
@@ -202,6 +209,7 @@ static void printStatus() {
   Serial.print(F("Band: "));
   Serial.println(bandHigh ? F("High (900–960, 0.2 MHz)") : F("Low (650–850, 1.0 MHz)"));
   Serial.print(F("Freq: ")); Serial.print(curFreq, 3); Serial.println(F(" MHz"));
+  Serial.print(F("Output Power: ")); Serial.print(output_power_dBm); Serial.println(F(" dBm"));
   Serial.print(F("MUXOUT: ")); Serial.println(muxIsLD ? F("DigitalLockDetect") : F("ThreeState"));
   Serial.print(F("MTLD: ")); Serial.println(mtld ? F("ON") : F("OFF"));
 }
@@ -214,6 +222,7 @@ static void printHelp() {
   Serial.println(F("  r        - reset to band start"));
   Serial.println(F("  m 0|1    - MUXOUT: 0=ThreeState, 1=DigitalLockDetect"));
   Serial.println(F("  t        - toggle Mute-Till-Lock"));
+  Serial.println(F("  p <val>  - MAIN output power: -4, -1, +2, +5 (e.g. p +5)"));
   Serial.println(F("  s        - status"));
   Serial.println(F("  ?        - help"));
 }
@@ -244,7 +253,15 @@ void setup() {
   // Program the first point so you can observe the LED
   programLO(curFreq);
   printStatus();
+
+  pinMode(PIN_MUX, INPUT);      // IMPORTANT: no INPUT_PULLUP (would pull to 5V)
+  // optional: a quick print so we know state at boot
+  Serial.print(F("MUXOUT@boot="));
+  Serial.println(digitalRead(PIN_MUX));
 }
+
+// Simple edge/logging helper
+static int lastMux = -1;
 
 void loop() {
   String line = readLine();
@@ -305,6 +322,22 @@ void loop() {
     programLO(curFreq);
     printStatus();
   }
+  else if (op == 'P') {
+    // Accepts: -4, -1, +2, +5 (with or without '+' and with/without space)
+    int val = arg.toInt();  // handles "+5" -> 5, "-1" -> -1
+    bool ok = (val == -4) || (val == -1) || (val == 2) || (val == 5);
+    if (!ok) {
+      Serial.println(F("Invalid power. Allowed: -4, -1, +2, +5  (example: p +5)"));
+    } else {
+      output_power_dBm = (int8_t)val;
+      Serial.print(F("Set MAIN output power to "));
+      Serial.print(output_power_dBm);
+      Serial.println(F(" dBm"));
+      // Re-program current frequency so change takes effect immediately
+      programLO(curFreq);
+      printStatus();
+    }
+  }
   else if (op == 'S') {
     printStatus();
   }
@@ -315,5 +348,23 @@ void loop() {
     // Show raw bytes to reveal hidden characters if something odd came in
     Serial.println(F("Unknown. Type ?"));
     debugPrintBytes(raw);
+  }
+  
+  // Poll MUXOUT ~1 kHz (cheap and reliable)
+  static uint32_t lastUs = 0;
+  uint32_t now = micros();
+  if (now - lastUs >= 1000) {   // every 1 ms
+    lastUs = now;
+    int v = digitalRead(PIN_MUX);
+    if (v != lastMux) {
+      lastMux = v;
+      // If MUXOUT is set to Digital Lock Detect:
+      // 1 = LOCKED, 0 = UNLOCKED (per datasheet Digital LD)
+      Serial.print(F("LD="));
+      Serial.print(v);
+      Serial.print(F("  ("));
+      Serial.print(v ? F("LOCKED") : F("UNLOCKED"));
+      Serial.println(F(")"));
+    }
   }
 }
