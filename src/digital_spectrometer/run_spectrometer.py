@@ -36,8 +36,9 @@ NFFT = 32768                 # FFT length
 # Calibration and observation parameters
 CAL_ACC_N = 15                # Number of spectra per calibration state per cycle
 ANT_ACC_N = 15                # Number of spectra for antenna state per cycle
-FB_N = 0                     # Number of spectra for filter bank calibration
-SAVE_EACH_ACC = False        # True: save each accumulation, False: sum accumulations
+FB_N = 0                      # Number of spectra for filter bank calibration
+SAVE_EACH_ACC = False         # True: save each accumulation, False: sum accumulations
+SAVE_DATA = False             # True: save data to disk, False: run without saving
 
 # The time in seconds for one accumulation. Skips one accumulation when switching states.
 SWITCH_DELAY = ACC_LENGTH * 3 / 100000 
@@ -208,6 +209,11 @@ def save_data(dataDict, filename):
   """
   global current_parent_dir, sub_dir_count, current_sub_dir_path, cycle_count, run_directory
   
+  # Skip saving if SAVE_DATA is False
+  if not SAVE_DATA:
+    print(f"Data saving disabled. Would have saved: {filename}")
+    return
+  
   dirnames = next(os.walk(BASE_PATH))[1]
   while not dirnames:
     print('No drive attached. Please attach a drive to continue taking data.')
@@ -255,7 +261,8 @@ def save_all_data(fpga, switch_value):
     dataDict["spectrum"] = s
     filename = write_filename(switch_value, cnt)
     t_5 = time.time()
-    save_data(dataDict, filename)
+    if SAVE_DATA:
+      save_data(dataDict, filename)
     
   else:
     spectra = {}
@@ -272,7 +279,8 @@ def save_all_data(fpga, switch_value):
     dataDict["spectrum"] = sum_spectrum(spectra_list)
     #dataDict["nspectra"] = len(clean_spectra)
     filename = write_filename(switch_value, 'average',)
-    save_data(dataDict, filename)
+    if SAVE_DATA:
+      save_data(dataDict, filename)
 
     print(dataDict.keys())
     print(switch_value)
