@@ -1,6 +1,13 @@
 # Highz-EXP
 This is a preliminary version for analyzing data collected from the HighZ-EXP experiment. It includes modules for loading files, processing reflection data, plotting spectra, and converting units.
 
+## Related Repositories
+
+The HighZ-EXP project has been split into focused component repositories:
+
+- **[adf4351-controller](https://github.com/alhosani-abdulla/adf4351-controller)** - Arduino controller programs for the ADF4351 PLL frequency synthesizer used as the Local Oscillator
+- **[highz-filterbank](https://github.com/alhosani-abdulla/highz-filterbank)** - Multi-channel filterbank spectrometer for detecting the 21-cm cosmological signal from Cosmic Dawn
+
 ## Installation
 
 ### From GitHub (for Google Colab or local installation)
