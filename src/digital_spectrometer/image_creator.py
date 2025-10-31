@@ -24,7 +24,7 @@ if __name__ == "__main__":
         spec_path = pjoin(os.getcwd(), spec_path)
         print(f"Interpreting path as {spec_path}")
         
-    loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128)
+    loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128, include_antenna=True)
     dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
     print("Loaded and preprocessed spectrum states...")
     spec_plot.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix='raw', freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)

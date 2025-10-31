@@ -132,12 +132,13 @@ def load_npy(dir_path, pattern='*state*.npy'):
         states.append(np.load(file, allow_pickle=True).item())
     return states
 
-def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
-    """Load all calibration state files from a specified directory and return them as a dictionary. This doesn't return antenna states. 
-
+def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, include_antenna=False):
+    """Load all calibration state files from a specified directory and return them as a dictionary. 
+    
     Parameters:
         pick_snapshot (list, optional): List of indices specifying which snapshot to load for each state.
         cal_names (list, optional): List of calibration state names.
+        include_antenna (bool): If True, also load antenna states (state0 and state1).
 
     Returns:
         dict: Dictionary containing the loaded calibration states.
@@ -149,18 +150,36 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
     if not get_and_clean_nonempty_files(dir_path, '*state*.npy'):
         raise FileNotFoundError(f"No '*state*.npy' files found in directory: {dir_path}")
     
-    _ = get_and_clean_nonempty_files(dir_path, f'*state1*.npy')
-    _ = get_and_clean_nonempty_files(dir_path, f'*state0*.npy')
+    # Load antenna states if requested
+    if include_antenna:
+        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state0*.npy'))
+        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state1*.npy'))
+    else:
+        _ = get_and_clean_nonempty_files(dir_path, f'*state1*.npy')
+        _ = get_and_clean_nonempty_files(dir_path, f'*state0*.npy')
+    
+    # Load calibration states (state2-7)
     for i in range(2, 8):
         state_files.append(get_and_clean_nonempty_files(dir_path, f'*state{i}*.npy'))
     state_files.append(get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
 
     load_states = {}
     def get_state_name(i):
-        if cal_names is not None:
-            return cal_names[i]
+        if include_antenna:
+            if i == 0:
+                return 'antenna (powered)'
+            elif i == 1:
+                return 'antenna (unpowered)'
+            else:
+                if cal_names is not None:
+                    return cal_names[i-2]
+                else:
+                    return f'state{i}'
         else:
-            return f'state{i+2}'
+            if cal_names is not None:
+                return cal_names[i]
+            else:
+                return f'state{i+2}'
 
     for i, file_list in enumerate(state_files):
         state_name = get_state_name(i)
@@ -179,7 +198,8 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135):
 
         load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
     
-    print("Loading calibration states measurements in digital spectrometer box, in the recorded power with no conversion.")
+    load_type = "calibration and antenna states" if include_antenna else "calibration states"
+    print(f"Loading {load_type} measurements in digital spectrometer box, in the recorded power with no conversion.")
 
     return load_states
 
