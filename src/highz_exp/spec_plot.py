@@ -333,7 +333,8 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     # Save the plot
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight', 
+                    optimize=True, quality=85)
     if show_plot:
         plt.show()
 
