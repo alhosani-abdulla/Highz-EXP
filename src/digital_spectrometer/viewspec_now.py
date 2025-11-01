@@ -21,7 +21,7 @@ freq_range = (0, 500) # MHz
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'6" open']
 
 # Modify the start_live_spectrum_view function to use dynamic base path
-def start_live_spectrum_view_dynamic(ylabel=None, title='Live Spectrum', update_interval=1000):
+def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
     """Start a live spectrum view window that automatically finds the latest spectrum file"""
     
     def get_latest_spec_path():
@@ -54,7 +54,14 @@ def start_live_spectrum_view_dynamic(ylabel=None, title='Live Spectrum', update_
                 return
             
             latest_spec = np.load(spec_path, allow_pickle=True).item()
-            loaded_spec_states = {os.path.basename(spec_path): latest_spec}
+            time_dir = os.path.basename(os.path.dirname(spec_path))
+            date_dir = os.path.basename(os.path.dirname(time_dir))
+            spec_state = os.path.basename(spec_path).split('.')[0].split('_')[-1]
+            antenna_name = os.path.basename(spec_path).split('.')[0].split('_')[-2]
+    
+            title = f'Live Spectrum - {antenna_name} - {date_dir}'
+            state_name = f'{time_dir}: {spec_state}'
+            loaded_spec_states = {state_name: latest_spec}
             dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
             
             ax.clear()
@@ -141,5 +148,5 @@ if __name__ == "__main__":
     print(f"Starting with base path: {initial_base_path}")
     
 
-    start_live_spectrum_view_dynamic(ylabel='PSD [dBm]', title='Live Spectrum', update_interval=1000)
+    start_live_spectrum_view_dynamic(ylabel='PSD [dBm]', update_interval=1000)
 
