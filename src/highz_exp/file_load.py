@@ -1,5 +1,5 @@
 import numpy as np
-import os, glob, copy
+import os, glob, copy, re, pickle
 import skrf as rf
 
 from scipy.ndimage import median_filter
@@ -131,6 +131,89 @@ def load_npy(dir_path, pattern='*state*.npy'):
     for file in state_files:
         states.append(np.load(file, allow_pickle=True).item())
     return states
+
+def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=r'_(\d{6})(?:_|$)', use_pickle=False):
+    """
+    Condense many .npy files in dir_path into a single file keyed by a time-stamp
+    extracted from the filename. The returned dictionary is flattened: timestamp -> data
+    (or timestamp -> [data, ...] if multiple files share the same timestamp).
+
+    Parameters:
+        dir_path (str): directory containing .npy files
+        pattern (str): glob pattern for files to include
+        time_regex (str): regex with one capture group that extracts the timestamp key from basename
+        use_pickle (bool): if True, save with pickle; otherwise save with np.save (allow_pickle=True)
+
+    Returns:
+        dict: mapping timestamp -> data or list of data
+    """
+    state_files = get_and_clean_nonempty_files(dir_path, pattern)
+    condensed_data = {}      # key -> list of loaded data objects
+    filenames_by_key = {}    # key -> list of filenames (used to determine state_name/output filename)
+
+    for fp in state_files:
+        bn = pbase(fp)
+        m = re.search(time_regex, bn)
+        if m:
+            key = m.group(1)
+        else:
+            key = os.path.splitext(bn)[0]
+
+        try:
+            loaded = np.load(fp, allow_pickle=True)
+            try:
+                obj = loaded.item()
+            except Exception:
+                obj = loaded
+        except Exception as e:
+            print(f"Skipping file (load error): {fp} -> {e}")
+            continue
+
+        condensed_data.setdefault(key, []).append(obj)
+        filenames_by_key.setdefault(key, []).append(bn)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    if not condensed_data:
+        raise ValueError(f"No files found in {dir_path} matching pattern {pattern}")
+
+    keys = list(condensed_data.keys())
+
+    def _key_sorter(k):
+        return int(k) if k.isdigit() else float('inf')
+
+    earliest_key = min(keys, key=_key_sorter)
+    if _key_sorter(earliest_key) == float('inf'):
+        earliest_key = min(keys)
+
+    # Determine state name for output file from filenames at earliest timestamp
+    state_name = None
+    for bn in filenames_by_key.get(earliest_key, []):
+        m = re.search(r'(state\d+|stateOC)', bn, re.IGNORECASE)
+        if m:
+            state_name = m.group(1)
+            break
+    if state_name is None:
+        state_name = os.path.splitext(filenames_by_key[earliest_key][0])[0]
+
+    # Flatten: single-item lists -> the item, multi-item lists kept as lists
+    condensed_flat = {}
+    for k, lst in condensed_data.items():
+        if len(lst) == 1:
+            condensed_flat[k] = lst[0]
+        else:
+            condensed_flat[k] = lst
+
+    ext = '.pkl' if use_pickle else '.npy'
+    output_file = os.path.join(output_dir, f"{earliest_key}_{state_name}{ext}")
+    if use_pickle:
+        with open(output_file, 'wb') as fh:
+            pickle.dump(condensed_flat, fh)
+    else:
+        np.save(output_file, condensed_flat, allow_pickle=True)
+
+    print(f"Saved condensed file to: {output_file}")
+    return condensed_flat
 
 def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, include_antenna=False):
     """Load all calibration state files from a specified directory and return them as a dictionary. 
