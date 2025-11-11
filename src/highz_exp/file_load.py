@@ -175,7 +175,8 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
     os.makedirs(output_dir, exist_ok=True)
 
     if not condensed_data:
-        raise ValueError(f"No files found in {dir_path} matching pattern {pattern}")
+        print(f"No files found in {dir_path} matching pattern {pattern}")
+        return None
 
     keys = list(condensed_data.keys())
 
@@ -186,15 +187,48 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
     if _key_sorter(earliest_key) == float('inf'):
         earliest_key = min(keys)
 
-    # Determine state name for output file from filenames at earliest timestamp
-    state_name = None
+    # Determine descriptive parts for output filename from filenames at earliest timestamp
+    # Try to extract a date (YYYYMMDD) and antenna/state parts like 'antenna1' and 'state2'
+    date_regex = re.compile(r'(\d{8})')
+    part_regex = re.compile(r'(antenna\d*|antenna|state\d+|stateOC)', re.IGNORECASE)
+
+    date_str = None
+    parts_list = []
+
     for bn in filenames_by_key.get(earliest_key, []):
-        m = re.search(r'(state\d+|stateOC)', bn, re.IGNORECASE)
-        if m:
-            state_name = m.group(1)
+        if date_str is None:
+            md = date_regex.search(bn)
+            if md:
+                date_str = md.group(1)
+
+        # collect antenna and state parts in order, avoid duplicates (antenna and state at most once)
+        found = {'antenna': False, 'state': False}
+        for pm in part_regex.finditer(bn):
+            token = pm.group(1)
+            tl = token.lower()
+            if tl.startswith('antenna') and not found['antenna']:
+                parts_list.append(token)
+                found['antenna'] = True
+            elif tl.startswith('state') and not found['state']:
+                parts_list.append(token)
+                found['state'] = True
+            if found['antenna'] and found['state']:
+                break
+        if parts_list and date_str:
             break
-    if state_name is None:
-        state_name = os.path.splitext(filenames_by_key[earliest_key][0])[0]
+
+    # Fallback: if no parsed parts, reuse previous heuristic to get a state-like name
+    if not parts_list:
+        state_name = None
+        pattern_state = re.compile(r'(state\d+|stateOC|antenna\d*|antenna)', re.IGNORECASE)
+        for bn in filenames_by_key.get(earliest_key, []):
+            m = pattern_state.search(bn)
+            if m:
+                state_name = m.group(1)
+                break
+        if state_name is None:
+            state_name = os.path.splitext(filenames_by_key[earliest_key][0])[0]
+        parts_list = [state_name]
 
     # Flatten: single-item lists -> the item, multi-item lists kept as lists
     condensed_flat = {}
@@ -205,7 +239,14 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
             condensed_flat[k] = lst
 
     ext = '.pkl' if use_pickle else '.npy'
-    output_file = os.path.join(output_dir, f"{earliest_key}_{state_name}{ext}")
+    if date_str:
+        output_basename = f"{date_str}_{earliest_key}_{'_'.join(parts_list)}"
+    else:
+        output_basename = f"{earliest_key}_{'_'.join(parts_list)}"
+    # sanitize any accidental double-underscores
+    output_basename = re.sub(r'__+', '_', output_basename).strip('_')
+    output_file = os.path.join(output_dir, f"{output_basename}{ext}")
+
     if use_pickle:
         with open(output_file, 'wb') as fh:
             pickle.dump(condensed_flat, fh)
