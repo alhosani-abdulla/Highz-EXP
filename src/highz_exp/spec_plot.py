@@ -202,15 +202,18 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
         fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
     plt.show()
     
-def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', show_phase=False, attenuation=0, save_plot=True, save_name='S21_Measurement'):
+def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
     """
-    Load and plot gain (S21) from an S2P file.
+    Plot and load gain from a .s2p file (or list of .s2p files) using scikit-rf.
 
     Parameters:
     - file_path (str/list): Path to the .s2p file
     - db (bool): If True, plot gain in dB
     - show_phase (bool): If True, also plot phase in degrees
     - attenuation (float): Attenuation that was applied to the gain measurements
+
+    Returns:
+    - rf.Network: Loaded network object, with S21 representing the gain
     """
     # Load 2-port network
     if isinstance(file_path, str):
@@ -236,15 +239,16 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
         parent_dir = os.path.dirname(file_path[0])
 
     fig, ax1 = plt.subplots()
-    fig.set_size_inches(10, 6)
+    fig.set_size_inches(14, 8)
     if x_scale == 'log':
         ax1.set_xscale('log')
-    ax1.plot(freq / 1e6, mag, color='b', label='Gain (S21)' + (' [dB]' if db else ''), alpha=0.5)
-    ax1.set_xlabel('Frequency [MHz]')
-    ax1.set_ylabel('Gain' + (' [dB]' if db else ''), color='b')
-    ax1.set_ylim(top=1.3 * np.max(mag))
+    ax1.plot(freq / 1e6, mag, label='Gain (S21)' + (' [dB]' if db else ''))
+    ax1.set_xlabel('Frequency [MHz]', fontsize=20)
+    ax1.set_ylabel('Gain' + (' [dB]' if db else ''), fontsize=20)
+    if ymax is not None:
+        ax1.set_ylim(top=ymax)
     ax1.grid(True)
-    ax1.tick_params(axis='y', labelcolor='b')
+    ax1.tick_params(axis='both', which='major', labelsize=18)
 
     marker_freqs_mhz = [20, 200]
     for f_mhz in marker_freqs_mhz:
@@ -259,17 +263,17 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
       ax1.annotate(f'{marker_gain:.2f} dB\n@ {f_mhz:.0f} MHz',
                     (marker_freq_ghz, marker_gain),
                     textcoords="offset points", xytext=(10, 10), ha='left',
-                    fontsize=9, color='darkred')
+                    fontsize=16, color='darkred')
     if show_phase:
         ax2 = ax1.twinx()
         ax2.plot(freq / 1e9, phase, color='r', linestyle='--', label='Phase [deg]')
         ax2.set_ylabel('Phase [deg]', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
 
-    plt.title(title)
+    plt.title(title, fontsize=22)
     fig.tight_layout()
-    if save_plot:
-        plt.savefig(pjoin(parent_dir, f'{save_name}.png'))
+    if save_dir is not None:
+        plt.savefig(f'{save_dir}/Gain_{suffix}.png')
     plt.show()
 
     return network
