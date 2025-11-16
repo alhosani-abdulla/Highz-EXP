@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from .file_load import remove_spikes_from_psd
-from .unit_convert import spec_to_dbm
+from .spec_class import Spectrum
 from os.path import join as pjoin, basename as pbase
 import os
 import skrf as rf
@@ -275,10 +274,11 @@ def plot_s2p_gain(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum', show_plot=True):
+def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum', show_plot=True):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
+        - loaded_specs: list of Spectrum objects to plot
         - ymin (float): Minimum y-axis value
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
@@ -288,16 +288,16 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
     
     if ymax is None:
         ymax = ymin  # Initialize with ymin
-        
-        for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
-            freq = ntwk.f  # in Hz
-            spectrum = np.real(ntwk.s[:, 0, 0])
+
+        for idx, spec in enumerate(loaded_specs):
+            freq = spec.freq  # in Hz
+            spectrum = spec.spec
             
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
             color = color_cycle[idx % len(color_cycle)]
-            plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
+            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
             
             ymax_state = np.max(spectrum)
             if ymax_state > ymax: 
@@ -305,16 +305,16 @@ def plot_spectrum(loaded_states_ntwk, save_dir, ylabel=None, suffix='', ymin=-75
         
         # Adjust ymax with some padding
     else:
-        for idx, (state_name, ntwk) in enumerate(loaded_states_ntwk.items()):
-            freq = ntwk.f  # in Hz
-            spectrum = np.real(ntwk.s[:, 0, 0])
+        for idx, spec in enumerate(loaded_specs):
+            freq = spec.freq  # in Hz
+            spectrum = spec.spec
             
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
             color = color_cycle[idx % len(color_cycle)]
-            plt.plot(faxis_mhz, spectrum, label=state_name, color=color)
-    
+            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
+
     ylim = (ymin, ymax)
     if ylabel is None:
         ylabel = 'PSD [dBm]'
