@@ -66,7 +66,7 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
 
     return smoothed  # Return smoothed data if needed for further analysis
 
-def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=pjoin(lna_path, 'System_Gain.png')):
+def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=None):
 
     # Find the index closest to start_freq and end_freq
     start_idx = np.argmin(np.abs(faxis - start_freq))
