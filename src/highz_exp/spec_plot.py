@@ -333,8 +333,7 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     # Save the plot
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight', 
-                    optimize=True, quality=85)
+        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight')
     if show_plot:
         plt.show()
 
