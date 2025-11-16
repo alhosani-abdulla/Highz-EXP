@@ -94,7 +94,7 @@ def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitte
     plt.show()
     
 def plot_temps(faxis, g_values, b_values, labels, start_freq=10, end_freq=400,
-                     title="Fitted Line Parameters", xlabel="Frequency", ylabel="temperature (Kelvin)", save_path=pjoin(lna_path, 'LNA_Temp.png')):
+                     title="Fitted Line Parameters", xlabel="Frequency", ylabel="temperature (Kelvin)", save_path=None):
     """
     Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
