@@ -11,7 +11,6 @@ Usage:
     s = Spectrum(frequency, spectrum, name="recording1", metadata={"laser": "532nm"})
     s.normalize("area").resample(np.linspace(400, 800, 1000)).smooth(51)
 """
-
 class Spectrum:
     """
     Lightweight spectrum container with common processing utilities.
@@ -39,6 +38,26 @@ class Spectrum:
             raise ValueError("frequency and spectrum must have the same shape")
         self.name = str(name)
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+
+    @property
+    def s(self) -> np.ndarray:
+        """Short alias for the spectrum array (read access)."""
+        return self.spec
+
+    @s.setter
+    def s(self, value: Iterable[float]) -> None:
+        """Short alias for the spectrum array (write access)."""
+        self.spec = np.asarray(value, dtype=float).ravel()
+
+    @property
+    def f(self) -> np.ndarray:
+        """Short alias for the frequency array (read access)."""
+        return self.freq
+
+    @f.setter
+    def f(self, value: Iterable[float]) -> None:
+        """Short alias for the frequency array (write access)."""
+        self.freq = np.asarray(value, dtype=float).ravel()
 
     def copy(self) -> "Spectrum":
         """Return a deep copy of the Spectrum."""

@@ -202,7 +202,7 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
         fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
     plt.show()
     
-def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
+def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
     """
     Plot and load gain from a .s2p file (or list of .s2p files) using scikit-rf.
 
@@ -247,6 +247,8 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
     ax1.set_ylabel('Gain' + (' [dB]' if db else ''), fontsize=20)
     if ymax is not None:
         ax1.set_ylim(top=ymax)
+    if ymin is not None:
+        ax1.set_ylim(bottom=ymin)
     ax1.grid(True)
     ax1.tick_params(axis='both', which='major', labelsize=18)
 

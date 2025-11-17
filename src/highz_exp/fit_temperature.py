@@ -66,7 +66,16 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
 
     return smoothed  # Return smoothed data if needed for further analysis
 
-def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=None):
+def plot_hot_cold_gain(faxis, g_values, labels, RBW, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=None):
+    """
+    Plot gain(s) of components inferred from hot-cold method in units of dB.
+    
+    Parameters:
+    - faxis (np.ndarray): Frequency axis in MHz.
+    - g_values (list of np.ndarray): List of gain arrays at different frequencies.
+    - labels (list of str): Labels for each curve.
+    - RBW (float): Receiver Bandwidth in MHz.
+    """
 
     # Find the index closest to start_freq and end_freq
     start_idx = np.argmin(np.abs(faxis - start_freq))
@@ -75,8 +84,8 @@ def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitte
     plt.figure(figsize=(12, 8))
 
     for g, label in zip(g_values, labels):
-      g_dbm = np.log10(g/(25*1000*k_B)) * 10
-      plt.plot(faxis[start_idx:end_idx+1], g_dbm[start_idx:end_idx+1], label=label)
+      g_db = np.log10(g/(RBW*k_B)) * 10
+      plt.plot(faxis[start_idx:end_idx+1], g_db[start_idx:end_idx+1], label=label)
 
     # Add a vertical marker at the starting frequency
     # plt.axvline(x=faxis[start_idx], color='red', linestyle='--', alpha=0.7,
@@ -94,7 +103,7 @@ def plot_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitte
     plt.show()
     
 def plot_temps(faxis, g_values, b_values, labels, start_freq=10, end_freq=400,
-                     title="Fitted Line Parameters", xlabel="Frequency", ylabel="temperature (Kelvin)", save_path=None):
+                     title="Fitted Line Parameters", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
     """
     Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
