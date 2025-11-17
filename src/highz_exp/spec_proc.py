@@ -3,6 +3,8 @@ from os.path import join as pjoin, basename as pbase
 import copy
 import numpy as np
 import skrf as rf
+from scipy.signal import savgol_filter
+from scipy.ndimage import uniform_filter1d
 
 def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
     """
@@ -40,6 +42,36 @@ def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
         new_ntwk.name = new_name
 
     return new_ntwk
+
+def smooth_spectrum(data, method='savgol', window=31):
+    """
+    Return a smoothed copy of `data` using the requested method.
+    Safe-guards window size to be appropriate for the data length.
+    """
+    n = len(data)
+    w = int(window)
+
+    if method == 'savgol':
+        # enforce reasonable window size and oddness
+        if w < 3:
+            w = 3
+        if w % 2 == 0:
+            w += 1
+        if w > n:
+            # reduce to largest odd <= n
+            w = n if n % 2 == 1 else n - 1
+        if w < 3:
+            return data.copy()
+        return savgol_filter(data, w, polyorder=3)
+
+    elif method == 'moving_avg':
+        if w < 1:
+            w = 1
+        return uniform_filter1d(data, size=w, mode='nearest')
+
+    else:
+        # unknown method -> return original
+        return data.copy()
 
 def apply_to_all_ntwks(func, ntwk_dict):
     """Apply a function to the S-parameters of all networks in a dictionary."""

@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
 from scipy.constants import Boltzmann as k_B
+from .spec_proc import smooth_spectrum
 
 class Y_Factor_Thermoeter:
     """
@@ -87,7 +88,7 @@ class Y_Factor_Thermoeter:
         Returns:
             - g_dut (np.ndarray): Inferred gain of the DUT at each frequency in db scale.
         """
-        g_dut = 10 * np.log10((DUT_hot - DUT_cold) / (T_hot - T_cold) * k_B / RBW)
+        g_dut = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold) * k_B * RBW))
         return g_dut
     
     @staticmethod
@@ -169,9 +170,7 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
     window_size : int, optional
         Window size for smoothing (must be odd for savgol)
     """
-    from scipy.signal import savgol_filter
-    from scipy.ndimage import uniform_filter1d
-
+    # Find the index closest to start_freq and end_freq
     start_idx = np.argmin(np.abs(faxis - start_freq))
     end_idx = np.argmin(np.abs(faxis - end_freq))
 
@@ -185,16 +184,7 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
     temp_range = x_arr[start_idx:end_idx+1]
 
     # Apply smoothing
-    if smoothing == 'savgol':
-        # Savitzky-Golay filter (preserves peaks better)
-        if window_size % 2 == 0:
-            window_size += 1  # Ensure odd
-        smoothed = savgol_filter(temp_range, window_size, polyorder=3)
-    elif smoothing == 'moving_avg':
-        # Simple moving average
-        smoothed = uniform_filter1d(temp_range, size=window_size, mode='nearest')
-    else:
-        smoothed = temp_range  # No smoothing
+    smoothed = smooth_spectrum(temp_range, method=smoothing, window=window_size)
 
     plt.figure(figsize=(12, 8))
 
