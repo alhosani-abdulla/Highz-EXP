@@ -3,6 +3,22 @@ import matplotlib.pyplot as plt
 from os.path import join as pjoin
 from scipy.constants import Boltzmann as k_B
 
+def gain_with_cal(DUT_hot, DUT_cold, cal_hot, cal_cold) -> np.ndarray:
+    """
+    Calculation of DUT gain with the second-stage/instrument calibration spectra without DUT at two source noise temperatures.
+    
+    Parameters:
+        - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature.
+        - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature.
+        - cal_hot (np.ndarray): Calibration spectrum without DUT at hot source temperature.
+        - cal_cold (np.ndarray): Calibration spectrum without DUT at cold source temperature.
+
+    Returns:
+        - g_dut (np.ndarray): Inferred gain of the DUT at each frequency in db scale.
+    """
+    g_dut = 10 * np.log10((DUT_hot - DUT_cold) / (cal_hot - cal_cold))
+    return g_dut
+    
 def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_freq=400,
                      smoothing='savgol', window_size=31, title=None, save_path=None):
     """
@@ -66,15 +82,14 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
 
     return smoothed  # Return smoothed data if needed for further analysis
 
-def plot_hot_cold_gain(faxis, g_values, labels, RBW, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=None):
+def plot_hot_cold_gain(faxis, g_values, labels, start_freq=10, end_freq=400, title="Fitted System Gain", xlabel="Frequency", ylabel="Gain (dB)", save_path=None):
     """
     Plot gain(s) of components inferred from hot-cold method in units of dB.
     
     Parameters:
     - faxis (np.ndarray): Frequency axis in MHz.
-    - g_values (list of np.ndarray): List of gain arrays at different frequencies.
+    - g_values (list of np.ndarray): List of gain arrays, each array corresponds to a component.
     - labels (list of str): Labels for each curve.
-    - RBW (float): Receiver Bandwidth in MHz.
     """
 
     # Find the index closest to start_freq and end_freq
@@ -84,8 +99,7 @@ def plot_hot_cold_gain(faxis, g_values, labels, RBW, start_freq=10, end_freq=400
     plt.figure(figsize=(12, 8))
 
     for g, label in zip(g_values, labels):
-      g_db = np.log10(g/(RBW*k_B)) * 10
-      plt.plot(faxis[start_idx:end_idx+1], g_db[start_idx:end_idx+1], label=label)
+        plt.plot(faxis[start_idx:end_idx+1], g[start_idx:end_idx+1], label=label)
 
     # Add a vertical marker at the starting frequency
     # plt.axvline(x=faxis[start_idx], color='red', linestyle='--', alpha=0.7,
