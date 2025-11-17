@@ -343,4 +343,28 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     if show_plot:
         plt.show()
 
+def plot_gain(faxis, gain, label=None, start_freq=10, end_freq=400, xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None):
+    """Plot gain(s) of DUT over frequency."""
+    # Find the index closest to start_freq and end_freq
+    start_idx = np.argmin(np.abs(faxis - start_freq))
+    end_idx = np.argmin(np.abs(faxis - end_freq))
+
+    plt.figure(figsize=(12, 8))
+    if not isinstance(gain, list):
+        plt.plot(faxis[start_idx:end_idx+1], gain[start_idx:end_idx+1])
+    else:
+        for g, lab in zip(gain, label):
+            plt.plot(faxis[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
+        plt.legend(fontsize=18)
+
+    plt.xlabel(xlabel, fontsize=20)
+    plt.ylabel(ylabel, fontsize=20)
+    plt.tick_params(axis='both', which='major', labelsize=18)
+    plt.title(title, fontsize=22)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path)
+    plt.show()
+
 
