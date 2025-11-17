@@ -5,7 +5,7 @@ import copy
 import skrf as rf
 
 # Define some helper functions
-def s11_to_dB(s11):
+def sparam_to_dB(s11):
     """Convert S11 reflection coefficient to dB scale."""
     return 20 * np.log10(np.abs(s11))
 

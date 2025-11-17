@@ -94,6 +94,43 @@ class Y_Factor_Thermoeter:
         """
         T_dut = T_sys - T_cal / (10**(g_dut / 10))
         return T_dut
+    
+    @staticmethod
+    def plot_temps(faxis, temp_values, labels, start_freq=10, end_freq=400,
+                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
+        """
+        Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
+
+        Parameters:
+        - faxis (np.ndarray): Frequency axis in MHz.
+        - temp_values (list of np.ndarray): List of temperature arrays at different frequencies.
+        - labels (list of str): Labels for each curve.
+        """
+
+        # Find the index closest to start_freq and end_freq
+        start_idx = np.argmin(np.abs(faxis - start_freq))
+        end_idx = np.argmin(np.abs(faxis - end_freq))
+
+        plt.figure(figsize=(12, 8))
+
+        # Plot each fitted line
+        for temp, label in zip(temp_values, labels):
+            plt.plot(faxis[start_idx:end_idx+1], temp[start_idx:end_idx+1], label=label)
+
+        # Add a vertical marker at the starting frequency
+        # plt.axvline(x=faxis[start_idx], color='red', linestyle='--', alpha=0.7,
+        #            label=f'Start: {faxis[start_idx]} MHz')
+
+        plt.xlabel(xlabel, fontsize=20)
+        plt.ylabel(ylabel, fontsize=20)
+        plt.tick_params(axis='both', which='major', labelsize=18)
+        plt.title(title, fontsize=22)
+        plt.legend(fontsize=18)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        if save_path is not None:
+            plt.savefig(save_path)
+        plt.show()
 
         
 def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_freq=400,
@@ -159,39 +196,3 @@ def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_fr
 
     return smoothed  # Return smoothed data if needed for further analysis
 
-def plot_temps(faxis, g_values, b_values, labels, start_freq=10, end_freq=400,
-                     title="Fitted Line Parameters", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
-    """
-    Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
-
-    Parameters:
-    - faxis (np.ndarray): Frequency axis in MHz.
-    - g_values (list of np.ndarray): List of gain arrays at different frequencies.
-    - b_values (list of np.ndarray): List of noise temperature (referred to OUTPUT) arrays at different frequencies.
-    - labels (list of str): Labels for each curve.
-    """
-
-    # Find the index closest to start_freq and end_freq
-    start_idx = np.argmin(np.abs(faxis - start_freq))
-    end_idx = np.argmin(np.abs(faxis - end_freq))
-
-    plt.figure(figsize=(12, 8))
-
-    # Plot each fitted line
-    for g, b, label in zip(g_values, b_values, labels):
-        plt.plot(faxis[start_idx:end_idx+1], (b/g)[start_idx:end_idx+1], label=label)
-
-    # Add a vertical marker at the starting frequency
-    # plt.axvline(x=faxis[start_idx], color='red', linestyle='--', alpha=0.7,
-    #            label=f'Start: {faxis[start_idx]} MHz')
-
-    plt.xlabel(xlabel, fontsize=20)
-    plt.ylabel(ylabel, fontsize=20)
-    plt.tick_params(axis='both', which='major', labelsize=18)
-    plt.title(title, fontsize=22)
-    plt.legend(fontsize=18)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    if save_path is not None:
-      plt.savefig(save_path)
-    plt.show()
