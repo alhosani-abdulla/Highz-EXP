@@ -1,3 +1,4 @@
+# This file contains functions to load and process CSV files saved from Spectrum Analyzer
 import csv, os
 
 pjoin = os.path.join
