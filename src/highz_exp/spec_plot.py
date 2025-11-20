@@ -138,14 +138,13 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
 
     plt.show()
 
-def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, legend_loc='best', title='Smith Chart',
+def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, title='Smith Chart',
                      freq_range=None):
     """
     Plot Smith chart from one or more scikit-rf Network objects.
     Parameters:
     - ntwk_dict (dict): {label: rf.Network} pairs.
     - suffix (str): Used for output filename if saving.
-    - legend_loc (str): Location of the legend. Default is 'best'.
     - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
                          If None, plots all frequencies.
     """
@@ -201,7 +200,80 @@ def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, leg
         
         fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
     plt.show()
-    
+
+def plot_s1p(ntwk_dict, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
+    """
+    Plot multiple reflections from .s1p Network objects on the same axes.
+
+    Parameters:
+    - ntwk_dict (dict): {'label': rf.Network}
+    - db (bool): If True, plot reflection in dB
+    - show_phase (bool): If True, also plot phase in degrees (dashed lines)
+    - attenuation (float): Attenuation added to the magnitude (dB)
+    - save_dir (str): directory to save the combined plot
+    - suffix (str): optional suffix for saved filename
+
+    Returns:
+    - dict: the same ntwk_dict passed in
+    """
+    if not ntwk_dict:
+        print("No networks provided.")
+        return ntwk_dict
+
+    fig, ax1 = plt.subplots(figsize=(14, 8))
+    if show_phase:
+        # replace the single axis with two stacked axes (top: magnitude, bottom: phase)
+        fig.clf()
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1])
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+    else:
+        ax2 = None
+
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    for idx, (label, network) in enumerate(ntwk_dict.items()):
+        freq = network.f
+        s11 = network.s[:, 0, 0]
+        mag = 20 * np.log10(np.abs(s11)) + attenuation if db else np.abs(s11)
+        phase = np.angle(s11, deg=True)
+
+        color = color_cycle[idx % len(color_cycle)]
+        ax1.plot(freq / 1e6, mag, label=f'{label}', color=color)
+        if show_phase:
+            ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
+
+    ax1.set_xlabel('Frequency [MHz]', fontsize=20)
+    ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
+    ax1.grid(True)
+    ax1.tick_params(axis='both', which='major', labelsize=18)
+    if ymax is not None:
+        ax1.set_ylim(top=ymax)
+    if ymin is not None:
+        ax1.set_ylim(bottom=ymin)
+
+    if show_phase:
+        ax2.set_ylabel('Phase [deg]', color='r', fontsize=18)
+        ax2.tick_params(axis='y', labelsize=16)
+
+        # Combine legends from both axes
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, fontsize=18, loc='best')
+    else:
+        ax1.legend(loc='best', fontsize=18)
+
+    plt.title(title, fontsize=22)
+    fig.tight_layout()
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        safe_suffix = f"_{suffix}" if suffix else ""
+        plt.savefig(f'{save_dir}/Reflection{safe_suffix}.png', dpi=150, bbox_inches='tight')
+
+    plt.show()
+    return ntwk_dict
+
 def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
     """
     Plot and load gain from a .s2p file (or list of .s2p files) using scikit-rf.
