@@ -9,7 +9,7 @@ import matplotlib.animation as animation
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-DATA_PATH = '/media/peterson/INDURANCE'
+DATA_PATH = '/home/peterson/Data/INDURANCE'
 
 nfft = 32768
 fs = 3276.8/4

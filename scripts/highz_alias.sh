@@ -1,35 +1,22 @@
-# Custom aliases
-alias TakeSpecs='python ~/Highz-EXP/src/digital_spectrometer/run_spectrometer.py'
-alias GetSpecs='cd /media/peterson/INDURANCE'
+# Custom aliases for Highz-EXP analysis environment
+# Data analysis and plotting using Python 3.11 with scikit-rf
+
+alias GetSpecs='cd /home/peterson/Data/INDURANCE'
+alias AnalysisShell='cd /home/peterson/Highz-EXP && pipenv shell'
 
 ViewSpecs() {
-    if [[ "$VIRTUAL_ENV" != *"postprocess"* ]]; then
-        if [[ -n "$VIRTUAL_ENV" ]]; then
-            deactivate
-        fi
-        source ~/postprocess/bin/activate
-    fi
-    python ~/Highz-EXP/src/digital_spectrometer/viewspec_now.py "$@"
+    cd /home/peterson/Highz-EXP
+    pipenv run python src/digital_spectrometer/viewspec_now.py "$@"
 }
 
-export PYTHONPATH=~/Highz-EXP/src:$PYTHONPATH
+export PYTHONPATH=/home/peterson/Highz-EXP/src:$PYTHONPATH
 
 CreatePlot() {
-    if [[ "$VIRTUAL_ENV" != *"postprocess"* ]]; then
-        if [[ -n "$VIRTUAL_ENV" ]]; then
-            deactivate
-        fi
-        source ~/postprocess/bin/activate
-    fi
-    python ~/Highz-EXP/src/digital_spectrometer/image_creator.py "$@"
+    cd /home/peterson/Highz-EXP
+    pipenv run python src/digital_spectrometer/image_creator.py "$@"
 }
 
 ViewPlots() {
-    if [[ "$VIRTUAL_ENV" != *"postprocess"* ]]; then
-        if [[ -n "$VIRTUAL_ENV" ]]; then
-            deactivate
-        fi
-        source ~/postprocess/bin/activate
-    fi
-    python ~/Highz-EXP/src/digital_spectrometer/movie_creator.py "$@"
+    cd /home/peterson/Highz-EXP
+    pipenv run python src/digital_spectrometer/movie_creator.py "$@"
 }
