@@ -67,6 +67,24 @@ class S_Params:
     @classmethod
     def from_pickle(cls, pickle_file):
         return cls(pickle_file=pickle_file)
+    
+    def get_s21(self, db=True):
+        """
+        Load S-parameters from .s2p files in ntwk_dict, converting to dB if specified.
+
+        Parameters:
+        - db (bool): If True, convert S11 to dB scale.
+
+        Returns:
+        - dict: A dictionary with the same keys as ntwk_dict and values as S11 arrays.
+        """
+        s_params_data = {}
+        for label, network in self.ntwk_dict.items():
+            s21 = network.s[:, 1, 0]
+            if db:
+                s21 = 20 * np.log10(np.abs(s21))
+            s_params_data[label] = s21
+        return s_params_data
 
     def plot_s1p(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
         """
