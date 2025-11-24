@@ -1,4 +1,4 @@
-from highz_exp import file_load, spec_plot
+from highz_exp import file_load, plotter
 import numpy as np
 from os.path import join as pjoin
 import sys

@@ -83,6 +83,24 @@ class Spectrum:
         self.freq = new_freq_arr
         self.spec = new_spec
         return self
+    
+    def despike(self, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> "Spectrum":
+        """
+        Remove narrow RFI spikes by comparing each point to a local median and MAD.
+
+        Parameters:
+            window_len: odd integer window size for local statistics (>=3).
+            threshold: multiple of local MAD above which a point is considered a spike.
+            replace: 'median' to replace spikes with local median, 'interp' to interpolate
+                     across spike points using neighboring good points.
+
+        Notes:
+            This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
+            as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
+            can be used to speed up the local-median computation.
+        """
+        import spec_proc
+        self.spec = spec_proc.despike(self.spec, window_len=window_len, threshold=threshold, replace=replace)
 
     def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3) -> "Spectrum":
         """

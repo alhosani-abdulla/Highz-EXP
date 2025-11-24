@@ -6,6 +6,7 @@ import skrf as rf
 from scipy.signal import savgol_filter
 from scipy.ndimage import uniform_filter1d
 
+
 def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
     """
     Create a new network where S11 = ntwk1.S11 - ntwk2.S11
@@ -72,6 +73,82 @@ def smooth_spectrum(data, method='savgol', window=31):
     else:
         # unknown method -> return original
         return data.copy()
+   
+def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
+    """
+    Remove narrow RFI spikes by comparing each point to a local median and MAD.
+
+    Parameters:
+        window_len: odd integer window size for local statistics (>=3).
+        threshold: multiple of local MAD (median absolute deviation) above which a point is considered a spike.
+        replace: 'median' to replace spikes with local median, 'interp' to interpolate
+                    across spike points using neighboring good points.
+
+    Notes:
+        This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
+        as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
+        can be used to speed up the local-median computation.
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    from scipy.signal import medfilt
+
+    if window_len < 3:
+        return arr
+    wl = int(window_len)
+    if wl % 2 == 0:
+        wl += 1
+    pad = wl // 2
+
+    # try fast sliding-window median/MAD
+    try:
+
+        padded = np.pad(arr, pad, mode="edge")
+        windows = sliding_window_view(padded, wl)
+        local_med = np.median(windows, axis=1)
+        local_mad = np.median(np.abs(windows - local_med[:, None]), axis=1)
+    except Exception:
+        # fallback: try scipy medfilt for median; compute MAD with small local loops
+        try:
+
+            local_med = medfilt(arr, kernel_size=wl)
+            local_mad = np.empty_like(arr)
+            n = arr.size
+            for i in range(n):
+                i0 = max(0, i - pad)
+                i1 = min(n, i + pad + 1)
+                w = arr[i0:i1]
+                m = np.median(w)
+                local_mad[i] = np.median(np.abs(w - m))
+        except Exception:
+            # last resort: global median/MAD
+            gm = np.median(arr)
+            gmad = np.median(np.abs(arr - gm)) or 1.0
+            local_med = np.full_like(arr, gm)
+            local_mad = np.full_like(arr, gmad)
+
+    # detect spikes using MAD (robust to outliers)
+    local_mad_safe = np.where(local_mad <= 0, 1e-12, local_mad)
+    diff = np.abs(arr - local_med)
+    spikes = diff > (threshold * local_mad_safe)
+    if not np.any(spikes):
+        return arr
+
+    if replace == "median":
+        arr = np.where(spikes, local_med, arr)
+    elif replace == "interp":
+        x = np.arange(len(arr))
+        good = (~spikes) & (~np.isnan(arr))
+        if good.sum() < 2:
+            # not enough points to interpolate, fallback to median replacement
+            arr = np.where(spikes, local_med, arr)
+        else:
+            new = arr.copy()
+            new[spikes] = np.interp(x[spikes], x[good], arr[good])
+            arr = new
+    else:
+        raise ValueError("replace must be 'median' or 'interp'")
+
+    return arr
 
 def apply_to_all_ntwks(func, ntwk_dict):
     """Apply a function to the S-parameters of all networks in a dictionary."""

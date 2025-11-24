@@ -12,7 +12,7 @@ __version__ = "0.1.0"
 
 # Import main modules for easier access
 from . import file_load
-from . import spec_plot  
+from . import plotter  
 from . import unit_convert
 
 # Import reflection_proc conditionally (requires scikit-rf)
@@ -23,7 +23,7 @@ except ImportError:
     # scikit-rf not available
     pass
 
-__all__ = ['file_load', 'spec_plot', 'unit_convert']
+__all__ = ['file_load', 'plotter', 'unit_convert']
 
 # Add reflection_proc to __all__ if it was successfully imported
 if 'reflection_proc' in locals():

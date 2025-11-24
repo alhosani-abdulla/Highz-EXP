@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
+import plotter
 from scipy.constants import Boltzmann as k_B
 from .spec_proc import smooth_spectrum
 
@@ -120,6 +121,9 @@ class Y_Factor_Thermoeter:
         T_dut = T_sys - T_cal / (10**(g_dut / 10))
         return T_dut
     
+    def plot_gain(self, f_mhz, **kwargs):
+        plotter.plot_gain(f_mhz, self.g, **kwargs)
+    
     @staticmethod
     def plot_temps(faxis, temp_values, labels, start_freq=10, end_freq=400, ymax=None,
                      title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
@@ -160,12 +164,13 @@ class Y_Factor_Thermoeter:
         plt.show()
     
     def infer_temperature(self, f, spec, start_freq=10, end_freq=400,
-                        smoothing='savgol', window_size=31, title=None, save_path=None):
+                        smoothing='savgol', window_size=31, ymax=None, title=None, save_path=None):
         """
         Plot temperature inference with optional smoothing.
 
         Parameters:
         -----------
+        f : np.ndarray. In MHz
         smoothing : str, optional
             Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
         window_size : int, optional
@@ -199,6 +204,9 @@ class Y_Factor_Thermoeter:
         # Plot smoothed line
         plt.plot(freq_range, smoothed, '-', linewidth=2.5,
                 label=f'Smoothed (window={window_size})', color='darkred')
+
+        if ymax is not None:
+            plt.ylim(top=ymax)
 
         plt.xlabel('Frequency (MHz)', fontsize=20)
         plt.ylabel('Temperature (Kelvin)', fontsize=20)

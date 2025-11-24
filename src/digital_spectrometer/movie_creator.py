@@ -1,4 +1,4 @@
-from highz_exp import file_load, spec_plot
+from highz_exp import file_load, plotter
 import numpy as np
 from os.path import join as pjoin
 import sys
@@ -49,7 +49,7 @@ if __name__ == "__main__":
             loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128, include_antenna=True)
             dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
             print("Loaded and preprocessed spectrum states...")
-            spec_plot.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix=subdir, freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
+            plotter.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix=subdir, freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
             print(f"Image saved to {spec_path}")
         except Exception as e:
             print(f"Error processing {spec_path}: {e}")
