@@ -63,7 +63,6 @@ class Spectrum:
         """Return a deep copy of the Spectrum."""
         return Spectrum(self.freq.copy(), self.spec.copy(), self.name, dict(self.metadata))
 
-
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
         Resample spectrum onto new_freq. Uses numpy.interp for linear interpolation.

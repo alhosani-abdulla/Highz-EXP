@@ -4,6 +4,8 @@ import pickle
 import os
 from matplotlib import pyplot as plt
 
+pjoin = os.path.join
+
 class S_Params:
     def __init__(self, s_params_files=None, labels=None, ntwk_dict=None, pickle_file=None):
         """
@@ -108,7 +110,11 @@ class S_Params:
             if show_phase:
                 ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
 
-        ax1.set_xlabel('Frequency [MHz]', fontsize=20)
+        if not show_phase:
+            ax1.set_xlabel('Frequency [MHz]', fontsize=20)
+        else:
+            ax2.set_xlabel('Frequency [MHz]', fontsize=20)
+
         ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
         ax1.grid(True)
         ax1.tick_params(axis='both', which='major', labelsize=18)
@@ -132,7 +138,7 @@ class S_Params:
         else:
             ax1.legend(loc='best', fontsize=18)
 
-        plt.title(title, fontsize=22)
+        ax1.set_title(title, fontsize=22)
         fig.tight_layout()
 
         if save_dir is not None:
@@ -141,7 +147,71 @@ class S_Params:
             plt.savefig(f'{save_dir}/Reflection{safe_suffix}.png', dpi=150, bbox_inches='tight')
 
         plt.show()
+    
         
+    def plot_smith_chart(self, suffix='LNA', save_plot=True, save_dir=None, title='Smith Chart',
+                        freq_range=None):
+        """
+        Plot Smith chart from one or more scikit-rf Network objects.
+        Parameters:
+        - suffix (str): Used for output filename if saving.
+        - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
+                            If None, plots all frequencies.
+        """
+        ntwk_dict = self.ntwk_dict
+        # Filter networks by frequency range if specified
+        if freq_range is not None:
+            min_freq, max_freq = freq_range
+            filtered_ntwk_dict = {}
+            for label, ntwk in ntwk_dict.items():
+                # Create frequency mask
+                freq_mask = (ntwk.f >= min_freq) & (ntwk.f <= max_freq)
+                if np.any(freq_mask):
+                    # Create new network with filtered frequencies
+                    filtered_ntwk = ntwk.copy()
+                    filtered_ntwk.f = ntwk.f[freq_mask]
+                    filtered_ntwk.s = ntwk.s[freq_mask]
+                    filtered_ntwk_dict[label] = filtered_ntwk
+                else:
+                    print(f"Warning: No frequencies in range for {label}")
+            ntwk_dict = filtered_ntwk_dict
+        
+        if not ntwk_dict:
+            print("No networks to plot after frequency filtering")
+            return
+        
+        fig, ax = plt.subplots()
+        fig.set_size_inches(10, 8)
+        for label, ntwk in ntwk_dict.items():
+            ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+        
+        for text in ax.texts:
+            text.set_fontsize(18)
+
+        # Update axis labels (Real and Imaginary)
+        ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=18)
+        ax.set_ylabel(ax.get_ylabel(), fontsize=18, labelpad=18)
+
+        ax.set_title(title, fontsize=20)
+        
+        ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0, fontsize=18)
+        plt.tight_layout()
+        
+        if save_plot:
+            suffix = suffix.replace(' ', '_')
+            # Save to current directory if no path info is available
+            if save_dir is None:
+                save_dir = os.getcwd()
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            
+            # Add frequency range to filename if specified
+            filename = f'{suffix}_smith_chart'
+            filename += '.png'
+            
+            fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
+        plt.show()
+            
 def k_factor(s_params):
     """
     Compute Rollet's stability factor (K) for an array of 2-port S-parameters.
