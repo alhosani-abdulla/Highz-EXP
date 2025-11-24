@@ -124,9 +124,21 @@ class Y_Factor_Thermometer:
     def plot_gain(self, f_mhz, **kwargs):
         plotter.plot_gain(f_mhz, self.g, **kwargs)
     
+    def save(self, save_path):
+        """
+        Save the DUT temperature object to a pickle file.
+
+        Parameters:
+            - save_dir (str): Directory to save the file.
+            - filename (str): Name of the pickle file.
+        """
+        import pickle
+        with open(save_path, 'wb') as f:
+            pickle.dump(self, f)
+    
     @staticmethod
     def plot_temps(faxis, temp_values, labels, start_freq=10, end_freq=400, ymax=None,
-                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
+                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None):
         """
         Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
