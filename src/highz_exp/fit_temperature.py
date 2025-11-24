@@ -1,11 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
-import plotter
+from . import plotter
 from scipy.constants import Boltzmann as k_B
 from .spec_proc import smooth_spectrum
 
-class Y_Factor_Thermoeter:
+class Y_Factor_Thermometer:
     """
     Class to handle Y-Factor temperature measurements and calculations.
     """
