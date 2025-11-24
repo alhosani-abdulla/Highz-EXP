@@ -10,6 +10,7 @@ scipy = "*"
 scikit-rf = "*"
 pandas = "*"
 pillow = "*"
+highz-exp = {file = ".", editable = true}
 
 [dev-packages]
 
