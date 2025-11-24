@@ -1,10 +1,6 @@
 import numpy as np
-import os, glob, copy, re, pickle
+import os, glob, re, pickle
 import skrf as rf
-
-from scipy.ndimage import median_filter
-from scipy.constants import Boltzmann as k_B
-from .unit_convert import spec_to_dbm, dbm_to_kelvin, norm_factor
 
 pjoin = os.path.join
 pbase = os.path.basename
@@ -87,42 +83,6 @@ def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_ta
             print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
     
     return spike_data
-
-def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
-    """
-    Removes spike-like peaks in the PSD by detecting outliers and interpolating over them.
-
-    Parameters:
-        freq: np.ndarray
-            Frequency values (same shape as psd).
-        psd: np.ndarray
-            PSD values (V²/Hz or similar).
-        threshold: float
-            How many times the local MAD a point must exceed to be considered a spike.
-        window: int
-            Number of points on each side to use in local median filtering.
-
-    Returns:
-        psd_cleaned: np.ndarray
-            PSD with spikes removed (replaced via interpolation).
-    """
-    psd = np.asarray(psd)
-    smoothed = median_filter(psd, size=2 * window + 1)
-
-    # Residuals and thresholding
-    residual = psd - smoothed
-    mad = np.median(np.abs(residual))  # median absolute deviation
-    spike_mask = np.abs(residual) > threshold * mad
-
-    # Replace spikes by interpolation
-    psd_cleaned = copy.deepcopy(psd)
-    spike_indices = np.where(spike_mask)[0]
-    keep_indices = np.where(~spike_mask)[0]
-
-    if len(keep_indices) >= 2:
-        psd_cleaned[spike_mask] = np.interp(freq[spike_mask], freq[keep_indices], psd[keep_indices])
-
-    return psd_cleaned
 
 def load_npy(dir_path, pattern='*state*.npy'):
     """Load all non-empty .npy files from a specified directory and return them as a list"""
@@ -267,6 +227,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, incl
     Returns:
         dict: Dictionary containing the loaded calibration states.
     """
+    from .unit_convert import rfsoc_spec_to_dbm
     state_files = []
     if not os.path.exists(dir_path):
         raise FileNotFoundError(f"Directory does not exist: {dir_path}. Double check the path.")
@@ -313,7 +274,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, incl
         if isinstance(pick_snapshot, list):
             idx = pick_snapshot[i]
         elif pick_snapshot is not None:
-            spikes = [count_spikes(spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum'], offset=offset), height=20) for file in file_list]
+            spikes = [count_spikes(rfsoc_spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum'], offset=offset), height=20) for file in file_list]
             if min(spikes) > 0:
                 print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
             idx = int(np.argmin(spikes))
@@ -336,54 +297,3 @@ def states_to_ntwk(f, loaded_states):
             ntwk_dict[state_name] = rf.Network(f=f, name=state_name, s=spectrum.reshape(-1, 1, 1))
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
-
-def preprocess_states(faxis, load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> dict:
-    """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
-    
-    Parameters:
-        faxis: np.ndarray, frequency points in MHz.
-        system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
-
-    Returns:
-        dict: A dictionary of processed network objects.
-    """
-    df = float(faxis[1] - faxis[0])
-    loaded_states_copy = copy.deepcopy(load_states)
-    ntwk_dict = {}
-    for label, state in loaded_states_copy.items():
-        if remove_spikes:
-            spectrum = remove_spikes_from_psd(faxis, state['spectrum'])
-        else: spectrum = state['spectrum']
-
-        spectrum_dBm = spec_to_dbm(spectrum, offset=offset) - system_gain
-
-        if unit == 'dBm':
-            state['spectrum'] = spectrum_dBm
-        elif unit == 'kelvin':
-            spectrum = dbm_to_kelvin(spectrum_dBm, df)
-            if normalize is not None:
-                state['spectrum'] =  spectrum * normalize
-            else:
-                state['spectrum'] = spectrum
-        else:
-            raise ValueError("unit must be dBm or kelvin.")
-    
-    for label, state in loaded_states_copy.items():
-        spectrum = state['spectrum']
-        ntwk_dict[label] = rf.Network(f=faxis, name=label, s=spectrum.reshape(-1, 1, 1))
-
-    return ntwk_dict
-    
-def norm_states(f, loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
-    """Normalize loaded RAW! spectra from digital spectrometer to a reference state and convert to Kelvin.
-
-    Returns:
-    loaded_states_kelvin: dict
-        Dictionary of loaded states with spectra converted to Kelvin.
-    gain: np.ndarray
-        Normalization factor applied to convert from dBm to Kelvin.
-    """
-    dbm = np.array(spec_to_dbm(remove_spikes_from_psd(f, loaded_states[ref_state_label]['spectrum'])))-system_gain
-    gain = norm_factor(dbm, ref_temp)
-    loaded_states_kelvin = preprocess_states(f, loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
-    return loaded_states_kelvin, gain

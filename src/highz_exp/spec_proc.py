@@ -1,11 +1,8 @@
-import os
-from os.path import join as pjoin, basename as pbase
 import copy
 import numpy as np
 import skrf as rf
 from scipy.signal import savgol_filter
 from scipy.ndimage import uniform_filter1d
-
 
 def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
     """
@@ -73,6 +70,44 @@ def smooth_spectrum(data, method='savgol', window=31):
     else:
         # unknown method -> return original
         return data.copy()
+
+def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
+    """
+    Removes spike-like peaks in the PSD by detecting outliers and interpolating over them.
+
+    Parameters:
+        freq: np.ndarray
+            Frequency values (same shape as psd).
+        psd: np.ndarray
+            PSD values (V²/Hz or similar).
+        threshold: float
+            How many times the local MAD a point must exceed to be considered a spike.
+        window: int
+            Number of points on each side to use in local median filtering.
+
+    Returns:
+        psd_cleaned: np.ndarray
+            PSD with spikes removed (replaced via interpolation).
+    """
+    from scipy.ndimage import median_filter
+
+    psd = np.asarray(psd)
+    smoothed = median_filter(psd, size=2 * window + 1)
+
+    # Residuals and thresholding
+    residual = psd - smoothed
+    mad = np.median(np.abs(residual))  # median absolute deviation
+    spike_mask = np.abs(residual) > threshold * mad
+
+    # Replace spikes by interpolation
+    psd_cleaned = copy.deepcopy(psd)
+    spike_indices = np.where(spike_mask)[0]
+    keep_indices = np.where(~spike_mask)[0]
+
+    if len(keep_indices) >= 2:
+        psd_cleaned[spike_mask] = np.interp(freq[spike_mask], freq[keep_indices], psd[keep_indices])
+
+    return psd_cleaned
    
 def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
     """

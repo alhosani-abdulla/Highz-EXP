@@ -9,7 +9,7 @@ def sparam_to_dB(s11):
     """Convert S11 reflection coefficient to dB scale."""
     return 20 * np.log10(np.abs(s11))
 
-def spec_to_dbm(spectrum, offset=-135):
+def rfsoc_spec_to_dbm(spectrum, offset=-135):
     """Convert recorded spectrum from digital spectrometer to dBm with an offset obtained from calibration."""
     spectrum = np.array(spectrum)
     finalSpectrum = 10 * np.log10(spectrum)+offset

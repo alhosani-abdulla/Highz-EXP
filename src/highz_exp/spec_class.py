@@ -179,3 +179,68 @@ class Spectrum:
 
     def __repr__(self) -> str:
         return f"<Spectrum name={self.name!r} points={self.freq.size} metadata_keys={list(self.metadata.keys())}>"
+    
+    @staticmethod
+    def preprocess_states(load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> dict:
+        """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
+        
+        Parameters:
+            faxis: np.ndarray, frequency points in MHz.
+            load_states: dict of Spectrum objects
+            system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
+
+        Returns:
+            dict: A dictionary of processed network objects.
+        """
+        import copy
+        import skrf as rf
+        from unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
+        from spec_proc import remove_spikes_from_psd
+        
+        faxis = load_states[list(load_states.keys())[0]].freq
+
+        df = float(faxis[1] - faxis[0])
+        loaded_states_copy = copy.deepcopy(load_states)
+        ntwk_dict = {}
+        for label, state in loaded_states_copy.items():
+            if remove_spikes:
+                spectrum = remove_spikes_from_psd(faxis, state.spec)
+            else: spectrum = state.spec
+
+            spectrum_dBm = rfsoc_spec_to_dbm(spectrum, offset=offset) - system_gain
+
+            if unit == 'dBm':
+                state.spec = spectrum_dBm
+            elif unit == 'kelvin':
+                spectrum = dbm_to_kelvin(spectrum_dBm, df)
+                if normalize is not None:
+                    state.spec =  spectrum * normalize
+                else:
+                    state.spec = spectrum
+            else:
+                raise ValueError("unit must be dBm or kelvin.")
+        
+        for label, state in loaded_states_copy.items():
+            spectrum = state.spec
+            ntwk_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata)
+        return ntwk_dict
+
+    @staticmethod
+    def norm_states(loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
+        """Normalize loaded RAW! spectra from digital spectrometer to a reference state and convert to Kelvin.
+
+        Returns:
+        loaded_states_kelvin: dict
+            Dictionary of loaded Spectrum objects with spectra in Kelvin.
+        gain: np.ndarray
+            Normalization factor applied to convert from dBm to Kelvin.
+        """
+        from unit_convert import rfsoc_spec_to_dbm, norm_factor
+        from spec_proc import remove_spikes_from_psd
+
+        faxis = loaded_states[list(loaded_states.keys())[0]].freq
+        dbm = np.array(rfsoc_spec_to_dbm(remove_spikes_from_psd(faxis, loaded_states[ref_state_label].spec)))-system_gain
+        gain = norm_factor(dbm, ref_temp)
+        loaded_states_kelvin = Spectrum.preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
+
+        return loaded_states_kelvin, gain
