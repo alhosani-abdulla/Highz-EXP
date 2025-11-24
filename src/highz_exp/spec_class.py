@@ -194,8 +194,8 @@ class Spectrum:
         """
         import copy
         import skrf as rf
-        from unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
-        from spec_proc import remove_spikes_from_psd
+        from .unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
+        from .spec_proc import remove_spikes_from_psd
         
         faxis = load_states[list(load_states.keys())[0]].freq
 
@@ -235,8 +235,8 @@ class Spectrum:
         gain: np.ndarray
             Normalization factor applied to convert from dBm to Kelvin.
         """
-        from unit_convert import rfsoc_spec_to_dbm, norm_factor
-        from spec_proc import remove_spikes_from_psd
+        from .unit_convert import rfsoc_spec_to_dbm, norm_factor
+        from .spec_proc import remove_spikes_from_psd
 
         faxis = loaded_states[list(loaded_states.keys())[0]].freq
         dbm = np.array(rfsoc_spec_to_dbm(remove_spikes_from_psd(faxis, loaded_states[ref_state_label].spec)))-system_gain
