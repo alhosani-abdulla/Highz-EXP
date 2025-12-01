@@ -213,6 +213,28 @@ def HP_filter(ntwk, faxis_hz, cutoff_hz):
     faxis_filtered = faxis_hz[faxis_hz > cutoff_hz]
     return filtered_data, faxis_filtered
 
+def interpolate_arrs(target_freqs, arr_freq, arr) -> tuple[np.ndarray, float, float]:
+    """
+    Interpolate an array to target frequencies within the common frequency range.
+    Parameters:
+    - target_freqs (array-like): Frequencies to interpolate to (in Hz)
+    - arr_freq (array-like): Original frequencies of the array (in Hz)
+    - arr (array-like): Original array values to interpolate
+    Returns:
+    - interpolated_arr (np.ndarray): Interpolated array values at target frequencies
+    - common_min (float): Minimum frequency of the common range
+    - common_max (float): Maximum frequency of the common range"""
+    min_freq = np.min(target_freqs)
+    common_min = max(min_freq, np.min(arr_freq))
+    max_freq = np.max(target_freqs)
+    common_max = min(max_freq, np.max(arr_freq))
+    
+    interpolate_freq = arr_freq[(arr_freq >= common_min) & (arr_freq <= common_max)]
+    interpolate_arr = arr[(arr_freq >= common_min) & (arr_freq <= common_max)]
+    
+    interpolated_arr = np.interp(target_freqs, interpolate_freq, interpolate_arr)
+    return interpolated_arr, common_min, common_max
+
 def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
     """
     Interpolate all ntwk objects in a dictionary to the target frequencies and remove frequencies outside the specified range.
