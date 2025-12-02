@@ -294,7 +294,7 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
-        - loaded_specs: list of Spectrum objects to plot
+        - loaded_specs: list of Spectrum objects to plot, with frequency in Hz.
         - ymin (float): Minimum y-axis value
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.

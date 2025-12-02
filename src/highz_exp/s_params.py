@@ -68,7 +68,25 @@ class S_Params:
     def from_pickle(cls, pickle_file):
         return cls(pickle_file=pickle_file)
     
-    def get_s21(self, db=True):
+    def get_freq(self, MHz=True) -> np.ndarray:
+        """
+        Get frequency axis from the first Network in ntwk_dict.
+
+        Parameters:
+        - MHz (bool): If True, return frequency in MHz; else in Hz.
+
+        Returns:
+        - np.ndarray: Frequency axis.
+        """
+        if not self.ntwk_dict:
+            raise ValueError("No networks available to extract frequency axis.")
+        first_network = next(iter(self.ntwk_dict.values()))
+        freq = first_network.f
+        if MHz:
+            freq = freq / 1e6
+        return freq
+    
+    def get_s21(self, db=True) -> tuple[dict, dict]:
         """
         Load S-parameters from .s2p files in ntwk_dict, converting to dB if specified.
 

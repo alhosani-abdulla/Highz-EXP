@@ -180,6 +180,41 @@ class Spectrum:
     def __repr__(self) -> str:
         return f"<Spectrum name={self.name!r} points={self.freq.size} metadata_keys={list(self.metadata.keys())}>"
     
+    def preprocess(self, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> "Spectrum":
+        """Preprocess the spectrum by converting to the specified unit and removing spikes if required. 
+        
+        Parameters:
+            system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
+        Returns:
+            Spectrum: The processed Spectrum object.
+        """
+        import copy
+        from .unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
+        from .spec_proc import remove_spikes_from_psd
+        
+        copy_spec = copy.deepcopy(self.spec)
+        faxis = self.freq
+        spectrum = copy_spec
+
+        if remove_spikes:
+            spectrum = remove_spikes_from_psd(faxis, spectrum)
+
+        spectrum_dBm = rfsoc_spec_to_dbm(spectrum, offset=offset) - system_gain
+
+        if unit == 'dBm':
+            copy_spec.spec = spectrum_dBm
+        elif unit == 'kelvin':
+            df = float(faxis[1] - faxis[0])
+            spectrum_kelvin = dbm_to_kelvin(spectrum_dBm, df)
+            if normalize is not None:
+                copy_spec.spec =  spectrum_kelvin * normalize
+            else:
+                copy_spec.spec = spectrum_kelvin
+        else:
+            raise ValueError("unit must be dBm or kelvin.")
+        
+        return copy_spec
+    
     @staticmethod
     def preprocess_states(load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> dict:
         """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
