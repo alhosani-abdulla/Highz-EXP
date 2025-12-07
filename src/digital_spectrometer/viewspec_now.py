@@ -147,6 +147,5 @@ if __name__ == "__main__":
     
     print(f"Starting with base path: {initial_base_path}")
     
-
     start_live_spectrum_view_dynamic(ylabel='PSD [dBm]', update_interval=1000)
 

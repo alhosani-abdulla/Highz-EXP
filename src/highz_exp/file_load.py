@@ -1,6 +1,7 @@
 import numpy as np
 import os, glob, re, pickle
 import skrf as rf
+import logging
 
 pjoin = os.path.join
 pbase = os.path.basename
@@ -92,7 +93,7 @@ def load_npy(dir_path, pattern='*state*.npy'):
         states.append(np.load(file, allow_pickle=True).item())
     return states
 
-def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=r'_(\d{6})(?:_|$)', use_pickle=False):
+def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=r'_(\d{6})(?:_|$)', use_pickle=False) -> dict:
     """
     Condense many .npy files in dir_path into a single file keyed by a time-stamp
     extracted from the filename. The returned dictionary is flattened: timestamp -> data
@@ -101,23 +102,28 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
     Parameters:
         dir_path (str): directory containing .npy files
         pattern (str): glob pattern for files to include
-        time_regex (str): regex with one capture group that extracts the timestamp key from basename
+        time_regex (str): regex with one capture group that extracts the timestamp key from basename. 
+            Examples of files matching are: '20210915_123456_antenna1_state2.npy' with regex r'_(\d{6})_' to capture '123456'.
         use_pickle (bool): if True, save with pickle; otherwise save with np.save (allow_pickle=True)
 
     Returns:
         dict: mapping timestamp -> data or list of data
     """
-    state_files = get_and_clean_nonempty_files(dir_path, pattern)
+    state_files = get_and_clean_nonempty_files(dir_path, pattern) # greps all non-empty files matching pattern
     condensed_data = {}      # key -> list of loaded data objects
     filenames_by_key = {}    # key -> list of filenames (used to determine state_name/output filename)
 
+    # fp: file path
     for fp in state_files:
+        # bn: base name of files
         bn = pbase(fp)
+        # m: match object for time regex
         m = re.search(time_regex, bn)
         if m:
             key = m.group(1)
         else:
-            key = os.path.splitext(bn)[0]
+            logging.warning(f"This file {fp} does not match the time regex {time_regex}, using alternative key extraction.")
+            key = bn.split('_')[1]
 
         try:
             loaded = np.load(fp, allow_pickle=True)
@@ -125,6 +131,7 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
                 obj = loaded.item()
             except Exception:
                 obj = loaded
+                logging.warning(f"Loaded object from {fp} is not a dict-like, storing raw loaded object.")
         except Exception as e:
             print(f"Skipping file (load error): {fp} -> {e}")
             continue
@@ -196,6 +203,7 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
         if len(lst) == 1:
             condensed_flat[k] = lst[0]
         else:
+            logging.warning(f"Multiple files found for timestamp {k}, storing as list of {len(lst)} items.")
             condensed_flat[k] = lst
 
     ext = '.pkl' if use_pickle else '.npy'

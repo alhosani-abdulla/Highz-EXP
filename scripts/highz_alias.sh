@@ -9,6 +9,11 @@ ViewSpecs() {
     pipenv run python src/digital_spectrometer/viewspec_now.py "$@"
 }
 
+CompressSpecs() {
+    cd /home/peterson/Highz-EXP
+    pipenv run python src/highz_exp/file_compressor.py "$@"
+}
+
 export PYTHONPATH=/home/peterson/Highz-EXP/src:$PYTHONPATH
 
 CreatePlot() {
