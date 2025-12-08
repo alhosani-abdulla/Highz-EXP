@@ -27,6 +27,16 @@ def map_filename_to_legend(statename):
                'stateOC': '6" open'}
     return mapping.get(statename, statename)
 
+def parse_filename(spec_path) -> tuple[str, str, str]:
+    """Parse the spectrum file name to extract state_name, antenna_name, and time_stamp"""
+    pbase = os.path.basename
+    filename = pbase(spec_path).split('.')[0]
+    spec_state = filename.split('_')[-1]
+    antenna_name = filename.split('_')[-2]
+    time_stamp = filename.split('_')[-3]
+
+    return spec_state, antenna_name, time_stamp
+
 # Modify the start_live_spectrum_view function to use dynamic base path
 def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
     """Start a live spectrum view window that automatically finds the latest spectrum file"""
@@ -66,11 +76,7 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             time_dir = pbase(os.path.dirname(spec_path))
             date_dir = pbase(os.path.dirname(time_dir))
 
-            filename = pbase(spec_path).split('.')[0]
-            spec_state = filename.split('_')[-1]
-            antenna_name = filename.split('_')[-2]
-            time_stamp = filename.split('_')[-3]
-
+            spec_state, antenna_name, time_stamp = parse_filename(spec_path)
             spec_name = map_filename_to_legend(spec_state)
 
             spectrum = Spectrum(faxis_hz, latest_spec['spectrum'], 
