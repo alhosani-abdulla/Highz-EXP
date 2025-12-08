@@ -1,5 +1,5 @@
 # Highz-EXP
-This is a preliminary version for analyzing data collected from the HighZ-EXP experiment. It includes modules for loading files, processing reflection data, plotting spectra, and converting units.
+This is a preliminary version for plotting and analyzing data collected from the HighZ-EXP experiment. It includes modules for loading files, processing reflection data, plotting spectra, and converting units.
 
 ## Related Repositories
 
@@ -30,12 +30,17 @@ pip install -e .
 ```python
 # Import the package (note: use underscore, not hyphen)
 import highz_exp
-
-# Or import specific modules
-from highz_exp import file_load, reflection_proc, spec_plot, unit_convert
+from highz_exp import file_load, unit_convert
 ```
 
 If run into import issues, try 
 ```bash
 pip install --force-reinstall git+https://github.com/alhosani-abdulla/Highz-EXP.git
+```
+
+### Key Classes:
+- `Spectrum`: Class for handling and plotting spectral data.
+```python
+from highz_exp.spec_class import Spectrum
+spectrum = Spectrum(frequency_axis, spectral_data, name='example_spectrum', metadata={'obs_time': '2024-01-01T00:00:00Z'})
 ```

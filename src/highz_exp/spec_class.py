@@ -220,12 +220,11 @@ class Spectrum:
         """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
         
         Parameters:
-            faxis: np.ndarray, frequency points in MHz.
-            load_states: dict of Spectrum objects
+            load_states: dict of Spectrum objects. {state_name: Spectrum, ...}
             system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
 
         Returns:
-            dict: A dictionary of processed network objects.
+            dict: A dictionary of processed network objects. {state_name: Spectrum (processed), ...}
         """
         import copy
         import skrf as rf

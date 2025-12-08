@@ -1,13 +1,12 @@
-from highz_exp import file_load, plotter
+from highz_exp import file_load
 import numpy as np
+import sys, os, glob
 from os.path import join as pjoin
-import sys
-import os
-import glob
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from highz_exp.spec_class import Spectrum
 
 DATA_PATH = '/home/peterson/Data/INDURANCE'
 
@@ -19,6 +18,14 @@ faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'6" open']
+
+def map_filename_to_legend(statename):
+    mapping = {'state0': 'Antenna (Power on)', 'state1': 'Antenna (Power off)',
+               'state2': '6" shorted', 'state3': "8' cable open",
+               'state4': 'Black body', 'state5': 'Ambient temperature load',
+               'state6': 'Noise diode', 'state7': "8' cable short",
+               'stateOC': '6" open'}
+    return mapping.get(statename, statename)
 
 # Modify the start_live_spectrum_view function to use dynamic base path
 def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
@@ -53,22 +60,33 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             if spec_path is None:
                 return
             
+            pbase = os.path.basename
+            
             latest_spec = np.load(spec_path, allow_pickle=True).item()
-            time_dir = os.path.basename(os.path.dirname(spec_path))
-            date_dir = os.path.basename(os.path.dirname(time_dir))
-            spec_state = os.path.basename(spec_path).split('.')[0].split('_')[-1]
-            antenna_name = os.path.basename(spec_path).split('.')[0].split('_')[-2]
+            time_dir = pbase(os.path.dirname(spec_path))
+            date_dir = pbase(os.path.dirname(time_dir))
+
+            filename = pbase(spec_path).split('.')[0]
+            spec_state = filename.split('_')[-1]
+            antenna_name = filename.split('_')[-2]
+            time_stamp = filename.split('_')[-3]
+
+            spec_name = map_filename_to_legend(spec_state)
+
+            spectrum = Spectrum(faxis_hz, latest_spec['spectrum'], 
+                                name=spec_name)
     
             title = f'Live Spectrum - {antenna_name} - {date_dir}'
-            state_name = f'{time_dir}: {spec_state}'
+            state_name = f'{time_stamp}: {spec_name}'
             loaded_spec_states = {state_name: latest_spec}
-            dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
+
+            dbm_spec_states = file_load.preprocess_states(load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
             
             ax.clear()
             
-            state_name, ntwk = next(iter(dbm_spec_states.items()))
-            freq = ntwk.f
-            spectrum = np.real(ntwk.s[:, 0, 0])
+            state_name, spec = next(iter(dbm_spec_states.items()))
+            freq = spec.f
+            spectrum = spec.s
             faxis_mhz = freq / 1e6
             
             ax.plot(faxis_mhz, spectrum, label=state_name)
@@ -115,7 +133,7 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             root.quit()
             root.destroy()
 
-def get_latest_base_path():
+def get_latest_base_path() -> str:
     """Find the most recently created subdirectory in the most recent directory"""
     try:
         # Find the most recently created directory in DATA_PATH
