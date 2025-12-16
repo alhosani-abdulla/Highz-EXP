@@ -1,4 +1,5 @@
-from highz_exp import plotter
+from highz_exp import plotter, file_load
+from highz_exp.spec_class import Spectrum
 import numpy as np
 from os.path import join as pjoin
 import sys
@@ -24,8 +25,13 @@ if __name__ == "__main__":
         spec_path = pjoin(os.getcwd(), spec_path)
         print(f"Interpreting path as {spec_path}")
     
-    loaded_spec_states = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128, include_antenna=True)
-    dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
+    loaded_spec_npys = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128, include_antenna=True)
+    spectrum_dicts = {}
+    for spec_name, latest_npy_load in loaded_spec_npys.items():
+        spectrum = Spectrum(faxis_hz, latest_npy_load['spectrum'], name=spec_name)
+        spectrum_dicts[spec_name] = spectrum
+    dbm_spec_states = Spectrum.preprocess_states(load_states=spectrum_dicts, remove_spikes=False, offset=-128, system_gain=0)
     print("Loaded and preprocessed spectrum states...")
-    plotter.plot_spectrum(dbm_spec_states, save_dir=spec_path, suffix=os.path.basename(spec_path), freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
+    date_dir = os.path.basename(os.path.dirname(spec_path))
+    plotter.plot_spectrum(dbm_spec_states.values(), save_dir=spec_path, suffix=f'{date_dir}_{os.path.basename(spec_path)}', freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
     print(f"Image saved to {spec_path}")
