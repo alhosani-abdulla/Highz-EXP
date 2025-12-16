@@ -8,7 +8,7 @@ import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from highz_exp.spec_class import Spectrum
 
-DATA_PATH = '/home/peterson/Data/INDURANCE'
+DATA_PATH = '/media/peterson/INDURANCE'
 
 nfft = 32768
 fs = 3276.8/4

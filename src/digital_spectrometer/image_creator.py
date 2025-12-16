@@ -1,4 +1,4 @@
-from highz_exp import file_load, plotter
+from highz_exp import plotter
 import numpy as np
 from os.path import join as pjoin
 import sys
