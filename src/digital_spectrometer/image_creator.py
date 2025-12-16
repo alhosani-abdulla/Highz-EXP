@@ -27,6 +27,8 @@ if __name__ == "__main__":
         spec_path = os.path.expanduser(spec_path)
     elif spec_path.startswith('/'):
         pass
+    elif spec_path.startswith('.'):
+        spec_path = os.path.abspath(spec_path)
     else:
         spec_path = pjoin(os.getcwd(), spec_path)
         print(f"Interpreting path as {spec_path}")
