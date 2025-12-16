@@ -312,7 +312,11 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
-            color = color_cycle[idx % len(color_cycle)]
+            if spec.colorcode is not None:
+                color = spec.colorcode
+            else:
+                color = color_cycle[idx % len(color_cycle)]
+
             plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
             
             ymax_state = np.max(spectrum)
@@ -328,7 +332,10 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
-            color = color_cycle[idx % len(color_cycle)]
+            if spec.colorcode is not None:
+                color = spec.colorcode
+            else:
+                color = color_cycle[idx % len(color_cycle)]
             plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
 
     ylim = (ymin, ymax)

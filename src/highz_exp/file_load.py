@@ -233,7 +233,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, incl
         include_antenna (bool): If True, also load antenna states (state0 and state1).
 
     Returns:
-        dict: Dictionary containing the loaded calibration states.
+        dict: Dictionary containing the loaded calibration states: {cal_name: loaded_data}
     """
     from .unit_convert import rfsoc_spec_to_dbm
     state_files = []

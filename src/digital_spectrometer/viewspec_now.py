@@ -1,4 +1,3 @@
-from highz_exp import file_load
 import numpy as np
 import sys, os, glob
 from os.path import join as pjoin
@@ -6,9 +5,11 @@ from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from highz_exp.spec_class import Spectrum
 
-DATA_PATH = '/media/peterson/INDURANCE'
+from highz_exp.spec_class import Spectrum
+from plot_settings import map_filename_to_legend, parse_filename
+from plot_settings import DATA_PATH, LEGEND, COLOR_CODE
+
 
 nfft = 32768
 fs = 3276.8/4
@@ -17,24 +18,6 @@ df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
-
-def map_filename_to_legend(statename):
-    mapping = {'state0': 'Antenna', 'state1': 'Open Circuit',
-               'state2': 'Short', 'state3': "Long cable short",
-               'state4': 'Black body', 'state5': 'Ambient temperature load',
-               'state6': 'Noise diode', 'state7': "Long cable open",
-               'stateOC': '6" open'}
-    return mapping.get(statename, statename)
-
-def parse_filename(spec_path) -> tuple[str, str, str]:
-    """Parse the spectrum file name to extract state_name, antenna_name, and time_stamp"""
-    pbase = os.path.basename
-    filename = pbase(spec_path).split('.')[0]
-    spec_state = filename.split('_')[-1]
-    antenna_name = filename.split('_')[-2]
-    time_stamp = filename.split('_')[-3]
-
-    return spec_state, antenna_name, time_stamp
 
 # Modify the start_live_spectrum_view function to use dynamic base path
 def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):

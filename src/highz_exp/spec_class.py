@@ -30,6 +30,7 @@ class Spectrum:
         frequency: Iterable[float],
         spectrum: Iterable[float],
         name: str,
+        colorcode: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.freq = np.asarray(frequency, dtype=float).ravel()
@@ -38,6 +39,7 @@ class Spectrum:
             raise ValueError("frequency and spectrum must have the same shape")
         self.name = str(name)
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+        self.colorcode = colorcode
 
     @property
     def s(self) -> np.ndarray:
