@@ -12,7 +12,13 @@ df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
-LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'6" open']
+mapping = {'state0': 'Antenna', 'state1': 'Open Circuit',
+    'state2': 'Short', 'state3': "Long cable short",
+    'state4': 'Black body', 'state5': 'Ambient temperature load',
+    'state6': 'Noise diode', 'state7': "Long cable open",
+    'stateOC': '6" open'}
+LEGEND = ['Antenna', 'Open Circuit', 'Short', 'Long cable short',
+          'Black body', 'Ambient temperature load', 'Noise diode', 'Long cable open']
 
 if __name__ == "__main__":
     print("Creating image for a specified directory of spectrum files...")
@@ -33,5 +39,8 @@ if __name__ == "__main__":
     dbm_spec_states = Spectrum.preprocess_states(load_states=spectrum_dicts, remove_spikes=False, offset=-128, system_gain=0)
     print("Loaded and preprocessed spectrum states...")
     date_dir = os.path.basename(os.path.dirname(spec_path))
-    plotter.plot_spectrum(dbm_spec_states.values(), save_dir=spec_path, suffix=f'{date_dir}_{os.path.basename(spec_path)}', freq_range=freq_range, ymin=-80, ymax=-30, show_plot=False)
+    yticks = [-80, -70, -60, -50, -40, -30, -20]
+    plotter.plot_spectrum(dbm_spec_states.values(), save_dir=spec_path, suffix='all_states',
+                          title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', ylabel='PSD [dBm]',
+                          ymin=-80, ymax=-20, yticks=yticks, show_plot=True)
     print(f"Image saved to {spec_path}")

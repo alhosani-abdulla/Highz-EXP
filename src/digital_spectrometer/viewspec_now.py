@@ -95,8 +95,11 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             faxis_mhz = freq / 1e6
             
             ax.plot(faxis_mhz, spectrum, label=state_name)
-            ax.set_ylim(-80, -30)
+            ax.set_ylim(-80, -20)
             ax.set_xlim(*freq_range)
+            custom_ticks = [-80, -70, -60, -50, -40, -30, -20]
+            # Set the y-axis ticks to these exact locations
+            ax.set_yticks(custom_ticks)
             ax.legend(fontsize=18)
             ax.set_ylabel(ylabel if ylabel else 'PSD [dBm]', fontsize=20)
             ax.set_xlabel('Frequency [MHz]', fontsize=20)
