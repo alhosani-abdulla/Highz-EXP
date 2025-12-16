@@ -30,6 +30,7 @@ class Spectrum:
         frequency: Iterable[float],
         spectrum: Iterable[float],
         name: str,
+        colorcode: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.freq = np.asarray(frequency, dtype=float).ravel()
@@ -38,6 +39,7 @@ class Spectrum:
             raise ValueError("frequency and spectrum must have the same shape")
         self.name = str(name)
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+        self.colorcode = colorcode
 
     @property
     def s(self) -> np.ndarray:
@@ -231,14 +233,18 @@ class Spectrum:
         from .unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
         from .spec_proc import remove_spikes_from_psd
         
-        faxis = load_states[list(load_states.keys())[0]].freq
+        assert type(load_states) is dict, "load_states must be a dictionary of Spectrum objects."
+        for state in load_states.values():
+            assert isinstance(state, Spectrum), "All values in load_states must be Spectrum objects."
+        
+        freq = list(load_states.values())[0].freq
 
-        df = float(faxis[1] - faxis[0])
+        df = float(freq[1] - freq[0])
         loaded_states_copy = copy.deepcopy(load_states)
-        ntwk_dict = {}
+        state_dict = {}
         for label, state in loaded_states_copy.items():
             if remove_spikes:
-                spectrum = remove_spikes_from_psd(faxis, state.spec)
+                spectrum = remove_spikes_from_psd(freq, state.spec)
             else: spectrum = state.spec
 
             spectrum_dBm = rfsoc_spec_to_dbm(spectrum, offset=offset) - system_gain
@@ -256,8 +262,9 @@ class Spectrum:
         
         for label, state in loaded_states_copy.items():
             spectrum = state.spec
-            ntwk_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata)
-        return ntwk_dict
+            state_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata,
+                                         colorcode=state.colorcode)
+        return state_dict
 
     @staticmethod
     def norm_states(loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
@@ -272,8 +279,8 @@ class Spectrum:
         from .unit_convert import rfsoc_spec_to_dbm, norm_factor
         from .spec_proc import remove_spikes_from_psd
 
-        faxis = loaded_states[list(loaded_states.keys())[0]].freq
-        dbm = np.array(rfsoc_spec_to_dbm(remove_spikes_from_psd(faxis, loaded_states[ref_state_label].spec)))-system_gain
+        freq = loaded_states[list(loaded_states.keys())[0]].freq
+        dbm = np.array(rfsoc_spec_to_dbm(remove_spikes_from_psd(freq, loaded_states[ref_state_label].spec)))-system_gain
         gain = norm_factor(dbm, ref_temp)
         loaded_states_kelvin = Spectrum.preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
 

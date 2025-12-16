@@ -233,7 +233,7 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, incl
         include_antenna (bool): If True, also load antenna states (state0 and state1).
 
     Returns:
-        dict: Dictionary containing the loaded calibration states.
+        dict: Dictionary containing the loaded calibration states: {cal_name: loaded_data}
     """
     from .unit_convert import rfsoc_spec_to_dbm
     state_files = []
@@ -254,28 +254,12 @@ def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, incl
     # Load calibration states (state2-7)
     for i in range(2, 8):
         state_files.append(get_and_clean_nonempty_files(dir_path, f'*state{i}*.npy'))
-    state_files.append(get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
+    # state_files.append(get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
 
     load_states = {}
-    def get_state_name(i):
-        if include_antenna:
-            if i == 0:
-                return 'antenna (powered)'
-            elif i == 1:
-                return 'antenna (unpowered)'
-            else:
-                if cal_names is not None:
-                    return cal_names[i-2]
-                else:
-                    return f'state{i}'
-        else:
-            if cal_names is not None:
-                return cal_names[i]
-            else:
-                return f'state{i+2}'
 
     for i, file_list in enumerate(state_files):
-        state_name = get_state_name(i)
+        state_name = cal_names[i] 
         if not file_list:
             continue  # skip if no files found for this state
 
