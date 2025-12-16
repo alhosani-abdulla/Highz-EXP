@@ -32,7 +32,6 @@ if __name__ == "__main__":
     loaded_spec_npys = file_load.load_npy_cal(spec_path, pick_snapshot=[1,1,1,1,1,1,1,1,1], cal_names=LEGEND, offset=-128, include_antenna=True)
     spectrum_dicts = {}
     for spec_name, latest_npy_load in loaded_spec_npys.items():
-        print(f"color for {spec_name} is {COLOR_CODE.get(spec_name, None)}")
         spectrum = Spectrum(faxis_hz, latest_npy_load['spectrum'], name=spec_name, colorcode=COLOR_CODE.get(spec_name, None))
         spectrum_dicts[spec_name] = spectrum
     dbm_spec_states = Spectrum.preprocess_states(load_states=spectrum_dicts, remove_spikes=False, offset=-128, system_gain=0)

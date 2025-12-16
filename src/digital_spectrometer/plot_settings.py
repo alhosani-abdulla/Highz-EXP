@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 LEGEND = ['Antenna', 'Open Circuit', 'Short', 'Long cable short',
           'Black body', 'Ambient temperature load', 'Noise diode', 'Long cable open']
 LEGEND_WO_ANTENNA = ['Open Circuit', 'Short', 'Long cable short', 'Black body', 'Ambient temperature load', 'Noise diode', 'Long cable open']
-COLOR_CODE = {'Antenna': 'blue', 'Open Circuit': 'orange', 'Short': 'green',
-              'Long cable short': 'red', 'Black body': 'purple',
-              'Ambient temperature load': 'brown', 'Noise diode': 'pink',
-              'Long cable open': 'gray'}
+
 DATA_PATH = '/media/peterson/INDURANCE'
 
 color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+COLOR_CODE = {'Antenna': color_cycle[0], 'Open Circuit': color_cycle[1], 'Short': color_cycle[2],
+              'Long cable short': color_cycle[3], 'Black body': color_cycle[4],
+              'Ambient temperature load': color_cycle[5], 'Noise diode': color_cycle[6],
+              'Long cable open': color_cycle[7]}
 
 def map_filename_to_legend(statename):
     """Map the spectrum state name from filename to legend name."""

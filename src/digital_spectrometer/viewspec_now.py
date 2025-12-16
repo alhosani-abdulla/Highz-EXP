@@ -58,14 +58,14 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             time_dir = os.path.dirname(spec_path)
             date_dir = pbase(os.path.dirname(time_dir))
 
-            spec_state, antenna_name, time_stamp = parse_filename(spec_path)
-            spec_name = map_filename_to_legend(spec_state)
+            spec_state_no, antenna_name, time_stamp = parse_filename(spec_path)
+            spec_name = map_filename_to_legend(spec_state_no)
 
             spectrum = Spectrum(faxis_hz, latest_npy_load['spectrum'], 
                                 name=spec_name)
             
             title = f'Live Spectrum - {antenna_name} - {date_dir}'
-            state_name = f'{time_stamp}: {spec_name}'
+            state_name = f'{time_stamp}: {spec_state_no}: {spec_name}'
             loaded_spec_states = {state_name: spectrum}
 
             dbm_spec_states = Spectrum.preprocess_states(load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
