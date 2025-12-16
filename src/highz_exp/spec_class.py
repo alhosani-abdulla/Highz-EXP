@@ -262,7 +262,8 @@ class Spectrum:
         
         for label, state in loaded_states_copy.items():
             spectrum = state.spec
-            state_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata)
+            state_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata,
+                                         colorcode=state.colorcode)
         return state_dict
 
     @staticmethod
