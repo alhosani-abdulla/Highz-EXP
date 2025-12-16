@@ -43,9 +43,9 @@ if __name__ == "__main__":
                           ymin=-80, ymax=-20, yticks=yticks, show_plot=True)
     wo_antenna_dbm_states = {k: v for k, v in dbm_spec_states.items() if k != 'Antenna'}
 
-    yticks = [-70, -60, -50, -40, -30, -20]
+    yticks = [-80, -70, -60, -50, -40, -30]
     plotter.plot_spectrum(wo_antenna_dbm_states.values(), save_dir=spec_path, suffix='wo_antenna',
                           title=f'{date_dir}: {os.path.basename(spec_path)} Spectra (w/o Antenna)', ylabel='PSD [dBm]',
-                          ymin=-70, ymax=-20, yticks=yticks, show_plot=True)
+                          ymin=-80, ymax=-30, yticks=yticks, show_plot=True)
 
     print(f"Image saved to {spec_path}")
