@@ -9,7 +9,7 @@ import matplotlib.animation as animation
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-DATA_PATH = '/home/peterson/Data/INDURANCE'
+DATA_PATH = '/media/peterson/INDURANCE'
 
 nfft = 32768
 fs = 3276.8/4
@@ -72,7 +72,7 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             faxis_mhz = freq / 1e6
             
             ax.plot(faxis_mhz, spectrum, label=state_name)
-            ax.set_ylim(-80, -30)
+            ax.set_ylim(-90, -30)
             ax.set_xlim(*freq_range)
             ax.legend(fontsize=18)
             ax.set_ylabel(ylabel if ylabel else 'PSD [dBm]', fontsize=20)
