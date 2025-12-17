@@ -10,6 +10,7 @@ from highz_exp.spec_class import Spectrum
 from plot_settings import map_filename_to_legend, parse_filename
 from plot_settings import DATA_PATH, LEGEND, COLOR_CODE
 
+print(f"Data path is {DATA_PATH}.")
 
 nfft = 32768
 fs = 3276.8/4
@@ -130,6 +131,7 @@ def get_latest_base_path() -> str:
         # Find the most recently created directory in DATA_PATH
         directories = glob.glob(pjoin(DATA_PATH, '*/'))
         if not directories:
+            print(f"Error: No directories found in {DATA_PATH}")
             return None
         
         today_dir = max(directories, key=os.path.getctime)
@@ -137,17 +139,16 @@ def get_latest_base_path() -> str:
         # Find the most recently created subdirectory
         subdirectories = glob.glob(pjoin(today_dir, '*/'))
         if not subdirectories:
+            print(f"No subdirectories created today in {today_dir}.")
             return None
         
         base_path = max(subdirectories, key=os.path.getctime)
-        return os.path.abspath(base_path)
+        return base_path
     except Exception as e:
         print(f"Error finding latest base path: {e}")
         return None
 
 if __name__ == "__main__":
-
-    
     # Initial path check
     initial_base_path = get_latest_base_path()
     if initial_base_path is None:
