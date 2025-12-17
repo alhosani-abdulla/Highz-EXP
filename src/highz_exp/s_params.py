@@ -103,6 +103,54 @@ class S_Params:
                 s21 = 20 * np.log10(np.abs(s21))
             s_params_data[label] = s21
         return s_params_data
+    
+    def plot_impedance(self, title='Impedance Measurement', ymax=None, ymin=None, save_dir=None, suffix=None):
+        """
+        Plot multiple impedances from .s1p Network objects on the same axes.
+
+        Parameters:
+        - title (str): Title of the plot.
+        - ymax (float): Maximum y-axis limit.
+        - ymin (float): Minimum y-axis limit.
+        - save_dir (str): directory to save the combined plot
+        - suffix (str): optional suffix for saved filename
+
+        Returns:
+        - dict: the same ntwk_dict passed in
+        """
+        ntwk_dict = self.ntwk_dict
+        if not ntwk_dict:
+            print("No networks provided.")
+            return ntwk_dict
+
+        fig, ax = plt.subplots(figsize=(14, 8))
+        color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        for idx, (label, network) in enumerate(ntwk_dict.items()):
+            freq = network.f
+            z = network.z[:, 0, 0].real  # Take real part of impedance
+            color = color_cycle[idx % len(color_cycle)]
+            ax.plot(freq / 1e6, z, label=f'{label}', color=color)
+
+        ax.set_xlabel('Frequency [MHz]', fontsize=20)
+        ax.set_ylabel('Impedance [Ohms]', fontsize=20)
+        ax.grid(True)
+        ax.tick_params(axis='both', which='major', labelsize=18)
+        if ymax is not None:
+            ax.set_ylim(top=ymax)
+        if ymin is not None:
+            ax.set_ylim(bottom=ymin)
+
+        ax.legend(loc='best', fontsize=18)
+        ax.set_title(title, fontsize=22)
+        fig.tight_layout()
+
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+            safe_suffix = f"_{suffix}" if suffix else ""
+            plt.savefig(f'{save_dir}/Impedance{safe_suffix}.png', dpi=150, bbox_inches='tight')
+
+        plt.show()
 
     def plot_s1p(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
         """
