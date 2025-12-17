@@ -104,7 +104,8 @@ if __name__ == "__main__":
                     interval=1000, repeat=True, blit=False)
             
             plt.tight_layout()
-            plt.show()
+            plt.show(block=False)
+            plt.get_current_fig_manager().window.protocol("WM_DELETE_WINDOW", sys.exit)
 
     
     
