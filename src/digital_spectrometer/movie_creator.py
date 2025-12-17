@@ -18,6 +18,17 @@ faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
 
+def create_image_if_not_found(spec_path):
+    """Create and save spectrum images for all spectrum files in the specified directory if not already present."""
+    print("Processing time directory:", spec_path)
+    png_files = glob.glob(pjoin(spec_path, "*.png"))
+    pbase = os.path.basename
+    png_names = [pbase(png) for png in png_files]
+    if "spectrum_all_states.png" in png_names and "spectrum_wo_antenna.png" in png_names:
+        print(f"Images already exist in {spec_path}, skipping image creation.")
+        return
+    create_image(spec_path, show_plots=False)
+
 def create_images_for_date(date_dir):
     """Create and save spectrum images for spectrum files in the specified date directory."""
     spec_path = pjoin(DATA_PATH, date_dir)
@@ -25,15 +36,15 @@ def create_images_for_date(date_dir):
         [d for d in os.listdir(spec_path) if os.path.isdir(pjoin(spec_path, d))],
         key=lambda d: os.path.getmtime(pjoin(spec_path, d)),
         reverse=True
-    )
+    )[:20]
     if not time_dirs:
         print(f"No data found in {spec_path}.")
         return
-    with concurrent.futures.ProcessPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
         futures = []
         for time_dir in time_dirs:
             full_spec_path = pjoin(spec_path, time_dir)
-            futures.append(executor.submit(create_image, full_spec_path, show_plots=False))
+            futures.append(executor.submit(create_image_if_not_found, full_spec_path))
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
@@ -66,53 +77,34 @@ if __name__ == "__main__":
     )[:2]
     
     print("Two most recent dates of data to process:", subdirs)
-    
-    # If more than  subdirs, keep only the 50 most recent ones
-    if len(subdirs) > 50:
-        # Sort by modification time (most recent first) and take first 50
-        subdirs = subdirs[:50]
-        print(f"Limited to 50 most recent subdirectories out of {len(subdirs)} total")
-    else:
-        print(f"Found {len(subdirs)} subdirectories: {subdirs}")
-    
     for date_dir in subdirs:
         print(f"Processing date directory: {date_dir}")
         create_images_for_date(date_dir)
-    
-    # Collect all PNG files with their creation times
-    png_files = []
-    for subdir in subdirs:
-        png_pattern = pjoin(parent_path, subdir, "*.png")
-        subdir_pngs = glob.glob(png_pattern)
-        if subdir_pngs:
-            # Use directory creation time for ordering
-            dir_time = os.path.getmtime(pjoin(parent_path, subdir))
-            png_files.extend([(png, dir_time) for png in subdir_pngs])
+        
+        # Find and display the 20 most recent images after creation
+        png_files = glob.glob(pjoin(parent_path, date_dir, "**", "*.png"), recursive=True)
+        png_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        png_files = png_files[:20]  # Keep only the 20 most recent
+        
+        if png_files:
+            print(f"Displaying {len(png_files)} most recent images from {date_dir}...")
+            
+            fig, ax = plt.subplots(figsize=(12, 8))
+            ax.axis('off')
+            
+            def update_frame(frame):
+                ax.clear()
+                ax.axis('off')
+                img = mpimg.imread(png_files[frame])
+                ax.imshow(img)
+                ax.set_title(f"Image {frame+1}/{len(png_files)}")
+                return [ax]
+                
+            ani = FuncAnimation(fig, update_frame, frames=len(png_files), 
+                    interval=1000, repeat=True, blit=False)
+            
+            plt.tight_layout()
+            plt.show()
 
-    # # Sort by creation time
-    # png_files.sort(key=lambda x: x[1])
-    # png_paths = [png for png, _ in png_files]
-
-    # if png_paths:
-    #     print(f"Creating slideshow with {len(png_paths)} images...")
-        
-    #     fig, ax = plt.subplots(figsize=(12, 8))
-    #     ax.axis('off')
-        
-    #     def update_frame(frame):
-    #         ax.clear()
-    #         ax.axis('off')
-    #         img = mpimg.imread(png_paths[frame])
-    #         ax.imshow(img)
-    #         ax.set_title(f"Image {frame+1}/{len(png_paths)}: {os.path.basename(png_paths[frame])}")
-    #         return [ax]
-        
-    #     ani = FuncAnimation(fig, update_frame, frames=len(png_paths), 
-    #                        interval=1000, repeat=True, blit=False)
-        
-    #     plt.tight_layout()
-    #     plt.show()
-    # else:
-    #     print("No PNG files found to display.")
     
     
