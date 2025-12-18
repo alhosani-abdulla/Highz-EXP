@@ -11,6 +11,8 @@ scikit-rf = "*"
 pandas = "*"
 pillow = "*"
 highz-exp = {file = ".", editable = true}
+jupyter = "*"
+ipykernel = "*"
 
 [dev-packages]
 

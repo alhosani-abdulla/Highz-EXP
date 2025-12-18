@@ -17,9 +17,11 @@ import plotly.graph_objs as go
 
 # Add parent paths to import calibration utilities and highz_exp modules
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "highz-filterbank" / "tools" / "rtviewer"))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "highz-filterbank" / "tools" / "Plotting"))
+root_dir = Path(__file__).parent.parent.parent  # src/filterbank/visualization -> src
+highz_filterbank_root = root_dir.parent.parent  # src -> Highz-EXP
+sys.path.insert(0, str(root_dir))  # For highz_exp module
+sys.path.insert(0, str(highz_filterbank_root / "highz-filterbank" / "tools" / "rtviewer"))
+sys.path.insert(0, str(highz_filterbank_root / "highz-filterbank" / "tools" / "Plotting"))
 
 try:
     import calibration_utils as cal
@@ -46,7 +48,7 @@ S21_DIR = "/Users/abdullaalhosani/Projects/highz/highz-filterbank/characterizati
 
 # Correction flags (modular - easily togglable)
 APPLY_S21_CORRECTIONS = True  # Apply S21 loss correction from S-parameter files
-APPLY_FILTER_NORMALIZATION = False  # Normalize filter responses to align spectra (calculated from measurement data)
+APPLY_FILTER_NORMALIZATION = True  # Normalize filter responses to align spectra (calculated from measurement data)
 
 # Initialize Dash app
 app = Dash(__name__)
@@ -334,8 +336,10 @@ def get_per_filter_calibration(data_date=None):
         # Power levels (actual measured output from LO)
         # low_power_dbm = -40.0
         # high_power_dbm = -31.0
-        low_power_dbm = -23.0
-        high_power_dbm = -14.0
+        # low_power_dbm = -23.0
+        # high_power_dbm = -14.0
+        low_power_dbm = -9.0
+        high_power_dbm = 0.0
         
         s21_corrections = load_s21_corrections()
         filter_centers = [904.0 + i * 2.6 for i in range(21)]
@@ -756,7 +760,7 @@ def load_and_display(n_clicks, selected_date, selected_file):
         title=f"Calibrated Power Spectrum - {data_time_display}",
         xaxis_title="Frequency (MHz)",
         yaxis_title="Power (dBm)",
-        yaxis_range=[-80,-30],
+        yaxis_range=[-70,-20],
         xaxis_range=[0, 300],
         template="plotly_white",
         hovermode='closest',
