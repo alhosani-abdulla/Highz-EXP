@@ -13,7 +13,10 @@ ViewSpecs() {
 
 CompressSpecs() {
     export PIPENV_PIPFILE=$SRC_PATH/Pipfile
-    pipenv run python $SRC_PATH/src/highz_exp/file_compressor.py "$@"
+    DATA_PATH='/home/peterson/Data/INDURANCE'
+    COMPRESS_PATH='/home/peterson/Data/INDURANCE/compressed'
+    INPUT_PATH="$DATA_PATH/$@"
+    pipenv run python $SRC_PATH/src/highz_exp/file_compressor.py $INPUT_PATH $COMPRESS_PATH
 }
 
 CreatePlot() {

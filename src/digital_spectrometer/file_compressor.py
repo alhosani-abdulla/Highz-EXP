@@ -2,9 +2,6 @@ from highz_exp import file_load
 from datetime import datetime
 import sys, os, logging
 
-DATA_PATH = '/home/peterson/Data/INDURANCE'
-COMPRESS_PATH = '/home/peterson/Data/INDURANCE/compressed'
-
 pbase = os.path.basename
 
 def setup_logging(level=logging.INFO, output_file=False):
@@ -27,24 +24,27 @@ def __main__():
     Please specify the directory containing the .npy files saved in one day.
     
     Usage:
-        python file_compressor.py 20251105
+        python file_compressor.py /home/peterson/Data/INDURANCE/20251105/ /home/peterson/Data/INDURANCE/compressed/
         
-    This then compressses files in /home/peterson/Data/INDURANCE/20251105/"""
+    This then compressses files in /home/peterson/Data/INDURANCE/20251105/
+    And saves the compressed files in /home/peterson/Data/INDURANCE/compressed/20251105/
+    
+    Notice that this must be run in a date directory that contains multiple subdirectories, each representing an observation cycle."""
         
     args = sys.argv[1:]
-    if len(args) < 1:
+    if len(args) < 2:
         print("Insufficient arguments provided.")
         print(help_use)
         sys.exit(1)
     
-    input_dir = os.path.join(DATA_PATH, args[0])
+    input_dir = args[0]
 
     if not os.path.isdir(input_dir):
         logging.error(f"The specified directory does not exist: {input_dir}")
         sys.exit(1)
 
     date = pbase(args[0])
-    output_dir = os.path.join(COMPRESS_PATH, date)
+    output_dir = os.path.join(args[1], date)
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -75,3 +75,7 @@ def __main__():
             logging.info(f"Successfully condensed stateOC files in {hour_path} into {output_dir}")
         except Exception as e:
             logging.error(f"Error during file condensation for stateOC in {hour_path}: {e}")
+
+if __name__ == "__main__":
+    __main__()
+    logging.info("File compression process completed.")
