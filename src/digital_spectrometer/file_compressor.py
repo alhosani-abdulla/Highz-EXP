@@ -3,6 +3,7 @@ from datetime import datetime
 import sys, os, logging
 
 pbase = os.path.basename
+pjoin = os.path.join
 
 def setup_logging(level=logging.INFO, output_file=False):
     """Setup logging configuration"""
@@ -56,7 +57,7 @@ def __main__():
             try:
                 _ = file_load.condense_npy_by_timestamp(
                     dir_path=hour_path,
-                    output_dir=output_dir,
+                    output_dir=pjoin(output_dir, hour),
                     pattern=f'*state{i}*.npy',
                     time_regex=r'_(\d{6})(?:_|$)',
                     use_pickle=False
