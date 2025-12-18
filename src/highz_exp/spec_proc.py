@@ -1,6 +1,6 @@
-import os
-from os.path import join as pjoin, basename as pbase
 import copy
+from datetime import datetime
+from typing import List
 import numpy as np
 import skrf as rf
 from scipy.signal import savgol_filter
@@ -73,6 +73,120 @@ def smooth_spectrum(data, method='savgol', window=31):
         # unknown method -> return original
         return data.copy()
 
+def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
+    """
+    Removes spike-like peaks in the PSD by detecting outliers and interpolating over them.
+
+    Parameters:
+        freq: np.ndarray
+            Frequency values (same shape as psd).
+        psd: np.ndarray
+            PSD values (V²/Hz or similar).
+        threshold: float
+            How many times the local MAD a point must exceed to be considered a spike.
+        window: int
+            Number of points on each side to use in local median filtering.
+
+    Returns:
+        psd_cleaned: np.ndarray
+            PSD with spikes removed (replaced via interpolation).
+    """
+    from scipy.ndimage import median_filter
+
+    psd = np.asarray(psd)
+    smoothed = median_filter(psd, size=2 * window + 1)
+
+    # Residuals and thresholding
+    residual = psd - smoothed
+    mad = np.median(np.abs(residual))  # median absolute deviation
+    spike_mask = np.abs(residual) > threshold * mad
+
+    # Replace spikes by interpolation
+    psd_cleaned = copy.deepcopy(psd)
+    spike_indices = np.where(spike_mask)[0]
+    keep_indices = np.where(~spike_mask)[0]
+
+    if len(keep_indices) >= 2:
+        psd_cleaned[spike_mask] = np.interp(freq[spike_mask], freq[keep_indices], psd[keep_indices])
+
+    return psd_cleaned
+   
+def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
+    """
+    Remove narrow RFI spikes by comparing each point to a local median and MAD.
+
+    Parameters:
+        window_len: odd integer window size for local statistics (>=3).
+        threshold: multiple of local MAD (median absolute deviation) above which a point is considered a spike.
+        replace: 'median' to replace spikes with local median, 'interp' to interpolate
+                    across spike points using neighboring good points.
+
+    Notes:
+        This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
+        as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
+        can be used to speed up the local-median computation.
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    from scipy.signal import medfilt
+
+    if window_len < 3:
+        return arr
+    wl = int(window_len)
+    if wl % 2 == 0:
+        wl += 1
+    pad = wl // 2
+
+    # try fast sliding-window median/MAD
+    try:
+
+        padded = np.pad(arr, pad, mode="edge")
+        windows = sliding_window_view(padded, wl)
+        local_med = np.median(windows, axis=1)
+        local_mad = np.median(np.abs(windows - local_med[:, None]), axis=1)
+    except Exception:
+        # fallback: try scipy medfilt for median; compute MAD with small local loops
+        try:
+
+            local_med = medfilt(arr, kernel_size=wl)
+            local_mad = np.empty_like(arr)
+            n = arr.size
+            for i in range(n):
+                i0 = max(0, i - pad)
+                i1 = min(n, i + pad + 1)
+                w = arr[i0:i1]
+                m = np.median(w)
+                local_mad[i] = np.median(np.abs(w - m))
+        except Exception:
+            # last resort: global median/MAD
+            gm = np.median(arr)
+            gmad = np.median(np.abs(arr - gm)) or 1.0
+            local_med = np.full_like(arr, gm)
+            local_mad = np.full_like(arr, gmad)
+
+    # detect spikes using MAD (robust to outliers)
+    local_mad_safe = np.where(local_mad <= 0, 1e-12, local_mad)
+    diff = np.abs(arr - local_med)
+    spikes = diff > (threshold * local_mad_safe)
+    if not np.any(spikes):
+        return arr
+
+    if replace == "median":
+        arr = np.where(spikes, local_med, arr)
+    elif replace == "interp":
+        x = np.arange(len(arr))
+        good = (~spikes) & (~np.isnan(arr))
+        if good.sum() < 2:
+            # not enough points to interpolate, fallback to median replacement
+            arr = np.where(spikes, local_med, arr)
+        else:
+            new = arr.copy()
+            new[spikes] = np.interp(x[spikes], x[good], arr[good])
+            arr = new
+    else:
+        raise ValueError("replace must be 'median' or 'interp'")
+
+    return arr
+
 def apply_to_all_ntwks(func, ntwk_dict):
     """Apply a function to the S-parameters of all networks in a dictionary."""
     new_ntwk_dict = {}
@@ -100,6 +214,28 @@ def HP_filter(ntwk, faxis_hz, cutoff_hz):
     filtered_data = remove_freq_range(ntwk, (0, cutoff_hz))
     faxis_filtered = faxis_hz[faxis_hz > cutoff_hz]
     return filtered_data, faxis_filtered
+
+def interpolate_arrs(target_freqs, arr_freq, arr) -> tuple[np.ndarray, float, float]:
+    """
+    Interpolate an array to target frequencies within the common frequency range.
+    Parameters:
+    - target_freqs (array-like): Frequencies to interpolate to (in Hz)
+    - arr_freq (array-like): Original frequencies of the array (in Hz)
+    - arr (array-like): Original array values to interpolate
+    Returns:
+    - interpolated_arr (np.ndarray): Interpolated array values at target frequencies
+    - common_min (float): Minimum frequency of the common range
+    - common_max (float): Maximum frequency of the common range"""
+    min_freq = np.min(target_freqs)
+    common_min = max(min_freq, np.min(arr_freq))
+    max_freq = np.max(target_freqs)
+    common_max = min(max_freq, np.max(arr_freq))
+    
+    interpolate_freq = arr_freq[(arr_freq >= common_min) & (arr_freq <= common_max)]
+    interpolate_arr = arr[(arr_freq >= common_min) & (arr_freq <= common_max)]
+    
+    interpolated_arr = np.interp(target_freqs, interpolate_freq, interpolate_arr)
+    return interpolated_arr, common_min, common_max
 
 def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
     """
@@ -154,3 +290,52 @@ def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
         new_ntwk_dict[label] = interp_ntwk
 
     return new_ntwk_dict
+
+# Adapted from Marcus Bosca's code
+def compile_heatmap_data(alltime_spectra: np.ndarray, timestamps: List[datetime]) -> None:
+    """
+    Organizes pre-loaded spectral data by date, sorts chronologically, 
+    and prepares a heatmap visualization.
+
+    Args:
+        alltime_spectra: A 2D NumPy array of shape (N, M) containing power values.
+        timestamps: A list of N datetime objects corresponding to each spectrum row.
+        
+    Adapted from Marcus's code.
+    """
+    
+    if len(alltime_spectra) != len(timestamps):
+        raise ValueError("The number of spectra must match the number of timestamps.")
+
+    # --- 1. Identify Day Boundaries ---
+    # Since we have datetime objects, we can detect a new day by 
+    # checking when the date changes compared to the previous entry.
+    day_split_indices = [0]
+    for i in range(1, len(timestamps)):
+        if timestamps[i].date() != timestamps[i-1].date():
+            day_split_indices.append(i)
+    day_split_indices.append(len(timestamps))
+
+    # --- 2. Per-Day Segmentation and Sorting ---
+    daily_values = []
+    daily_timestamps = []
+
+    for d in range(len(day_split_indices) - 1):
+        start, end = day_split_indices[d], day_split_indices[d+1]
+        
+        # Sort indices within the day segment chronologically
+        segment_indices = list(range(start, end))
+        sorted_indices = sorted(segment_indices, key=lambda i: timestamps[i])
+        
+        daily_values.append(alltime_spectra[sorted_indices, :])
+        daily_timestamps.append([timestamps[i] for i in sorted_indices])
+
+    if not daily_values:
+        print("No valid daily segments found.")
+        return
+
+    # Set the active dataset to the first day found (index 0)
+    active_data = daily_values[0]
+    active_times = daily_timestamps[0]
+
+    return active_data, active_times

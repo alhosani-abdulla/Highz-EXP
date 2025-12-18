@@ -1,15 +1,16 @@
-from highz_exp import file_load, spec_plot
 import numpy as np
+import sys, os, glob
 from os.path import join as pjoin
-import sys
-import os
-import glob
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-DATA_PATH = '/home/peterson/Data/INDURANCE'
+from highz_exp.spec_class import Spectrum
+from plot_settings import map_filename_to_legend, parse_filename
+from plot_settings import DATA_PATH, LEGEND, COLOR_CODE
+
+print(f"Data path is {DATA_PATH}.")
 
 nfft = 32768
 fs = 3276.8/4
@@ -18,7 +19,6 @@ df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
 freq_range = (0, 500) # MHz
-LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'6" open']
 
 # Modify the start_live_spectrum_view function to use dynamic base path
 def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
@@ -53,27 +53,37 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             if spec_path is None:
                 return
             
-            latest_spec = np.load(spec_path, allow_pickle=True).item()
-            time_dir = os.path.basename(os.path.dirname(spec_path))
-            date_dir = os.path.basename(os.path.dirname(time_dir))
-            spec_state = os.path.basename(spec_path).split('.')[0].split('_')[-1]
-            antenna_name = os.path.basename(spec_path).split('.')[0].split('_')[-2]
-    
+            pbase = os.path.basename
+            
+            latest_npy_load = np.load(spec_path, allow_pickle=True).item()
+            time_dir = os.path.dirname(spec_path)
+            date_dir = pbase(os.path.dirname(time_dir))
+
+            spec_state_no, antenna_name, time_stamp = parse_filename(spec_path)
+            spec_name = map_filename_to_legend(spec_state_no)
+
+            spectrum = Spectrum(faxis_hz, latest_npy_load['spectrum'], 
+                                name=spec_name)
+            
             title = f'Live Spectrum - {antenna_name} - {date_dir}'
-            state_name = f'{time_dir}: {spec_state}'
-            loaded_spec_states = {state_name: latest_spec}
-            dbm_spec_states = file_load.preprocess_states(faxis=faxis_hz, load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
+            state_name = f'{time_stamp}: {spec_state_no}: {spec_name}'
+            loaded_spec_states = {state_name: spectrum}
+
+            dbm_spec_states = Spectrum.preprocess_states(load_states=loaded_spec_states, remove_spikes=False, offset=-128, system_gain=0)
             
             ax.clear()
             
-            state_name, ntwk = next(iter(dbm_spec_states.items()))
-            freq = ntwk.f
-            spectrum = np.real(ntwk.s[:, 0, 0])
+            state_name, spec = dbm_spec_states.popitem()
+            freq = spec.f
+            spectrum = spec.s
             faxis_mhz = freq / 1e6
             
             ax.plot(faxis_mhz, spectrum, label=state_name)
-            ax.set_ylim(-80, -30)
+            ax.set_ylim(-80, -20)
             ax.set_xlim(*freq_range)
+            custom_ticks = [-80, -70, -60, -50, -40, -30, -20]
+            # Set the y-axis ticks to these exact locations
+            ax.set_yticks(custom_ticks)
             ax.legend(fontsize=18)
             ax.set_ylabel(ylabel if ylabel else 'PSD [dBm]', fontsize=20)
             ax.set_xlabel('Frequency [MHz]', fontsize=20)
@@ -115,12 +125,13 @@ def start_live_spectrum_view_dynamic(ylabel=None, update_interval=1000):
             root.quit()
             root.destroy()
 
-def get_latest_base_path():
-    """Find the most recently created subdirectory in the most recent directory"""
+def get_latest_base_path() -> str:
+    """Find the most recently created subdirectory in the most recent directory. Returns full path."""
     try:
         # Find the most recently created directory in DATA_PATH
         directories = glob.glob(pjoin(DATA_PATH, '*/'))
         if not directories:
+            print(f"Error: No directories found in {DATA_PATH}")
             return None
         
         today_dir = max(directories, key=os.path.getctime)
@@ -128,6 +139,7 @@ def get_latest_base_path():
         # Find the most recently created subdirectory
         subdirectories = glob.glob(pjoin(today_dir, '*/'))
         if not subdirectories:
+            print(f"No subdirectories created today in {today_dir}.")
             return None
         
         base_path = max(subdirectories, key=os.path.getctime)
@@ -137,8 +149,6 @@ def get_latest_base_path():
         return None
 
 if __name__ == "__main__":
-
-    
     # Initial path check
     initial_base_path = get_latest_base_path()
     if initial_base_path is None:
@@ -147,6 +157,5 @@ if __name__ == "__main__":
     
     print(f"Starting with base path: {initial_base_path}")
     
-
     start_live_spectrum_view_dynamic(ylabel='PSD [dBm]', update_interval=1000)
 

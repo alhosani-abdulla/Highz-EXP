@@ -6,17 +6,14 @@ This package includes modules for:
 - Processing reflection data  
 - Plotting spectra
 - Converting units
-- Filterbank spectrometer data analysis
 """
 
 __version__ = "0.1.0"
 
 # Import main modules for easier access
 from . import file_load
-from . import spec_plot  
+from . import plotter  
 from . import unit_convert
-from . import filterbank
-from . import filter_plotting
 
 # Import reflection_proc conditionally (requires scikit-rf)
 try:
@@ -26,7 +23,7 @@ except ImportError:
     # scikit-rf not available
     pass
 
-__all__ = ['file_load', 'spec_plot', 'unit_convert', 'filterbank', 'filter_plotting']
+__all__ = ['file_load', 'plotter', 'unit_convert']
 
 # Add reflection_proc to __all__ if it was successfully imported
 if 'reflection_proc' in locals():

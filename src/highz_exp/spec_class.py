@@ -30,6 +30,7 @@ class Spectrum:
         frequency: Iterable[float],
         spectrum: Iterable[float],
         name: str,
+        colorcode: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.freq = np.asarray(frequency, dtype=float).ravel()
@@ -38,6 +39,7 @@ class Spectrum:
             raise ValueError("frequency and spectrum must have the same shape")
         self.name = str(name)
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+        self.colorcode = colorcode
 
     @property
     def s(self) -> np.ndarray:
@@ -63,7 +65,6 @@ class Spectrum:
         """Return a deep copy of the Spectrum."""
         return Spectrum(self.freq.copy(), self.spec.copy(), self.name, dict(self.metadata))
 
-
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
         Resample spectrum onto new_freq. Uses numpy.interp for linear interpolation.
@@ -84,6 +85,24 @@ class Spectrum:
         self.freq = new_freq_arr
         self.spec = new_spec
         return self
+    
+    def despike(self, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> "Spectrum":
+        """
+        Remove narrow RFI spikes by comparing each point to a local median and MAD.
+
+        Parameters:
+            window_len: odd integer window size for local statistics (>=3).
+            threshold: multiple of local MAD above which a point is considered a spike.
+            replace: 'median' to replace spikes with local median, 'interp' to interpolate
+                     across spike points using neighboring good points.
+
+        Notes:
+            This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
+            as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
+            can be used to speed up the local-median computation.
+        """
+        import spec_proc
+        self.spec = spec_proc.despike(self.spec, window_len=window_len, threshold=threshold, replace=replace)
 
     def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3) -> "Spectrum":
         """
@@ -162,3 +181,107 @@ class Spectrum:
 
     def __repr__(self) -> str:
         return f"<Spectrum name={self.name!r} points={self.freq.size} metadata_keys={list(self.metadata.keys())}>"
+    
+    def preprocess(self, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> "Spectrum":
+        """Preprocess the spectrum by converting to the specified unit and removing spikes if required. 
+        
+        Parameters:
+            system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
+        Returns:
+            Spectrum: The processed Spectrum object.
+        """
+        import copy
+        from .unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
+        from .spec_proc import remove_spikes_from_psd
+        
+        copy_spec = copy.deepcopy(self.spec)
+        faxis = self.freq
+        spectrum = copy_spec
+
+        if remove_spikes:
+            spectrum = remove_spikes_from_psd(faxis, spectrum)
+
+        spectrum_dBm = rfsoc_spec_to_dbm(spectrum, offset=offset) - system_gain
+
+        if unit == 'dBm':
+            copy_spec.spec = spectrum_dBm
+        elif unit == 'kelvin':
+            df = float(faxis[1] - faxis[0])
+            spectrum_kelvin = dbm_to_kelvin(spectrum_dBm, df)
+            if normalize is not None:
+                copy_spec.spec =  spectrum_kelvin * normalize
+            else:
+                copy_spec.spec = spectrum_kelvin
+        else:
+            raise ValueError("unit must be dBm or kelvin.")
+        
+        return copy_spec
+    
+    @staticmethod
+    def preprocess_states(load_states, remove_spikes=True, unit='dBm', offset=-135, system_gain=100, normalize=None) -> dict:
+        """Preprocess the loaded states by converting the spectrum to the specified unit and removing spikes if required. 
+        
+        Parameters:
+            load_states: dict of Spectrum objects. {state_name: Spectrum, ...}
+            system_gain: float, the system gain in dB to be discounted from the recorded spectrum.
+
+        Returns:
+            dict: A dictionary of processed network objects. {state_name: Spectrum (processed), ...}
+        """
+        import copy
+        import skrf as rf
+        from .unit_convert import rfsoc_spec_to_dbm, dbm_to_kelvin
+        from .spec_proc import remove_spikes_from_psd
+        
+        assert type(load_states) is dict, "load_states must be a dictionary of Spectrum objects."
+        for state in load_states.values():
+            assert isinstance(state, Spectrum), "All values in load_states must be Spectrum objects."
+        
+        freq = list(load_states.values())[0].freq
+
+        df = float(freq[1] - freq[0])
+        loaded_states_copy = copy.deepcopy(load_states)
+        state_dict = {}
+        for label, state in loaded_states_copy.items():
+            if remove_spikes:
+                spectrum = remove_spikes_from_psd(freq, state.spec)
+            else: spectrum = state.spec
+
+            spectrum_dBm = rfsoc_spec_to_dbm(spectrum, offset=offset) - system_gain
+
+            if unit == 'dBm':
+                state.spec = spectrum_dBm
+            elif unit == 'kelvin':
+                spectrum = dbm_to_kelvin(spectrum_dBm, df)
+                if normalize is not None:
+                    state.spec =  spectrum * normalize
+                else:
+                    state.spec = spectrum
+            else:
+                raise ValueError("unit must be dBm or kelvin.")
+        
+        for label, state in loaded_states_copy.items():
+            spectrum = state.spec
+            state_dict[label] = Spectrum(state.freq, spectrum, name=state.name, metadata=state.metadata,
+                                         colorcode=state.colorcode)
+        return state_dict
+
+    @staticmethod
+    def norm_states(loaded_states, ref_state_label, ref_temp=300, system_gain=100) -> tuple:
+        """Normalize loaded RAW! spectra from digital spectrometer to a reference state and convert to Kelvin.
+
+        Returns:
+        loaded_states_kelvin: dict
+            Dictionary of loaded Spectrum objects with spectra in Kelvin.
+        gain: np.ndarray
+            Normalization factor applied to convert from dBm to Kelvin.
+        """
+        from .unit_convert import rfsoc_spec_to_dbm, norm_factor
+        from .spec_proc import remove_spikes_from_psd
+
+        freq = loaded_states[list(loaded_states.keys())[0]].freq
+        dbm = np.array(rfsoc_spec_to_dbm(remove_spikes_from_psd(freq, loaded_states[ref_state_label].spec)))-system_gain
+        gain = norm_factor(dbm, ref_temp)
+        loaded_states_kelvin = Spectrum.preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
+
+        return loaded_states_kelvin, gain

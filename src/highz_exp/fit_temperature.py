@@ -1,10 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
+from . import plotter
 from scipy.constants import Boltzmann as k_B
 from .spec_proc import smooth_spectrum
 
-class Y_Factor_Thermoeter:
+class Y_Factor_Thermometer:
     """
     Class to handle Y-Factor temperature measurements and calculations.
     """
@@ -13,14 +14,14 @@ class Y_Factor_Thermoeter:
         Initialize with DUT hot and cold spectra. Both in units of milliwatt.
 
         Parameters:
-            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature.
-            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature.
+            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW.
+            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in mW.
             - frequency (np.ndarray): Frequency axis in MHz.
             - DUT_name (str): Name/label for the DUT.
             - T_hot (float): Hot source temperature in Kelvin.
             - T_cold (float): Cold source temperature in Kelvin.
-            - cal_hot (np.ndarray, optional): Calibration spectrum without DUT at hot source temperature.
-            - cal_cold (np.ndarray, optional): Calibration spectrum without DUT at cold source temperature
+            - cal_hot (np.ndarray, optional): Calibration spectrum without DUT at hot source temperature, in mW.
+            - cal_cold (np.ndarray, optional): Calibration spectrum without DUT at cold source temperature, in mW.
             - RBW (float, optional): Resolution Bandwidth in Hz, required if no calibration spectra provided.
         """
         self.DUT_hot = np.array(DUT_hot)
@@ -28,6 +29,8 @@ class Y_Factor_Thermoeter:
         self.Y_factor = self.DUT_hot / self.DUT_cold
         self.CAL_hot = cal_hot
         self.CAL_cold = cal_cold
+        self.T_hot = T_hot
+        self.T_cold = T_cold
         self.RBW = RBW
         self.label = DUT_name
         self.T_sys = self.compute_system_temperature(self.Y_factor, T_hot, T_cold)
@@ -38,7 +41,7 @@ class Y_Factor_Thermoeter:
         else:
             self.g = None # Gain will be calculated later
             if self.RBW is not None:
-                self.g = self.gain_wo_cal(self.DUT_hot, self.DUT_cold, T_hot, T_cold, self.RBW)
+                self.g = self.gain_wo_cal(self.DUT_hot*1e-3, self.DUT_cold*1e-3, T_hot, T_cold, self.RBW)
             self.T_dut = None
             self.T_cal = None
     
@@ -79,8 +82,8 @@ class Y_Factor_Thermoeter:
         Calculation of DUT gain without calibration spectra at two source noise temperatures.
 
         Parameters:
-            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature.
-            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature.
+            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in Watts
+            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in Watts
             - T_hot (float): Hot source temperature in Kelvin.
             - T_cold (float): Cold source temperature in Kelvin.
             - RBW (float): Resolution Bandwidth in Hz.
@@ -118,9 +121,24 @@ class Y_Factor_Thermoeter:
         T_dut = T_sys - T_cal / (10**(g_dut / 10))
         return T_dut
     
+    def plot_gain(self, f_mhz, **kwargs):
+        plotter.plot_gain(f_mhz, self.g, **kwargs)
+    
+    def save(self, save_path):
+        """
+        Save the DUT temperature object to a pickle file.
+
+        Parameters:
+            - save_dir (str): Directory to save the file.
+            - filename (str): Name of the pickle file.
+        """
+        import pickle
+        with open(save_path, 'wb') as f:
+            pickle.dump(self, f)
+    
     @staticmethod
     def plot_temps(faxis, temp_values, labels, start_freq=10, end_freq=400, ymax=None,
-                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="temperature (Kelvin)", save_path=None):
+                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None):
         """
         Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
@@ -156,57 +174,63 @@ class Y_Factor_Thermoeter:
         if save_path is not None:
             plt.savefig(save_path)
         plt.show()
+    
+    def infer_temperature(self, f, spec, start_freq=10, end_freq=400,
+                        smoothing='savgol', window_size=31, ymax=None, title=None, save_path=None):
+        """
+        Plot temperature inference with optional smoothing.
 
-        
-def infer_temperature(faxis, g_values, b_values, y_values, start_freq=10, end_freq=400,
-                     smoothing='savgol', window_size=31, title=None, save_path=None):
-    """
-    Plot temperature inference with optional smoothing.
+        Parameters:
+        -----------
+        f : np.ndarray. In MHz
+        smoothing : str, optional
+            Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
+        window_size : int, optional
+            Window size for smoothing (must be odd for savgol)
+        """
+        # Find the index closest to start_freq and end_freq
+        start_idx = np.argmin(np.abs(f - start_freq))
+        end_idx = np.argmin(np.abs(f - end_freq))
 
-    Parameters:
-    -----------
-    smoothing : str, optional
-        Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
-    window_size : int, optional
-        Window size for smoothing (must be odd for savgol)
-    """
-    # Find the index closest to start_freq and end_freq
-    start_idx = np.argmin(np.abs(faxis - start_freq))
-    end_idx = np.argmin(np.abs(faxis - end_freq))
+        g_values = (self.DUT_hot - self.DUT_cold)/(self.T_hot - self.T_cold)
+        noise_values = (self.DUT_cold - g_values * self.T_cold)
 
-    y_arr = np.asarray(y_values, dtype=float)
-    g_arr = np.asarray(g_values, dtype=float)
-    b_arr = np.asarray(b_values, dtype=float)
-    x_arr = (y_arr - b_arr)/g_arr
+        y_arr = np.asarray(spec, dtype=float)
+        g_arr = np.asarray(g_values, dtype=float)
+        b_arr = np.asarray(noise_values, dtype=float)
+        temp_arr = (y_arr - b_arr)/g_arr
 
-    # Extract the frequency range
-    freq_range = faxis[start_idx:end_idx+1]
-    temp_range = x_arr[start_idx:end_idx+1]
+        # Extract the frequency range
+        freq_range = f[start_idx:end_idx+1]
+        temp_range = temp_arr[start_idx:end_idx+1]
 
-    # Apply smoothing
-    smoothed = smooth_spectrum(temp_range, method=smoothing, window=window_size)
+        # Apply smoothing
+        smoothed = smooth_spectrum(temp_range, method=smoothing, window=window_size)
 
-    plt.figure(figsize=(12, 8))
+        plt.figure(figsize=(12, 8))
 
-    # Plot raw data
-    plt.plot(freq_range, temp_range, 'o', alpha=0.4, markersize=6,
-             label='Raw data', color='steelblue')
+        # Plot raw data
+        plt.plot(freq_range, temp_range, 'o', alpha=0.4, markersize=6,
+                label='Raw data', color='steelblue')
 
-    # Plot smoothed line
-    plt.plot(freq_range, smoothed, '-', linewidth=2.5,
-             label=f'Smoothed (window={window_size})', color='darkred')
+        # Plot smoothed line
+        plt.plot(freq_range, smoothed, '-', linewidth=2.5,
+                label=f'Smoothed (window={window_size})', color='darkred')
 
-    plt.xlabel('Frequency (MHz)', fontsize=20)
-    plt.ylabel('Temperature (Kelvin)', fontsize=20)
-    plt.tick_params(axis='both', which='major', labelsize=18)
-    plt.title(title, fontsize=22)
-    plt.legend(fontsize=16)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+        if ymax is not None:
+            plt.ylim(top=ymax)
 
-    if save_path is not None:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
+        plt.xlabel('Frequency (MHz)', fontsize=20)
+        plt.ylabel('Temperature (Kelvin)', fontsize=20)
+        plt.tick_params(axis='both', which='major', labelsize=18)
+        plt.title(title, fontsize=22)
+        plt.legend(fontsize=16)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
 
-    return smoothed  # Return smoothed data if needed for further analysis
+        if save_path is not None:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        return smoothed  # Return smoothed data if needed for further analysis
 

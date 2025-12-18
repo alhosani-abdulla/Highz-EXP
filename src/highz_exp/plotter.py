@@ -1,8 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 from .spec_class import Spectrum
 from os.path import join as pjoin, basename as pbase
-import os
+from matplotlib.colors import PowerNorm
+from matplotlib.ticker import NullLocator
+import matplotlib.dates as mdates
+from datetime import datetime
+from typing import List
+import logging
 import skrf as rf
 
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'Open Circuit state']
@@ -138,70 +144,80 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
 
     plt.show()
 
-def plot_smith_chart(ntwk_dict, suffix='LNA', save_plot=True, save_dir=None, legend_loc='best', title='Smith Chart',
-                     freq_range=None):
+
+def plot_s1p(ntwk_dict, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
     """
-    Plot Smith chart from one or more scikit-rf Network objects.
+    Plot multiple reflections from .s1p Network objects on the same axes.
+
     Parameters:
-    - ntwk_dict (dict): {label: rf.Network} pairs.
-    - suffix (str): Used for output filename if saving.
-    - legend_loc (str): Location of the legend. Default is 'best'.
-    - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
-                         If None, plots all frequencies.
+    - ntwk_dict (dict): {'label': rf.Network}
+    - db (bool): If True, plot reflection in dB
+    - show_phase (bool): If True, also plot phase in degrees (dashed lines)
+    - attenuation (float): Attenuation added to the magnitude (dB)
+    - save_dir (str): directory to save the combined plot
+    - suffix (str): optional suffix for saved filename
+
+    Returns:
+    - dict: the same ntwk_dict passed in
     """
-    # Filter networks by frequency range if specified
-    if freq_range is not None:
-        min_freq, max_freq = freq_range
-        filtered_ntwk_dict = {}
-        for label, ntwk in ntwk_dict.items():
-            # Create frequency mask
-            freq_mask = (ntwk.f >= min_freq) & (ntwk.f <= max_freq)
-            if np.any(freq_mask):
-                # Create new network with filtered frequencies
-                filtered_ntwk = ntwk.copy()
-                filtered_ntwk.f = ntwk.f[freq_mask]
-                filtered_ntwk.s = ntwk.s[freq_mask]
-                filtered_ntwk_dict[label] = filtered_ntwk
-            else:
-                print(f"Warning: No frequencies in range for {label}")
-        ntwk_dict = filtered_ntwk_dict
-    
     if not ntwk_dict:
-        print("No networks to plot after frequency filtering")
-        return
-    
-    fig, ax = plt.subplots()
-    fig.set_size_inches(10, 8)
-    for label, ntwk in ntwk_dict.items():
-        ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
-    
-    for text in ax.texts:
-        text.set_fontsize(18)
+        print("No networks provided.")
+        return ntwk_dict
 
-    # Update axis labels (Real and Imaginary)
-    ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=18)
-    ax.set_ylabel(ax.get_ylabel(), fontsize=18, labelpad=18)
+    fig, ax1 = plt.subplots(figsize=(14, 8))
+    if show_phase:
+        # replace the single axis with two stacked axes (top: magnitude, bottom: phase)
+        fig.clf()
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1])
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+    else:
+        ax2 = None
 
-    ax.set_title(title, fontsize=20)
-    
-    ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0, fontsize=18)
-    plt.tight_layout()
-    
-    if save_plot:
-        suffix = suffix.replace(' ', '_')
-        # Save to current directory if no path info is available
-        if save_dir is None:
-            save_dir = os.getcwd()
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        
-        # Add frequency range to filename if specified
-        filename = f'{suffix}_smith_chart'
-        filename += '.png'
-        
-        fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    for idx, (label, network) in enumerate(ntwk_dict.items()):
+        freq = network.f
+        s11 = network.s[:, 0, 0]
+        mag = 20 * np.log10(np.abs(s11)) + attenuation if db else np.abs(s11)
+        phase = np.angle(s11, deg=True)
+
+        color = color_cycle[idx % len(color_cycle)]
+        ax1.plot(freq / 1e6, mag, label=f'{label}', color=color)
+        if show_phase:
+            ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
+
+    ax1.set_xlabel('Frequency [MHz]', fontsize=20)
+    ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
+    ax1.grid(True)
+    ax1.tick_params(axis='both', which='major', labelsize=18)
+    if ymax is not None:
+        ax1.set_ylim(top=ymax)
+    if ymin is not None:
+        ax1.set_ylim(bottom=ymin)
+
+    if show_phase:
+        ax2.set_ylabel('Phase [deg]', color='r', fontsize=18)
+        ax2.tick_params(axis='y', labelsize=16)
+
+        # Combine legends from both axes
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, fontsize=18, loc='best')
+    else:
+        ax1.legend(loc='best', fontsize=18)
+
+    plt.title(title, fontsize=22)
+    fig.tight_layout()
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        safe_suffix = f"_{suffix}" if suffix else ""
+        plt.savefig(f'{save_dir}/Reflection{safe_suffix}.png', dpi=150, bbox_inches='tight')
+
     plt.show()
-    
+    return ntwk_dict
+
 def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
     """
     Plot and load gain from a .s2p file (or list of .s2p files) using scikit-rf.
@@ -280,11 +296,11 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, title='Recorded Spectrum', show_plot=True):
+def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=-75, ymax=None, freq_range=None, yticks=None, title='Recorded Spectrum', show_plot=True):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
-        - loaded_specs: list of Spectrum objects to plot
+        - loaded_specs: list of Spectrum objects to plot, with frequency in Hz.
         - ymin (float): Minimum y-axis value
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
@@ -302,7 +318,11 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
-            color = color_cycle[idx % len(color_cycle)]
+            if spec.colorcode is not None:
+                color = spec.colorcode
+            else:
+                color = color_cycle[idx % len(color_cycle)]
+
             plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
             
             ymax_state = np.max(spectrum)
@@ -318,7 +338,10 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
             # Convert frequency to MHz for plotting
             faxis_mhz = freq / 1e6
             
-            color = color_cycle[idx % len(color_cycle)]
+            if spec.colorcode is not None:
+                color = spec.colorcode
+            else:
+                color = color_cycle[idx % len(color_cycle)]
             plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
 
     ylim = (ymin, ymax)
@@ -332,6 +355,8 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     plt.ylabel(ylabel, fontsize=20)
     plt.xlabel('Frequency [MHz]', fontsize=20)
     plt.tick_params(axis='both', which='major', labelsize=18)
+    if yticks is not None:
+        plt.yticks(yticks)
     plt.title(title, fontsize=22)
     plt.grid(True)
     plt.tight_layout()
@@ -342,19 +367,24 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
         plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight')
     if show_plot:
         plt.show()
+    else:
+        plt.close()
 
-def plot_gain(faxis, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None):
-    """Plot gain(s) of DUT over frequency."""
+def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None):
+    """Plot gain over a specified frequency range.
+    
+    Parameters:
+        - f (np.ndarray): Frequency axis in MHz.
+        - gain (np.ndarray or list of np.ndarray): Gain values in dB."""
     # Find the index closest to start_freq and end_freq
-    start_idx = np.argmin(np.abs(faxis - start_freq))
-    end_idx = np.argmin(np.abs(faxis - end_freq))
-
+    start_idx = np.argmin(np.abs(f - start_freq))
+    end_idx = np.argmin(np.abs(f - end_freq))
     plt.figure(figsize=(12, 8))
     if not isinstance(gain, list):
-        plt.plot(faxis[start_idx:end_idx+1], gain[start_idx:end_idx+1])
+        plt.plot(f[start_idx:end_idx+1], gain[start_idx:end_idx+1])
     else:
         for g, lab in zip(gain, label):
-            plt.plot(faxis[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
+            plt.plot(f[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
         plt.legend(fontsize=18)
     
     if ymax is not None:
@@ -370,4 +400,164 @@ def plot_gain(faxis, gain, label=None, start_freq=10, end_freq=400, ymax=None, x
         plt.savefig(save_path)
     plt.show()
 
+def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20):
+    """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
+    
+    Parameters:
+    -----------
+    - datetimes: np.array of datetime objects. """
+    fig, ax = plt.subplots(figsize=(18, 10))
 
+    timezone = datetimes[0].tzinfo
+    time_hours = mdates.date2num(datetimes)
+
+    # Clip spectra to maximum power level
+    spectra_clipped = np.clip(spectra, vmin, vmax)
+
+    # Format y-axis as time
+    ax.yaxis_date()
+    date_form = mdates.DateFormatter('%d - %H:%M', tz=timezone)
+    ax.yaxis.set_major_formatter(date_form)
+    ax.yaxis.set_major_locator(mdates.HourLocator(interval=2))
+
+    # Create heatmap
+    im = ax.imshow(spectra_clipped, aspect='auto', origin='lower',
+                   extent=[faxis_mhz[0], faxis_mhz[-1],
+                           time_hours[0], time_hours[-1]],
+                   cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
+
+    ax.set_xlabel('Frequency (MHz)', fontsize=18)
+    ax.set_ylabel(f'{timezone} Time (hours)', fontsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=16)
+
+    ax.set_title(title, fontsize=20)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Power (dBm)', fontsize=18)
+    cbar.ax.tick_params(labelsize=16)
+
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        logging.info("Heatmap saved to %s", output_path)
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+# Adapted from Marcus Bosca's code
+def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mode: str = "collection",
+    max_display_rows: int = 1000, max_display_cols: int = 1000) -> None:
+    """
+    Creates an interactive heatmap with dynamic downsampling and UTC time ticks.
+    """
+    num_rows, num_cols = spectra.shape
+    
+    # --- 1. Setup Figure and Normalization ---
+    fig, ax = plt.subplots(figsize=(12, 8))
+    plt.subplots_adjust(bottom=0.20)
+    
+    if mode == "collection":
+        norm = PowerNorm(gamma=4, vmin=-70, vmax=-50)
+    else:
+        norm = PowerNorm(gamma=1, vmin=-70, vmax=-35)
+
+    # Frequency and Time Extents
+    x_extent = (0.0, 409.6)
+    y_extent = (0.0, float(num_rows))
+
+    # --- 2. UI Elements (HUD) ---
+    hud_text = ax.text(
+        0.01, 0.995, "",
+        transform=ax.transAxes, va="top", ha="left",
+        fontsize=9, color="white",
+        bbox=dict(boxstyle="round", facecolor="black", alpha=0.35, pad=0.05)
+    )
+
+    # --- 3. Helper Functions ---
+    def update_time_ticks(row_start: int, row_end: int):
+        """Maps row indices to formatted UTC strings for the Y-axis."""
+        num_ticks = 10
+        if row_end <= row_start + 1:
+            return
+        
+        # Select evenly spaced indices within the current view
+        tick_rows = np.linspace(row_start, row_end - 1, num_ticks).astype(int)
+        # Format the datetime objects
+        tick_labels = [timestamps[r].strftime("%H:%M:%S") for r in tick_rows]
+        
+        ax.set_yticks(tick_rows)
+        ax.set_yticklabels(tick_labels)
+        ax.yaxis.set_minor_locator(NullLocator())
+
+    def render_view(event=None):
+        """Calculates which data to show based on the current zoom/pan."""
+        x_lim = ax.get_xlim()
+        y_lim = ax.get_ylim()
+
+        # Clamp limits to actual data boundaries
+        x0 = max(x_extent[0], min(x_extent[1], x_lim[0]))
+        x1 = max(x_extent[0], min(x_extent[1], x_lim[1]))
+        y0 = max(y_extent[0], min(y_extent[1], y_lim[0]))
+        y1 = max(y_extent[0], min(y_extent[1], y_lim[1]))
+
+        # Convert coordinate limits to array indices
+        col0 = int((min(x0, x1) - x_extent[0]) / (x_extent[1] - x_extent[0]) * num_cols)
+        col1 = int((max(x0, x1) - x_extent[0]) / (x_extent[1] - x_extent[0]) * num_cols)
+        row0 = int(min(y0, y1))
+        row1 = int(max(y0, y1))
+
+        # Slice the data for the current view
+        view = spectra[row0:row1, col0:col1]
+        v_rows, v_cols = view.shape
+        if v_rows == 0 or v_cols == 0: return
+
+        # Calculate downsampling steps to stay under max_display limits
+        step_r = max(1, int(np.ceil(v_rows / max_display_rows)))
+        step_c = max(1, int(np.ceil(v_cols / max_display_cols)))
+        
+        view_ds = view[::step_r, ::step_c]
+
+        # Update image data and extent
+        im.set_data(view_ds)
+        im.set_extent([
+            x_extent[0] + (col0 / num_cols) * (x_extent[1] - x_extent[0]),
+            x_extent[0] + (col1 / num_cols) * (x_extent[1] - x_extent[0]),
+            row1, # Top of view
+            row0  # Bottom of view
+        ])
+
+        hud_text.set_text(f"Zoomed View: {row1-row0} rows x {col1-col0} cols | Downsample: {step_r}x")
+        update_time_ticks(row0, row1)
+        fig.canvas.draw_idle()
+
+    # --- 4. Initial Plotting ---
+    # Create the image object with an initial full-view downsample
+    full_step_r = max(1, int(np.ceil(num_rows / max_display_rows)))
+    full_step_c = max(1, int(np.ceil(num_cols / max_display_cols)))
+    
+    im = ax.imshow(
+        spectra[::full_step_r, ::full_step_c],
+        cmap='inferno',
+        norm=norm,
+        aspect='auto',
+        extent=[x_extent[0], x_extent[1], num_rows, 0], # Note: y-axis is inverted (row 0 at top)
+        interpolation="nearest",
+        rasterized=True
+    )
+
+    # Visual Styling
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('Power (dBm)', fontsize=14)
+    ax.set_title(f'Spectrometer Data - {timestamps[0].strftime("%b %d, %Y")}', fontsize=16)
+    ax.set_xlabel('Frequency (MHz)', fontsize=12)
+    ax.set_ylabel('Time (UTC)', fontsize=12)
+
+    # Connect the 'render_view' function to zoom/pan events
+    ax.callbacks.connect('xlim_changed', render_view)
+    ax.callbacks.connect('ylim_changed', render_view)
+
+    # Initial labels
+    update_time_ticks(0, num_rows)
+    render_view() 
+    
+    plt.show()
