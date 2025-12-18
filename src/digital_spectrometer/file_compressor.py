@@ -65,17 +65,19 @@ def __main__():
                 logging.info(f"Successfully condensed state{i} files in {hour_path} into {output_dir}")
             except Exception as e:
                 logging.error(f"Error during file condensation for state{i} in {hour_path}: {e}")
-        try:
-            _ = file_load.condense_npy_by_timestamp(
-                dir_path=hour_path,
-                output_dir=output_dir,
-                pattern='*stateOC*.npy',
-                time_regex=r'_(\d{6})(?:_|$)',
-                use_pickle=False
-            )
-            logging.info(f"Successfully condensed stateOC files in {hour_path} into {output_dir}")
-        except Exception as e:
-            logging.error(f"Error during file condensation for stateOC in {hour_path}: {e}")
+#! This section is commented out because we've redesigned our relay board and calibration system in Dec 2025. 
+#! And we no longer have the OC states.
+        # try:
+        #     _ = file_load.condense_npy_by_timestamp(
+        #         dir_path=hour_path,
+        #         output_dir=output_dir,
+        #         pattern='*stateOC*.npy',
+        #         time_regex=r'_(\d{6})(?:_|$)',
+        #         use_pickle=False
+        #     )
+        #     logging.info(f"Successfully condensed stateOC files in {hour_path} into {output_dir}")
+        # except Exception as e:
+        #     logging.error(f"Error during file condensation for stateOC in {hour_path}: {e}")
 
 if __name__ == "__main__":
     __main__()

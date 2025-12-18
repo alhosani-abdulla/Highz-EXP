@@ -1,5 +1,7 @@
 import numpy as np
-import os, glob, re, pickle
+import os, glob, re, pickle, zoneinfo
+from datetime import datetime, date, timedelta, timezone
+from typing import List, Dict, Union, Optional
 import skrf as rf
 import logging
 
@@ -307,3 +309,57 @@ def states_to_ntwk(f, loaded_states):
             ntwk_dict[state_name] = rf.Network(f=f, name=state_name, s=spectrum.reshape(-1, 1, 1))
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
+
+def get_date_state_specs(date_dir, state_indx=0):
+    """Collect all spectrum files for a given date and state index."""
+    all_items = glob.glob(pjoin(date_dir, "*"))
+    time_dirs = [d for d in all_items if os.path.isdir(d)]
+    time_dirs.sort()
+    logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
+    if len(time_dirs) == 0:
+        logging.error("No sub directories found in %s", date_dir)
+        return
+    
+    loaded = {}
+    for time_dir in time_dirs:
+        loaded.update(add_timestamp(time_dir, pbase(date_dir), state_indx)) 
+
+    return loaded
+
+def add_timestamp(time_dir, date_str, state_no) -> dict:
+    """Load all spectrum files in a data-collecting cycle (one set of sky spectra + one set of calibration spectra) and return a dict with timestamp keys.
+
+    Parameters:
+    -----------
+    time_dir : str
+                Path to the directory containing spectrum .npy files for a specific cycle.
+
+    Returns:
+    --------
+    loaded : dict
+            Dictionary with the following structure:
+            {'timestamp_str': {'spectrum': np.ndarray, ...}, 'full_timestamp': datetime, ...}
+    """
+    all_specs = sorted(glob.glob(pjoin(time_dir, f"*state{state_no}*")))
+    loaded = {}
+    for spec_file in all_specs:
+        loaded.update(load_npy_dict(spec_file))
+    time_dirname = pbase(time_dir)
+    datestamp = datetime.strptime(date_str, '%Y%m%d').date()
+
+    for timestamp_str in loaded.keys():
+        timestamp = datetime.strptime(timestamp_str, '%H%M%S').time()
+        if time_dirname.startswith("23"):
+            if timestamp.hour <= 1:
+                # Assign to next day
+                full_timestamp = datetime.combine(
+                    datestamp + timedelta(days=1), timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+            else:
+                full_timestamp = datetime.combine(
+                    datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+        else:
+            full_timestamp = datetime.combine(
+                datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+        loaded[timestamp_str]['full_timestamp'] = full_timestamp
+  
+    return loaded

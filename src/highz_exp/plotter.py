@@ -1,8 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 from .spec_class import Spectrum
 from os.path import join as pjoin, basename as pbase
-import os
+from matplotlib.colors import PowerNorm
+from matplotlib.ticker import NullLocator
+import matplotlib.dates as mdates
+from datetime import datetime
+from typing import List
+import logging
 import skrf as rf
 
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'Open Circuit state']
@@ -394,4 +400,164 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabe
         plt.savefig(save_path)
     plt.show()
 
+def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20):
+    """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
+    
+    Parameters:
+    -----------
+    - datetimes: np.array of datetime objects. """
+    fig, ax = plt.subplots(figsize=(18, 10))
 
+    timezone = datetimes[0].tzinfo
+    time_hours = mdates.date2num(datetimes)
+
+    # Clip spectra to maximum power level
+    spectra_clipped = np.clip(spectra, vmin, vmax)
+
+    # Format y-axis as time
+    ax.yaxis_date()
+    date_form = mdates.DateFormatter('%d - %H:%M', tz=timezone)
+    ax.yaxis.set_major_formatter(date_form)
+    ax.yaxis.set_major_locator(mdates.HourLocator(interval=2))
+
+    # Create heatmap
+    im = ax.imshow(spectra_clipped, aspect='auto', origin='lower',
+                   extent=[faxis_mhz[0], faxis_mhz[-1],
+                           time_hours[0], time_hours[-1]],
+                   cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
+
+    ax.set_xlabel('Frequency (MHz)', fontsize=18)
+    ax.set_ylabel(f'{timezone} Time (hours)', fontsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=16)
+
+    ax.set_title(title, fontsize=20)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Power (dBm)', fontsize=18)
+    cbar.ax.tick_params(labelsize=16)
+
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        logging.info("Heatmap saved to %s", output_path)
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+# Adapted from Marcus Bosca's code
+def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mode: str = "collection",
+    max_display_rows: int = 1000, max_display_cols: int = 1000) -> None:
+    """
+    Creates an interactive heatmap with dynamic downsampling and UTC time ticks.
+    """
+    num_rows, num_cols = spectra.shape
+    
+    # --- 1. Setup Figure and Normalization ---
+    fig, ax = plt.subplots(figsize=(12, 8))
+    plt.subplots_adjust(bottom=0.20)
+    
+    if mode == "collection":
+        norm = PowerNorm(gamma=4, vmin=-70, vmax=-50)
+    else:
+        norm = PowerNorm(gamma=1, vmin=-70, vmax=-35)
+
+    # Frequency and Time Extents
+    x_extent = (0.0, 409.6)
+    y_extent = (0.0, float(num_rows))
+
+    # --- 2. UI Elements (HUD) ---
+    hud_text = ax.text(
+        0.01, 0.995, "",
+        transform=ax.transAxes, va="top", ha="left",
+        fontsize=9, color="white",
+        bbox=dict(boxstyle="round", facecolor="black", alpha=0.35, pad=0.05)
+    )
+
+    # --- 3. Helper Functions ---
+    def update_time_ticks(row_start: int, row_end: int):
+        """Maps row indices to formatted UTC strings for the Y-axis."""
+        num_ticks = 10
+        if row_end <= row_start + 1:
+            return
+        
+        # Select evenly spaced indices within the current view
+        tick_rows = np.linspace(row_start, row_end - 1, num_ticks).astype(int)
+        # Format the datetime objects
+        tick_labels = [timestamps[r].strftime("%H:%M:%S") for r in tick_rows]
+        
+        ax.set_yticks(tick_rows)
+        ax.set_yticklabels(tick_labels)
+        ax.yaxis.set_minor_locator(NullLocator())
+
+    def render_view(event=None):
+        """Calculates which data to show based on the current zoom/pan."""
+        x_lim = ax.get_xlim()
+        y_lim = ax.get_ylim()
+
+        # Clamp limits to actual data boundaries
+        x0 = max(x_extent[0], min(x_extent[1], x_lim[0]))
+        x1 = max(x_extent[0], min(x_extent[1], x_lim[1]))
+        y0 = max(y_extent[0], min(y_extent[1], y_lim[0]))
+        y1 = max(y_extent[0], min(y_extent[1], y_lim[1]))
+
+        # Convert coordinate limits to array indices
+        col0 = int((min(x0, x1) - x_extent[0]) / (x_extent[1] - x_extent[0]) * num_cols)
+        col1 = int((max(x0, x1) - x_extent[0]) / (x_extent[1] - x_extent[0]) * num_cols)
+        row0 = int(min(y0, y1))
+        row1 = int(max(y0, y1))
+
+        # Slice the data for the current view
+        view = spectra[row0:row1, col0:col1]
+        v_rows, v_cols = view.shape
+        if v_rows == 0 or v_cols == 0: return
+
+        # Calculate downsampling steps to stay under max_display limits
+        step_r = max(1, int(np.ceil(v_rows / max_display_rows)))
+        step_c = max(1, int(np.ceil(v_cols / max_display_cols)))
+        
+        view_ds = view[::step_r, ::step_c]
+
+        # Update image data and extent
+        im.set_data(view_ds)
+        im.set_extent([
+            x_extent[0] + (col0 / num_cols) * (x_extent[1] - x_extent[0]),
+            x_extent[0] + (col1 / num_cols) * (x_extent[1] - x_extent[0]),
+            row1, # Top of view
+            row0  # Bottom of view
+        ])
+
+        hud_text.set_text(f"Zoomed View: {row1-row0} rows x {col1-col0} cols | Downsample: {step_r}x")
+        update_time_ticks(row0, row1)
+        fig.canvas.draw_idle()
+
+    # --- 4. Initial Plotting ---
+    # Create the image object with an initial full-view downsample
+    full_step_r = max(1, int(np.ceil(num_rows / max_display_rows)))
+    full_step_c = max(1, int(np.ceil(num_cols / max_display_cols)))
+    
+    im = ax.imshow(
+        spectra[::full_step_r, ::full_step_c],
+        cmap='inferno',
+        norm=norm,
+        aspect='auto',
+        extent=[x_extent[0], x_extent[1], num_rows, 0], # Note: y-axis is inverted (row 0 at top)
+        interpolation="nearest",
+        rasterized=True
+    )
+
+    # Visual Styling
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('Power (dBm)', fontsize=14)
+    ax.set_title(f'Spectrometer Data - {timestamps[0].strftime("%b %d, %Y")}', fontsize=16)
+    ax.set_xlabel('Frequency (MHz)', fontsize=12)
+    ax.set_ylabel('Time (UTC)', fontsize=12)
+
+    # Connect the 'render_view' function to zoom/pan events
+    ax.callbacks.connect('xlim_changed', render_view)
+    ax.callbacks.connect('ylim_changed', render_view)
+
+    # Initial labels
+    update_time_ticks(0, num_rows)
+    render_view() 
+    
+    plt.show()

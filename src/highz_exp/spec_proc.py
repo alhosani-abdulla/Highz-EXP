@@ -1,4 +1,6 @@
 import copy
+from datetime import datetime
+from typing import List
 import numpy as np
 import skrf as rf
 from scipy.signal import savgol_filter
@@ -288,3 +290,52 @@ def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
         new_ntwk_dict[label] = interp_ntwk
 
     return new_ntwk_dict
+
+# Adapted from Marcus Bosca's code
+def compile_heatmap_data(alltime_spectra: np.ndarray, timestamps: List[datetime]) -> None:
+    """
+    Organizes pre-loaded spectral data by date, sorts chronologically, 
+    and prepares a heatmap visualization.
+
+    Args:
+        alltime_spectra: A 2D NumPy array of shape (N, M) containing power values.
+        timestamps: A list of N datetime objects corresponding to each spectrum row.
+        
+    Adapted from Marcus's code.
+    """
+    
+    if len(alltime_spectra) != len(timestamps):
+        raise ValueError("The number of spectra must match the number of timestamps.")
+
+    # --- 1. Identify Day Boundaries ---
+    # Since we have datetime objects, we can detect a new day by 
+    # checking when the date changes compared to the previous entry.
+    day_split_indices = [0]
+    for i in range(1, len(timestamps)):
+        if timestamps[i].date() != timestamps[i-1].date():
+            day_split_indices.append(i)
+    day_split_indices.append(len(timestamps))
+
+    # --- 2. Per-Day Segmentation and Sorting ---
+    daily_values = []
+    daily_timestamps = []
+
+    for d in range(len(day_split_indices) - 1):
+        start, end = day_split_indices[d], day_split_indices[d+1]
+        
+        # Sort indices within the day segment chronologically
+        segment_indices = list(range(start, end))
+        sorted_indices = sorted(segment_indices, key=lambda i: timestamps[i])
+        
+        daily_values.append(alltime_spectra[sorted_indices, :])
+        daily_timestamps.append([timestamps[i] for i in sorted_indices])
+
+    if not daily_values:
+        print("No valid daily segments found.")
+        return
+
+    # Set the active dataset to the first day found (index 0)
+    active_data = daily_values[0]
+    active_times = daily_timestamps[0]
+
+    return active_data, active_times

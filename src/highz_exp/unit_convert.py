@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.signal import find_peaks
 from scipy.constants import Boltzmann as k_B
-import copy
+import copy, logging
+from datetime import datetime
 import skrf as rf
 
 # Define some helper functions
@@ -37,3 +37,20 @@ def norm_factor(psd_ref, temperature=300):
     """Calculate the normalization factor for psd_ref in dBm to temperature"""
     gain = temperature / dbm_to_kelvin(psd_ref)
     return gain
+
+def convert_utc_list_to_local(utc_timestamps):
+    """
+    Converts a list of naive UTC datetime objects to local timezone-aware objects.
+    """
+    local_timezone = datetime.now().astimezone().tzinfo
+    logging.info(f"Current timezone: {local_timezone}.")
+    local_timestamps = []
+
+    for utc_dt in utc_timestamps:
+        # 1. Make the UTC datetime object timezone-aware (explicitly UTC)
+        # 2. Convert to the local system's timezone
+        local_aware_dt = utc_dt.astimezone(local_timezone)
+        
+        local_timestamps.append(local_aware_dt)
+        
+    return local_timestamps
