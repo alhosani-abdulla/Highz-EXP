@@ -1,427 +1,131 @@
-import os
-import glob
+# Adapted from Marcus's waterfall plotter for digital spectrometer data
+import os, glob, logging, sys
+from datetime import datetime
 import numpy as np
-from astropy.time import Time
-from astropy.coordinates import EarthLocation
-import astropy.units as u
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
-from matplotlib.colors import PowerNorm
-from pathlib import Path
-from matplotlib.widgets import RectangleSelector, Button, TextBox
-from matplotlib.ticker import NullLocator  # kill minor y ticks (non-distorting)
+import matplotlib.dates as mdates
+from highz_exp.unit_convert import rfsoc_spec_to_dbm
+from highz_exp.file_load import load_npy_dict
+from datetime import datetime, date
 
-plt.rcParams['keymap.pan'] = []
-plt.rcParams['keymap.zoom'] = []
+nfft = 32768
+fs = 3276.8/4
+fbins = np.arange(0, nfft//2)
+df = fs/nfft
+faxis = fbins*df
+faxis_hz = faxis*1e6
 
-#quick and dirty solution to make the plot start at maximum
-startMaxDispRows = 500
-startMaxDispCols = 500
+pjoin = os.path.join
 
-minCapRows = 250
-minCapCols = 250
-
-#observing location below
-lat_deg = 38 + 23/60 + 50.0/3600
-lon_deg = -(115 + 58/60 + 41.6/3600)
-
-location = EarthLocation(lat=lat_deg * u.deg,
-						  lon=lon_deg * u.deg,
-						  height=0 * u.m)
-
-folderPath = Path(r"G:\Shared drives\jbp Research\high-z (CMU)\Data\Field_Data\LunarDryLake\2025November\digital_spec_condensed\20251105")
-
-print("Resolved folder path:", folderPath)
-print("Exists?", os.path.isdir(folderPath))
-
-timeFolders  = sorted(glob.glob(os.path.join(folderPath, "*")))
-
-allSpectra = list()
-calibSpectra = list()
-
-for folder in timeFolders:
-	allFiles = sorted(glob.glob(os.path.join(folder, "*")))
-
-	skyFiles = [f for f in allFiles if f.endswith("state1.npy")]
-	calibFiles = [f for f in allFiles if f.endswith("state2.npy")]
-	#calibFiles = [f for f in allFiles if not f.endswith("state1.npy")]
-	calibSpectra.extend(calibFiles)
-	allSpectra.extend(skyFiles)
-
-
-#WORK IN PROGRESS HERE
-def toSidereal(hhmmss):
-	hh = hhmmss[0:2]
-	mm = hhmmss[2:4]
-	ss = hhmmss[4:6]
+def get_date_state_specs(date_dir, state_indx=0):
+	"""Collect all spectrum files for a given date and state index."""
+	time_dirs = sorted(glob.glob(pjoin(date_dir, "*")))
+	logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
+	if len(time_dirs) == 0:
+		logging.error("No sub directories found in %s", date_dir)
+		return
 	
-	utc_string = f"2025-11-02 {hh}:{mm}:{ss}"   #Nov 2nd date; adjust for different day
+	all_specs = [f for time_dir in time_dirs for f in sorted(glob.glob(pjoin(time_dir, "*")))]
+	all_state_specs = [f for f in all_specs if f"state{state_indx}" in f]
+	logging.info("Found %d spectra for state %d", len(all_state_specs), state_indx)
+ 
+	loaded = {}
+	for spec_file in all_state_specs:
+		loaded.update(load_npy_dict(spec_file))
+	return loaded
+
+def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
+	"""Read timestamps and spectra from loaded data. Sort by timestamps."""
+	timestamps = []
+	spectra = []
+	for timestamp_str, spec_dict in loaded.items():
+		timestamps.append(datetime.strptime(timestamp_str, '%H%M%S').time())
+		spectrum = rfsoc_spec_to_dbm(spec_dict['spectrum'], offset=-128)
+		if len(spectrum) != nfft//2:
+			logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(spectrum), nfft//2, timestamp_str)
+			continue
+		spectra.append(spectrum)
 	
-	t = Time(utc_string, scale="utc")
+	timestamps = np.array(timestamps)
+	spectra = np.array(spectra)
 	
-	lst = t.sidereal_time('apparent', longitude=location.lon)
+	sort_idx = np.argsort(timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
+	if sort == 'descending':
+		sort_idx = sort_idx[::-1]
 	
-	return lst.hour   #Return as float sidereal hours
+	return timestamps[sort_idx], spectra[sort_idx]
 
-
-def spec_to_dbm(spectrum, offset=-135):
-	"""Convert recorded spectrum from digital spectrometer to dBm with an offset obtained from calibration."""
-	spectrum = np.array(spectrum)
-	finalSpectrum = 10 * np.log10(spectrum)+offset
-	return finalSpectrum
-
-def compileHeatData(filePaths, state = "collection"):
-	twoDListOfValues = list()
+def plot_waterfall_heatmap(timestamps, spectra, faxis_mhz, title, output_path=None, show_plot=True):
+	"""Create a heatmap of spectra with power levels as color coding."""
+	plt.figure(figsize=(12, 6))
 	
-	collectedUTCTime = []
-	collectedSpectra = []
-	#singleSpectrum = []
-	for path in filePaths:
-		print(path)
-		print()
-		data = np.load(path, allow_pickle = True)
-		data = data.tolist()
-		for key in data:
-			if key.isdigit():
-				if type(data[key]) == dict:
-					collectedUTCTime.append(key)
-					collectedSpectra.append(spec_to_dbm(data[key]["spectrum"].tolist(), -128).tolist())
-					#if len(collectedSpectra) == 22578//2: 
-						#singleSpectrum = spec_to_dbm(data[key]["spectrum"].tolist(), -128).tolist()
-				elif type(data[key]) == list:
-					print("CORRECTED FOR LIST!!!!!!!!!!!!!!!!!!!1!")
-					print
-					correctDict = data[key][0]
-					collectedSpectra.append(spec_to_dbm(correctDict["spectrum"].tolist(), -128).tolist())
-					collectedUTCTime.append(key)
-				print(len(collectedSpectra))
-			elif key == "spectrum":
-				print("still missed data!")
-				#twoDListOfValues.append(spec_to_dbm(data["spectrum"].tolist(), -128).tolist())
-				
-	zippedData = zip(collectedUTCTime, collectedSpectra)
-
-	sortedZippedData = sorted(zippedData, key=lambda item: item[0])
-
-	organizedUTCTime, twoDListOfValues = zip(*sortedZippedData)
-	print("Collected data")
-
-	print(len(twoDListOfValues))
-	#print(singleSpectrum)
+	# Convert time objects to datetime objects (add today's date)
+	datetimes = np.array([datetime.combine(date.today(), t) for t in timestamps])
+	time_hours = mdates.date2num(datetimes)
 	
-	twoDListOfValues = np.array(twoDListOfValues, dtype=float)
+	# Clip spectra to maximum power level
+	spectra_clipped = np.clip(spectra, -80, -20)
 
-	print("Min:", np.min(twoDListOfValues))
-	print("Max:", np.max(twoDListOfValues))
+	# Format y-axis as time
+	plt.gca().yaxis_date()
+	date_form = mdates.DateFormatter('%H:%M:%S')
+	plt.gca().yaxis.set_major_formatter(date_form)
+	plt.gca().yaxis.set_major_locator(mdates.HourLocator(interval=1))
 
-	fig, ax = plt.subplots(figsize=(12, 8))
-	#leave room at bottom for widgets
-	plt.subplots_adjust(bottom=0.20)
+	# Create heatmap
+	plt.imshow(spectra_clipped, aspect='auto', origin='lower', 
+				extent=[faxis_mhz[0], faxis_mhz[-1], time_hours[0], time_hours[-1]],
+				cmap='viridis', interpolation='nearest')
+	plt.xlabel('Frequency (MHz)')
+	plt.ylabel('Time (hours)') 
 
-	nRows, nCols = twoDListOfValues.shape
+	# Set y-ticks to show only full hour and half-hour
+	# y_ticks = np.arange(np.floor(time_hours[0]), np.ceil(time_hours[-1]), 0.5)
+	# plt.yticks(y_ticks)
+	plt.title(title)
+	cbar = plt.colorbar(label='Power (dBm)')
 
-	#Real UTC time range (kept for labeling)
-	maxTimeUTC = max(organizedUTCTime)
-	minTimeUTC = min(organizedUTCTime)
+	# Set color limits for the heatmap
+	plt.clim(vmin=-80, vmax=-20)
+	# plt.ylim(y_ticks[0], y_ticks[-1])
 
-	printedMaxTime = maxTimeUTC[0:2] + ":" + maxTimeUTC[2:4] + ":" + maxTimeUTC[4:6]
-	printedMinTime = minTimeUTC[0:2] + ":" + minTimeUTC[2:4] + ":" + minTimeUTC[4:6]
+	if output_path:
+		plt.savefig(output_path, dpi=150, bbox_inches='tight')
+		logging.info("Heatmap saved to %s", output_path)
+	
+	if show_plot:
+		plt.show()
+	else:
+		plt.close()
 
-	maxTimeSidereal = toSidereal(maxTimeUTC)
-	minTimeSidereal = toSidereal(minTimeUTC)
+def __main__(date_dir, state_indx=0):
+    loaded = get_date_state_specs(date_dir, state_indx=state_indx)
+    timestamps, spectra = read_loaded(loaded, sort='ascending')
+    plot_waterfall_heatmap(timestamps, spectra, faxis, 
+						   title=f'Waterfall Plot {os.path.basename(date_dir)}: State {state_indx}',
+						   output_path=pjoin(date_dir, f'waterfall_state{state_indx}.png'),
+						   show_plot=True)
 
-	print(maxTimeSidereal, minTimeSidereal)
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python waterfall_plotter.py <date_directory> [state_index]")
+        sys.exit(1)
+  
+    input_dir = sys.argv[1]
+    state_index = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    
+    __main__(input_dir, state_indx=state_index)
+    
+    
 
-	#Gamma/power norm with gamma < 1 boosts small values, compresses large ones
-	if state == "collection":
-		norm = PowerNorm(gamma=4, vmin=-70, vmax=-50)
-	if state == "calib":
-		norm = PowerNorm(gamma=1, vmin=-70, vmax=-35)
 
-	#caps MAX equals full data size
-	maxCapRows = nRows
-	maxCapCols = nCols
-
-	#start caps
-	maxDispRows = min(startMaxDispRows, nRows)
-	maxDispCols = min(startMaxDispCols, nCols)
-
-	#numeric extents for image coords
-	xExtent = (0.0, 409.6)
-	yExtent = (0.0, float(nRows))
-
-	def toUTC(hhmmss):
-		return hhmmss[0:2] + ":" + hhmmss[2:4] + ":" + hhmmss[4:6]
-
-	#"clamping" functions
-	def clamp(val, lo, hi):
-		return max(lo, min(hi, val))
-
-	def clampRows(val):
-		return clamp(val, minCapRows, maxCapRows)
-
-	def clampCols(val):
-		return clamp(val, minCapCols, maxCapCols)
-
-    #Text details of helper message
-	hudText = ax.text(0.01, 0.99, "", transform=ax.transAxes, va="top", ha="left", fontsize=12, 
-		color="white", bbox=dict(boxstyle="round", facecolor="black", alpha=0.4))
-
-	def updateHud():
-		hudText.set_text(f"Disp cap: rows={maxDispRows}/{maxCapRows}, cols={maxDispCols}/{maxCapCols}\n")
-
-	#UTC-only ticks
-	def updateTimeTicks(row0, row1):
-		nticks = 10
-		if row1 <= row0 + 1: return
-		tickRows = np.linspace(row0, row1 - 1, nticks).astype(int)
-		tickLabels = [toUTC(organizedUTCTime[r]) for r in tickRows]
-		ax.set_yticks(tickRows)
-		ax.set_yticklabels(tickLabels)
-
-		#removes all other y ticks (like row num)
-		ax.yaxis.set_minor_locator(NullLocator())
-
-	#sets max row and col values
-	maxDispRows = clampRows(maxDispRows)
-	maxDispCols = clampCols(maxDispCols)
-
-	def renderView():
-		nonlocal maxDispRows, maxDispCols
-
-		x0, x1 = ax.get_xlim()
-		y0, y1 = ax.get_ylim()
-
-		x0 = max(xExtent[0], min(xExtent[1], x0))
-		x1 = max(xExtent[0], min(xExtent[1], x1))
-		y0 = max(yExtent[0], min(yExtent[1], y0))
-		y1 = max(yExtent[0], min(yExtent[1], y1))
-
-		col0 = int((min(x0, x1) - xExtent[0]) / (xExtent[1] - xExtent[0]) * nCols)
-		col1 = int((max(x0, x1) - xExtent[0]) / (xExtent[1] - xExtent[0]) * nCols)
-		row0 = int(min(y0, y1))
-		row1 = int(max(y0, y1))
-
-		col0 = max(0, min(nCols - 1, col0))
-		col1 = max(1, min(nCols, col1))
-		row0 = max(0, min(nRows - 1, row0))
-		row1 = max(1, min(nRows, row1))
-
-		view = twoDListOfValues[row0:row1, col0:col1]
-		vr, vc = view.shape
-
-		stepR = max(1, int(np.ceil(vr / maxDispRows)))
-		stepC = max(1, int(np.ceil(vc / maxDispCols)))
-
-		viewDs = view[::stepR, ::stepC]
-
-		im.set_data(viewDs)
-		im.set_extent([xExtent[0] + col0 / nCols * (xExtent[1] - xExtent[0]),
-			xExtent[0] + col1 / nCols * (xExtent[1] - xExtent[0]), row1, row0])
-
-		updateTimeTicks(row0, row1)
-		updateHud()
-		fig.canvas.draw_idle()
-
-	# initial downsampled full view
-	fullStepR = max(1, int(np.ceil(nRows / maxDispRows)))
-	fullStepC = max(1, int(np.ceil(nCols / maxDispCols)))
-	viewFull = twoDListOfValues[::fullStepR, ::fullStepC]
-
-	im = ax.imshow(viewFull, cmap='inferno', norm=norm, aspect='auto', extent=[xExtent[0], xExtent[1], 
-		yExtent[1], yExtent[0]], interpolation="nearest", rasterized=True)
-
-	cbar = fig.colorbar(im, ax=ax)
-	cbar.set_label('Power (dBm)', fontsize=18)
-	cbar.ax.tick_params(labelsize=14)
-
-	ax.set_title('Digital Spectrometer Data on Nov. 5, 2025 - Lunar Dry Lake', fontsize = 18)
-	ax.set_xlabel('Frequency (MHz)', fontsize = 18)
-	ax.set_ylabel('Time (hh:mm:ss in UTC)', fontsize = 18)
-	ax.tick_params(axis="both", labelsize=14)
-
-	updateTimeTicks(0, nRows)
-	updateHud()
-
-	# lock out horizontal panning
-	lastXlim = ax.get_xlim()
-	inZoom = False
-
-	def onXlimChanged(ax_):
-		nonlocal lastXlim, inZoom
-		if not inZoom:
-			ax_.set_xlim(lastXlim)
-			ax_.figure.canvas.draw_idle()
-
-	ax.callbacks.connect('xlim_changed', onXlimChanged)
-
-	origXlim = ax.get_xlim()
-	origYlim = ax.get_ylim()
-
-    #rectangle selection object, set by makeSelector()
-	rectSelector = None
-
-    #event function for click
-	def onSelect(eclick, erelease):
-		nonlocal lastXlim, inZoom
-
-		x1, y1 = eclick.xdata, eclick.ydata
-		x2, y2 = erelease.xdata, erelease.ydata
-		if None in (x1, y1, x2, y2):
-			return
-
-		xmin, xmax = sorted([x1, x2])
-		ymin, ymax = sorted([y1, y2])
-
-		if abs(xmax - xmin) < 1e-12 or abs(ymax - ymin) < 1e-12:
-			return
-
-		inZoom = True
-		ax.set_xlim(xmin, xmax)
-		ax.set_ylim(ymax, ymin)
-		lastXlim = ax.get_xlim()
-		inZoom = False
-
-		renderView()
-
-    #makes rectSelector object
-	def makeSelector():
-		nonlocal rectSelector
-		if rectSelector is not None:
-			rectSelector.disconnect_events()
-			rectSelector.set_active(False)
-			rectSelector = None
-
-		rectSelector = RectangleSelector(ax, onSelect, useblit=True, button=[1], interactive=False,spancoords="data")
-
-	makeSelector()
+	
 	
 
-	#Rows button
-	axBtnRows = fig.add_axes([0.22, 0.11, 0.07, 0.055])
-	btnRows = Button(axBtnRows, "Set Rows")
 
-	#Rows text box
-	axBoxRows = fig.add_axes([0.22, 0.045, 0.12, 0.045])
-	boxRows = TextBox(axBoxRows, "Rows", initial=str(maxDispRows))
+  
+  
+  
 
-    #Cols button
-	axBtnCols = fig.add_axes([0.55, 0.11, 0.07, 0.055])
-	btnCols = Button(axBtnCols, "Set Cols")
-
-	#Cols text box
-	axBoxCols = fig.add_axes([0.55, 0.045, 0.12, 0.045])
-	boxCols = TextBox(axBoxCols, "Cols", initial=str(maxDispCols))
-
-
-    #Sets rows val
-	def submitRows(text):
-		nonlocal maxDispRows
-		try:
-			val = int(float(text))
-		except ValueError:
-			boxRows.set_val(str(maxDispRows))
-			return
-		maxDispRows = clampRows(val)
-		boxRows.set_val(str(maxDispRows))
-		renderView()
-
-    #Sets cols value
-	def submitCols(text):
-		nonlocal maxDispCols
-		try:
-			val = int(float(text))
-		except ValueError:
-			boxCols.set_val(str(maxDispCols))
-			return
-		maxDispCols = clampCols(val)
-		boxCols.set_val(str(maxDispCols))
-		renderView()
-
-	boxRows.on_submit(submitRows)
-	boxCols.on_submit(submitCols)
-
-    #key event r/R resets zoom, and z/Z zooms out by a standard factor
-	def onKey(event):
-		nonlocal lastXlim, inZoom
-
-		# reset view
-		if event.key in ["r", "R"]:
-			inZoom = True
-			ax.set_xlim(origXlim)
-			ax.set_ylim(origYlim)
-			lastXlim = ax.get_xlim()
-			inZoom = False
-
-			renderView()
-			makeSelector()
-			return
-
-		# zoom out by a standard factor
-		if event.key in ["z", "Z"]:
-			baseScale = 1.5	 # zoom out by 50%
-
-			#Current edges
-			curX0, curX1 = ax.get_xlim()
-			curY0, curY1 = ax.get_ylim()
-
-			#Center coords
-			xCenter = 0.5 * (curX0 + curX1)
-			yCenter = 0.5 * (curY0 + curY1)
-
-			xRange = (curX1 - curX0) * baseScale
-			yRange = (curY0 - curY1) * baseScale
-
-			newX0 = xCenter - xRange / 2.0
-			newX1 = xCenter + xRange / 2.0
-			newY1 = yCenter - yRange / 2.0
-			newY0 = yCenter + yRange / 2.0	 # keep newY0 > newY1
-
-			#Extend to total data limits so we don't go outside the image
-			newX0 = max(xExtent[0], newX0)
-			newX1 = min(xExtent[1], newX1)
-			if newX1 <= newX0:
-				return	 # don't collapse/invert x
-
-			newY0 = max(yExtent[0], min(yExtent[1], newY0))
-			newY1 = max(yExtent[0], min(yExtent[1], newY1))
-			if newY0 <= newY1:
-				return	 # don't collapse/invert y
-
-			# apply limits in "zoom mode" so xlim_changed hook doesn't fight us
-			inZoom = True
-			ax.set_xlim(newX0, newX1)
-			ax.set_ylim(newY0, newY1)
-			lastXlim = ax.get_xlim()
-			inZoom = False
-
-			# redraw the downsampled view at the new zoom level
-			renderView()
-			return
-		
-	fig.canvas.mpl_connect("key_press_event", onKey)
-
-
-	plt.show()
-
-
-#Most Calib
-#print(len(calibSpectra[0:len(calibSpectra) - 2*len(calibSpectra)//9:1]))
-#compileHeatData(calibSpectra[0:len(calibSpectra) - 2*len(calibSpectra)//9:1], "calib")
-
-#Some Calib
-# firstFrac = 2*len(calibSpectra)//6
-# secondFrac = 3*len(calibSpectra)//6
-# firstFrac = 0
-# secondFrac = len(calibSpectra)
-# print(firstFrac, secondFrac)
-# print(len(calibSpectra[firstFrac:secondFrac:1]))
-# compileHeatData(calibSpectra[firstFrac:secondFrac:1], "calib")
-
-#Some Sky Data
-print(len(allSpectra[0:len(allSpectra) - 5*len(allSpectra)//9:1]))
-compileHeatData(allSpectra[0:len(allSpectra) - 5*len(allSpectra)//9:1])
-
-#All Sky Data
-# print(len(allSpectra[0:len(allSpectra):1]))
-# compileHeatData(allSpectra[0:len(allSpectra):1])
+	 
+ 

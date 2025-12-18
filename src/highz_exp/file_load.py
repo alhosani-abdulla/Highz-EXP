@@ -224,6 +224,24 @@ def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=
     print(f"Saved condensed file to: {output_file}")
     return condensed_flat
 
+def load_npy_dict(file_path):
+    """Load a .npy file containing a dictionary of timestamped data.
+
+    Parameters:
+        file_path (str): Path to the .npy file.
+
+    Returns:
+        dict: dictionary of timestamp -> data
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File does not exist: {file_path}. Double check the path.")
+
+    loaded_dict = np.load(file_path, allow_pickle=True).item()
+    if not isinstance(loaded_dict, dict):
+        raise ValueError(f"Loaded object from {file_path} is not a dictionary.")
+    
+    return loaded_dict
+
 def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, include_antenna=False):
     """Load all calibration state files from a specified directory and return them as a dictionary. 
     
