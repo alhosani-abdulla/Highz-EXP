@@ -361,6 +361,8 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
         plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight')
     if show_plot:
         plt.show()
+    else:
+        plt.close()
 
 def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None):
     """Plot gain over a specified frequency range.
