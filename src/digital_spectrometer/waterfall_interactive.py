@@ -3,7 +3,7 @@ import os, logging, sys
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
-
+import argparse
 from highz_exp.unit_convert import rfsoc_spec_to_dbm, convert_utc_list_to_local
 from highz_exp.file_load import get_date_state_specs
 from file_compressor import setup_logging
@@ -122,7 +122,43 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     # OR call show specifically with the renderer
     fig.write_html(output_path, auto_open=True)
 
-def main(date_dir, state_indx=0, output_dir=None):
+def main_cli():
+    parser = argparse.ArgumentParser(
+        description="Waterfall Plotter for Digital Spectrometer Data",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+
+    # --- Positional Arguments ---
+    parser.add_argument("input_dir", help="Path to the directory containing date-specific data files")
+    parser.add_argument(
+        "state_index", type=int, help="Index of the operational state"
+    )
+
+    # --- Optional Flags ---
+    parser.add_argument(
+        "--output_dir", "-o",
+        default=None,
+        help="Directory to save output plots (default: None, to input_dir)"
+    )
+
+    parser.add_argument("--step_f", type=int, default=4, help="Frequency downsampling step size")
+
+    parser.add_argument(
+        "--step_t",
+        type=int,
+        default=5,
+        help="Time downsampling step size"
+    )
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Initialize logic
+    setup_logging()
+
+    return args
+
+def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     loaded = get_date_state_specs(date_dir, state_indx=state_indx)
     timestamps, spectra = read_loaded(loaded, sort='ascending')
     logging.info("Total spectra loaded: %d", len(spectra))
@@ -144,18 +180,19 @@ def main(date_dir, state_indx=0, output_dir=None):
     f_mhz = faxis
 
     if_valid = validate_spectra_dimensions(local_timestamps, faxis_mhz=f_mhz, spectra=spectra)
-    local_timestamps, f_mhz, spectra = downsample_waterfall(local_timestamps, f_mhz, spectra, step_f=2, step_t=2)
+    local_timestamps, f_mhz, spectra = downsample_waterfall(local_timestamps, f_mhz, spectra, step_f=step_f, step_t=step_t)
     plot_waterfall_heatmap_plotly(local_timestamps, spectra, f_mhz, "Waterfall Plot Interactive", output_path=output_path)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(
-            "Usage: python waterfall_plotter.py <date_directory> [state_index]")
-        sys.exit(1)
 
-    setup_logging()
-    input_dir = sys.argv[1]
-    state_index = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    output_dir = sys.argv[3] if len(sys.argv) > 3 else None 
+    args = main_cli()
 
-    main(input_dir, state_indx=state_index, output_dir=output_dir)
+    # Call main with the parsed values
+    # Note: I've updated the parameter names to match your main function's signature
+    main(
+        date_dir=args.input_dir, 
+        state_indx=args.state_index, 
+        output_dir=args.output_dir,
+        step_f=args.step_f,
+        step_t=args.step_t
+    )
