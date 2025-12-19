@@ -11,6 +11,7 @@ import matplotlib.dates as mdates
 
 from highz_exp.unit_convert import rfsoc_spec_to_dbm, convert_utc_list_to_local
 from highz_exp.file_load import get_date_state_specs
+from highz_exp.plotter import plot_waterfall_heatmap_static
 from file_compressor import setup_logging
 
 nfft = 32768
@@ -59,13 +60,8 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, vmin=-80
     """
     
     # Create the heatmap
-    fig = go.Figure(data=go.Heatmap(
-        z=spectra,
-        x=faxis_mhz,
-        y=datetimes,
-        colorscale='Viridis',
-        zmin=vmin,
-        zmax=vmax,
+    fig = go.Figure(data=go.Heatmap(z=spectra, x=faxis_mhz, y=datetimes,
+        colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title="Power (dBm)"),
         hovertemplate=(
             "Time: %{y}<br>" +
@@ -74,59 +70,78 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, vmin=-80
         )
     ))
 
-    # Logic to determine if we need to reverse the time axis
-    # If the first timestamp is later than the last, we reverse to keep time flowing 'up'
-    is_reversed = "reversed" if datetimes[0] > datetimes[-1] else True
+    # Robust logic:
+    if datetimes[0] < datetimes[-1]:
+        # Data is ascending (Start -> End), so reverse axis to put Start at top
+        y_axis_direction = "reversed"
+    else:
+        # Data is already descending (End -> Start), use normal
+        y_axis_direction = True
 
     fig.update_layout(
         title=title, xaxis=dict(title="Frequency (MHz)"),
         yaxis=dict(
             title="Time",
-            autorange=is_reversed  # Use True instead of "normal"
+            autorange=y_axis_direction,
         ),
-        width=1000, height=700, template="plotly_dark"
+        width=1000, height=700, template="plotly_dark",
+        margin=dict(b=150)
     )
-
-
-    # Enable the color-range adjustment (UI buttons/sliders)
-    # Note: Plotly's 'edit' mode allows users to click the colorbar 
-    # and drag the limits, but we can also add custom buttons:
-    fig.update_layout(
+    
+    # Gradient Adjustment Buttons
+    fig.update_layout(margin=dict(t=100),
         updatemenus=[
             dict(
                 type="buttons",
                 direction="left",
-                buttons=list([
-                    dict(
-                        args=[{"zmin": vmin, "zmax": vmax}],
-                        label="Reset Range",
-                        method="restyle"
-                    ),
-                ]),
-                pad={"r": 10, "t": 10},
-                showactive=True,
-                x=0.11,
-                xanchor="left",
-                y=1.1,
-                yanchor="top"
-            ),
+                active=0, x=0.5, y=1.15,
+                xanchor="center",
+                yanchor="top",
+                buttons=[
+                    # Default Range
+                    dict(label="Reset Range (Min to Max)",
+                         method="restyle",
+                         args=[{"zmin": vmin, "zmax": vmax}]),
+                    
+                    # Narrow Range (High Contrast - useful for faint signals)
+                    dict(label="High Contrast (-50 to -30)",
+                         method="restyle",
+                         args=[{"zmin": -50, "zmax": -30}]),
+                    
+                    # Wide Range (Deep Noise Floor)
+                    dict(label="Wide Range (-80 to -20)",
+                         method="restyle",
+                         args=[{"zmin": -80, "zmax": -20}]),
+                    
+                    # See Noise Floor (Lower floor)
+                    dict(label="Noise Detail",
+                         method="restyle",
+                         args=[{"zmin": -80, "zmax": -60}])
+                ]
+            )
         ]
     )
 
     fig.show()
 
-
-
-def __main__(date_dir, state_indx=0):
+def __main__(date_dir, state_indx=0, output_dir=None):
     loaded = get_date_state_specs(date_dir, state_indx=state_indx)
     timestamps, spectra = read_loaded(loaded, date=date, sort='ascending')
     logging.info("Total spectra loaded: %d", len(spectra))
+    logging.info(f"The time zone is {timestamps[0].tzinfo} ")
     logging.info("Time range: %s to %s", timestamps[0], timestamps[-1])
+    if output_dir is None:
+        output_dir = date_dir
+    else:
+        if not os.path.isdir(output_dir):
+            os.mkdirs(output_dir)
+   
     # plot_waterfall_heatmap_static(timestamps, spectra, faxis,
-    # 					   title=f'Waterfall Plot {os.path.basename(date_dir)}: State {state_indx}',
-    # 					   output_path=pjoin(date_dir, f'waterfall_state{state_indx}.png'),
-    # 					   show_plot=False)
-    # Convert to local timezone and try again
+    #                     title=f'Waterfall Plot {os.path.basename(date_dir)}: State {state_indx}',
+    #                     output_path=pjoin(output_dir, f'waterfall_state{state_indx}_GMT.png'),
+    #                     show_plot=False) 
+        
+    # Convert to local timezone
     local_timestamps = convert_utc_list_to_local(timestamps)
     logging.info("Time range: %s to %s", local_timestamps[0], local_timestamps[-1])
     # plot_waterfall_heatmap_static(local_timestamps, spectra, faxis,
@@ -134,7 +149,6 @@ def __main__(date_dir, state_indx=0):
     # 					   output_path=pjoin(date_dir, f'waterfall_state{state_indx}_localtime.png'),
     # 					   show_plot=False)
     plot_waterfall_heatmap_plotly(local_timestamps, spectra, faxis, "Interactive RF Spectrum")
-
 
 
 if __name__ == "__main__":
@@ -146,5 +160,6 @@ if __name__ == "__main__":
     setup_logging()
     input_dir = sys.argv[1]
     state_index = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    output_dir = sys.argv[3] if len(sys.argv) > 3 else None 
 
-    __main__(input_dir, state_indx=state_index)
+    __main__(input_dir, state_indx=state_index, output_dir=output_dir)

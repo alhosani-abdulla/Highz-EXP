@@ -400,15 +400,24 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabe
         plt.savefig(save_path)
     plt.show()
 
-def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20):
+def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20,
+                                  local_tz_obj=None):
     """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
     
     Parameters:
     -----------
-    - datetimes: np.array of datetime objects. """
+    - datetimes: np.array of datetime objects. 
+    - local_tz_obj: A datetime.timezone object (e.g., timezone(timedelta(hours=-5)))"""
+
+    from datetime import timezone
+    
     fig, ax = plt.subplots(figsize=(18, 10))
 
-    timezone = datetimes[0].tzinfo
+    # 1. Primary Y-axis (Local Time)
+    # If no local_tz_obj is provided, we grab it from the first entry
+    if local_tz_obj is None:
+        local_tz_obj = datetimes[0].tzinfo
+
     time_hours = mdates.date2num(datetimes)
 
     # Clip spectra to maximum power level
@@ -416,18 +425,33 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
 
     # Format y-axis as time
     ax.yaxis_date()
-    date_form = mdates.DateFormatter('%d - %H:%M', tz=timezone)
-    ax.yaxis.set_major_formatter(date_form)
-    ax.yaxis.set_major_locator(mdates.HourLocator(interval=2))
+    # Format left axis with local timezone
+    local_form = mdates.DateFormatter('%d - %H:%M', tz=local_tz_obj)
+    ax.yaxis.set_major_formatter(local_form)
+    locator = mdates.HourLocator(interval=2)
+    ax.yaxis.set_major_locator(locator)
+    ax.set_ylabel(f"Time ({local_tz_obj})", fontsize=18)
+
+    # 2. Secondary Y-axis (GMT/UTC)
+    # ax_gmt = ax.twinx()
+    # ax_gmt.set_ylim(ax.get_ylim())
+    # ax_gmt.yaxis_date()
+    
+    # Format right axis strictly as UTC
+    # ax_gmt.yaxis.set_major_locator(ax.yaxis.get_major_locator())
+
+    # gmt_form = mdates.DateFormatter('%H:%M', tz=timezone.utc)
+    # ax_gmt.yaxis.set_major_formatter(gmt_form)
+    # ax_gmt.set_ylabel("GMT / UTC")
+    # ax_gmt.tick_params(axis='y', which='both', length=5, labelsize=15)
 
     # Create heatmap
-    im = ax.imshow(spectra_clipped, aspect='auto', origin='lower',
+    im = ax.imshow(spectra_clipped, aspect='auto', origin='upper',
                    extent=[faxis_mhz[0], faxis_mhz[-1],
-                           time_hours[0], time_hours[-1]],
+                           time_hours[-1], time_hours[0]],
                    cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
 
     ax.set_xlabel('Frequency (MHz)', fontsize=18)
-    ax.set_ylabel(f'{timezone} Time (hours)', fontsize=18)
     ax.tick_params(axis='both', which='major', labelsize=16)
 
     ax.set_title(title, fontsize=20)
