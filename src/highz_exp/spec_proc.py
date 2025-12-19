@@ -2,6 +2,7 @@ import copy
 from datetime import datetime
 from typing import List
 import numpy as np
+import logging
 import skrf as rf
 from scipy.signal import savgol_filter
 from scipy.ndimage import uniform_filter1d
@@ -339,3 +340,82 @@ def compile_heatmap_data(alltime_spectra: np.ndarray, timestamps: List[datetime]
     active_times = daily_timestamps[0]
 
     return active_data, active_times
+
+def validate_spectra_dimensions(datetimes, faxis_mhz, spectra) -> bool:
+    """
+    Validates that the dimensions of the spectra matrix match the 
+    time and frequency axes.
+    """
+    num_time_steps = len(datetimes)
+    num_freq_bins = len(faxis_mhz)
+    h, w = spectra.shape
+
+    # Check for exact match
+    if h == num_time_steps and w == num_freq_bins:
+        return True
+    
+    # Check if the matrix is transposed (Freq x Time instead of Time x Freq)
+    if h == num_freq_bins and w == num_time_steps:
+        raise ValueError(
+            f"Dimension Mismatch: Spectra is {h}x{w} (Freq x Time), "
+            f"but expected {num_time_steps}x{num_freq_bins} (Time x Freq). "
+            "Try transposing your spectra with spectra.T"
+        )
+    
+    # General mismatch
+    raise ValueError(
+        f"Dimension Mismatch:\n"
+        f"  - Datetimes length: {num_time_steps}\n"
+        f"  - Faxis length: {num_freq_bins}\n"
+        f"  - Spectra shape: {h}x{w}\n"
+        "The spectra matrix must have rows = time and columns = frequency."
+    )
+
+def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, step_f=None):
+    """
+    Reduces waterfall size using peak-preservation (max-pooling).
+
+    Args:
+        datetimes (np.array): Original datetime array.
+        faxis (np.array): Original frequency axis array.
+        spectra (np.array): 2D power spectra matrix.
+        max_pts (int): Target max resolution for both axes if steps are not provided.
+        step_t (int, optional): Manual downsample factor for Time. Defaults to None.
+        step_f (int, optional): Manual downsample factor for Frequency. Defaults to None.
+
+    Returns:
+        tuple: (downsampled_datetimes, downsampled_faxis, downsampled_spectra)
+    """
+    h_orig, w_orig = spectra.shape
+    
+    # Determine steps: Use manual override if provided, else auto-calculate
+    st = step_t if step_t is not None else max(1, h_orig // max_pts)
+    sf = step_f if step_f is not None else max(1, w_orig // max_pts)
+    
+    if st == 1 and sf == 1:
+        logging.info("Downsampling skipped: Data already within resolution limits.")
+        return datetimes, faxis, spectra
+
+    logging.info(f"Downsampling: st={st}, sf={sf}. Original: {h_orig}x{w_orig}")
+
+    # Process Time Axis (Rows)
+    if st > 1:
+        new_h = h_orig // st
+        # Trim to even multiple for reshape
+        spectra = spectra[:new_h * st, :]
+        spectra = spectra.reshape(new_h, st, w_orig).max(axis=1)
+        datetimes = datetimes[::st][:new_h]
+
+    # Process Frequency Axis (Cols)
+    h_curr, _ = spectra.shape
+    if sf > 1:
+        new_w = w_orig // sf
+        spectra = spectra[:, :new_w * sf]
+        spectra = spectra.reshape(h_curr, new_w, sf).max(axis=2)
+        faxis = faxis[::sf][:new_w]
+
+    h_f, w_f = spectra.shape
+    reduction = (1 - (spectra.size / (h_orig * w_orig))) * 100
+    logging.info(f"Final shape: {h_f}x{w_f} ({reduction:.1f}% reduction).")
+        
+    return datetimes, faxis, spectra

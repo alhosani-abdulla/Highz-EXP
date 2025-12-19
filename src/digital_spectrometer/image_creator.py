@@ -25,10 +25,10 @@ def create_image(spec_path, show_plots=False):
     dbm_spec_states = Spectrum.preprocess_states(load_states=spectrum_dicts, remove_spikes=False, offset=-128, system_gain=0)
     print("Loaded and preprocessed spectrum states...")
     date_dir = os.path.basename(os.path.dirname(spec_path))
-    yticks = [-80, -70, -60, -50, -40, -30, -20]
+    yticks = [-80, -70, -60, -50, -40, -30]
     plotter.plot_spectrum(dbm_spec_states.values(), save_dir=spec_path, suffix='all_states',
                           title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', ylabel='PSD [dBm]',
-                          ymin=-80, ymax=-20, yticks=yticks, show_plot=show_plots)
+                          ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
     wo_antenna_dbm_states = {k: v for k, v in dbm_spec_states.items() if k != 'Antenna'}
 
     yticks = [-80, -70, -60, -50, -40, -30]
