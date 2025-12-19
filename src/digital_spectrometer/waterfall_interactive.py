@@ -76,17 +76,28 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
         y_axis_direction = True
 
     fig.update_layout(
-        title=f"{date}: {title}", xaxis=dict(title="Frequency (MHz)"),
+        title=dict(text=f"{date}: {title}", font=dict(size=24)), 
+        xaxis=dict(title=dict(text="Frequency (MHz)")
+                   ),
         yaxis=dict(
             title="Time",
             autorange=y_axis_direction,
         ),
-        width=1000, height=700, template="plotly_dark",
-        margin=dict(b=150)
+        width=1400, height=800, template="plotly_dark",
+        margin=dict(t=50, b=50)
     )
     
+    # Update X-axis label font size
+    fig.update_xaxes(title_font={"size": 20})
+
+    # Update Y-axis label font size
+    fig.update_yaxes(title_font={"size": 20})
+
+    fig.update_xaxes(tickfont=dict(size=16))
+    fig.update_yaxes(tickfont=dict(size=16))
+    
     # Gradient Adjustment Buttons
-    fig.update_layout(margin=dict(t=50, b=150),
+    fig.update_layout(margin=dict(t=10, b=10),
         updatemenus=[
             dict(
                 type="buttons",
