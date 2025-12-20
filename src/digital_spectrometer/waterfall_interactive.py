@@ -57,7 +57,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     date = datetimes[0].date()
     
     # Create the heatmap
-    fig = go.Figure(data=go.Heatmap(z=spectra, x=faxis_mhz, y=datetimes,
+    fig = go.Figure(data=go.Heatmapgl(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title="Power (dBm)"),
         hovertemplate=(
@@ -84,7 +84,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
             autorange=y_axis_direction,
         ),
         width=1400, height=800, template="plotly_dark",
-        margin=dict(t=50, b=50)
+        margin=dict(t=150, b=150)
     )
     
     # Update X-axis label font size
@@ -95,40 +95,88 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     fig.update_xaxes(tickfont=dict(size=16))
     fig.update_yaxes(tickfont=dict(size=16))
-    
-    # Gradient Adjustment Buttons
-    fig.update_layout(margin=dict(t=10, b=10),
-        updatemenus=[
-            dict(
-                type="buttons",
-                direction="left",
-                active=0, x=0.5, y=-0.5,
-                xanchor="center",
-                yanchor="bottom",
-                buttons=[
-                    # Default Range
-                    dict(label="Reset Range (Min to Max)",
-                         method="restyle",
-                         args=[{"zmin": vmin, "zmax": vmax}]),
-                    
-                    # Narrow Range (High Contrast - useful for faint signals)
-                    dict(label="High Contrast [-50, -30]",
-                         method="restyle",
-                         args=[{"zmin": -50, "zmax": -30}]),
-                    
-                    # Wide Range (Deep Noise Floor)
-                    dict(label="Wide Range [-80, -20]",
-                         method="restyle",
-                         args=[{"zmin": -80, "zmax": -20}]),
-                    
-                    # See Noise Floor (Lower floor)
-                    dict(label="Noise Floor [-80, -60]",
-                         method="restyle",
-                         args=[{"zmin": -80, "zmax": -60}])
-                ]
-            )
+
+    # 1. Define steps for zmin (Floor)
+    min_steps = []
+    for val in range(-90, -50, 10):
+        min_steps.append({
+            "method": "restyle",
+            "label": str(val),
+            "args": [{"zmin": val}]
+        })
+
+    # 2. Define steps for zmax (Ceiling)
+    max_steps = []
+    for val in range(-70, -20, 10):
+        max_steps.append({
+            "method": "restyle",
+            "label": str(val),
+            "args": [{"zmax": val}]
+        })
+
+    # 3. Add both to the layout
+    fig.update_layout(
+        margin=dict(b=150),
+        sliders=[
+            # Slider for zmin
+            {
+                "active": 0,
+                "currentvalue": {"prefix": "zmin (Floor): "},
+                "pad": {"t": 50},
+                "len": 0.45,
+                "x": 0,
+                "steps": min_steps
+            },
+            # Slider for zmax
+            {
+                "active": 5,
+                "currentvalue": {"prefix": "zmax (Ceiling): "},
+                "pad": {"t": 50},
+                "len": 0.45,
+                "x": 0.55,
+                "steps": max_steps
+            }
         ]
     )
+
+    # # Gradient Adjustment Buttons
+    # fig.update_layout(margin=dict(t=100, b=100),
+    #     updatemenus=[
+    #         dict(
+    #             type="buttons",
+    #             direction="left",
+    #             active=0, x=0.5, y=-0.5,
+    #             xanchor="center",
+    #             yanchor="bottom",
+    #             buttons=[
+    #                 # Default Range
+    #                 dict(label="Reset Range (Min to Max)",
+    #                      method="restyle",
+    #                      args=[{"zmin": vmin, "zmax": vmax}]),
+                    
+    #                 # Narrow Range (High Contrast - useful for faint signals)
+    #                 dict(label="High Contrast [-50, -30]",
+    #                      method="restyle",
+    #                      args=[{"zmin": -50, "zmax": -30}]),
+                    
+    #                 # Wide Range (Deep Noise Floor)
+    #                 dict(label="Wide Range [-80, -20]",
+    #                      method="restyle",
+    #                      args=[{"zmin": -80, "zmax": -20}]),
+                    
+    #                 # See Noise Floor (Lower floor)
+    #                 dict(label="Low Power Level [-80, -60]",
+    #                      method="restyle",
+    #                      args=[{"zmin": -80, "zmax": -60}]),
+                    
+    #                 # See Noise Floor (Lower floor)
+    #                 dict(label="Absolute Noise Floor [-90, -70]",
+    #                      method="restyle",
+    #                      args=[{"zmin": -90, "zmax": -70}])
+    #             ]
+    #         )
+    #     ]
+    # )
 
     # OR call show specifically with the renderer
     fig.write_html(output_path, auto_open=True)
@@ -186,13 +234,13 @@ def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     logging.info("Time range: %s to %s", local_timestamps[0], local_timestamps[-1])
 
     date = pbase(date_dir)
-    output_path = pjoin(output_dir, f'Waterfall_{date}.html')
+    output_path = pjoin(output_dir, f'Waterfall_{date}_state{state_indx}.html')
 
     f_mhz = faxis
 
     if_valid = validate_spectra_dimensions(local_timestamps, faxis_mhz=f_mhz, spectra=spectra)
     local_timestamps, f_mhz, spectra = downsample_waterfall(local_timestamps, f_mhz, spectra, step_f=step_f, step_t=step_t)
-    plot_waterfall_heatmap_plotly(local_timestamps, spectra, f_mhz, "Waterfall Plot Interactive", output_path=output_path)
+    plot_waterfall_heatmap_plotly(local_timestamps, spectra, f_mhz, f"Waterfall Plot Interactive: state {state_indx}", output_path=output_path)
 
 if __name__ == "__main__":
 
