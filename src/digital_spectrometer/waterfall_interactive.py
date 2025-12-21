@@ -57,7 +57,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     date = datetimes[0].date()
     
     # Create the heatmap
-    fig = go.Figure(data=go.Heatmapgl(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
+    fig = go.Figure(data=go.Heatmap(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title="Power (dBm)"),
         hovertemplate=(
@@ -98,7 +98,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     # 1. Define steps for zmin (Floor)
     min_steps = []
-    for val in range(-90, -50, 10):
+    for val in range(-90, -30, 5):
         min_steps.append({
             "method": "restyle",
             "label": str(val),
@@ -107,7 +107,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     # 2. Define steps for zmax (Ceiling)
     max_steps = []
-    for val in range(-70, -20, 10):
+    for val in range(-80, -10, 5):
         max_steps.append({
             "method": "restyle",
             "label": str(val),
@@ -121,7 +121,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
             # Slider for zmin
             {
                 "active": 0,
-                "currentvalue": {"prefix": "zmin (Floor): "},
+                "currentvalue": {"prefix": "Min Power (Floor): "},
                 "pad": {"t": 50},
                 "len": 0.45,
                 "x": 0,
@@ -130,7 +130,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
             # Slider for zmax
             {
                 "active": 5,
-                "currentvalue": {"prefix": "zmax (Ceiling): "},
+                "currentvalue": {"prefix": "Max Power (Ceiling): "},
                 "pad": {"t": 50},
                 "len": 0.45,
                 "x": 0.55,
@@ -179,7 +179,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     # )
 
     # OR call show specifically with the renderer
-    fig.write_html(output_path, auto_open=True)
+    fig.write_html(output_path, auto_open=True, include_plotlyjs='cdn')
 
 def main_cli():
     parser = argparse.ArgumentParser(
@@ -236,11 +236,38 @@ def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     date = pbase(date_dir)
     output_path = pjoin(output_dir, f'Waterfall_{date}_state{state_indx}.html')
 
-    f_mhz = faxis
+    # 1. Convert datetimes to just dates (in a numpy-friendly format)
+    dates = np.array([dt.date() for dt in local_timestamps])
 
-    if_valid = validate_spectra_dimensions(local_timestamps, faxis_mhz=f_mhz, spectra=spectra)
-    local_timestamps, f_mhz, spectra = downsample_waterfall(local_timestamps, f_mhz, spectra, step_f=step_f, step_t=step_t)
-    plot_waterfall_heatmap_plotly(local_timestamps, spectra, f_mhz, f"Waterfall Plot Interactive: state {state_indx}", output_path=output_path)
+    # 2. Find where the date changes (the "break points")
+    # np.where(dates[:-1] != dates[1:])[0] finds the index BEFORE the change
+    change_indices = np.where(dates[:-1] != dates[1:])[0] + 1
+
+    # 3. Add the start and end indices to create boundaries
+    boundaries = [0] + list(change_indices) + [len(local_timestamps)]
+
+    # 4. Iterate over the boundaries to slice the data
+    for i in range(len(boundaries) - 1):
+        f_mhz = faxis
+        title = f"Waterfall Plot Interactive: state {state_indx}"
+        start, end = boundaries[i], boundaries[i+1]
+        
+        current_date = dates[start]
+        daily_ts = local_timestamps[start:end]
+        logging.info(f"{i} ---- Time range for current slice: {daily_ts[0]} to {daily_ts[-1]}")
+        daily_spectra = spectra[start:end, :]  # Fast contiguous memory slice
+        
+        # Run your plotting function
+        output_fn = f"waterfall_{state_indx}_{current_date}_{daily_ts[-1].hour}.html"
+        if_valid = validate_spectra_dimensions(daily_ts, f_mhz, daily_spectra)
+        daily_ts, f_mhz, daily_spectra = downsample_waterfall(daily_ts, f_mhz, daily_spectra, step_f=step_f, step_t=step_t)
+        
+        plot_waterfall_heatmap_plotly(daily_ts, daily_spectra, f_mhz, title, pjoin(output_dir, output_fn))
+
+    # if_valid = validate_spectra_dimensions(local_timestamps, faxis_mhz=f_mhz, spectra=spectra)
+    # local_timestamps, f_mhz, spectra = downsample_waterfall(local_timestamps, f_mhz, spectra, step_f=step_f, step_t=step_t)
+    
+    # plot_waterfall_heatmap_plotly(local_timestamps, spectra, f_mhz, f"Waterfall Plot Interactive: state {state_indx}", output_path=output_path)
 
 if __name__ == "__main__":
 
