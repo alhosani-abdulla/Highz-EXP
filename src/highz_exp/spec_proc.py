@@ -419,19 +419,20 @@ def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, s
         
     return datetimes, faxis, spectra
 
-def get_dynamic_bin_size(datetimes):
+def get_dynamic_bin_size(datetimes) -> int:
     """
     Calculates the most frequent time interval (mode) between timestamps.
     Returns the integer number of seconds.
+    
+    Parameters
+    - `datetimes`: np.array of datetime objects. 
     """
     if len(datetimes) < 2:
         return 2  # Default fallback
     
     # Calculate all consecutive differences in seconds
-    intervals = [
-        int((datetimes[i] - datetimes[i-1]).total_seconds()) 
-        for i in range(1, len(datetimes))
-    ]
+    intervals = [int((datetimes[i] - datetimes[i-1]).total_seconds()) 
+        for i in range(1, len(datetimes))]
     
     # Use the most common interval as the bin size
     try:
@@ -439,5 +440,7 @@ def get_dynamic_bin_size(datetimes):
     except statistics.StatisticsError:
         # If there are multiple modes, take the smallest one
         bin_size = min(statistics.multimode(intervals))
+    
+    logging.info(f"The most common spacing between two spectra is {max(2, bin_size)} seconds.")
         
     return max(2, bin_size) # Ensure it's at least 1 second
