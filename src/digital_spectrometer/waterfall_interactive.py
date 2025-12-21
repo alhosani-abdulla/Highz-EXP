@@ -6,7 +6,7 @@ import plotly.io as pio
 import argparse, statistics
 from datetime import timedelta
 from highz_exp.unit_convert import rfsoc_spec_to_dbm, convert_utc_list_to_local
-from highz_exp.file_load import get_date_state_specs
+from highz_exp.file_load import get_sorted_time_dirs, get_specs_from_dirs
 from file_compressor import setup_logging
 from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimensions, get_dynamic_bin_size
 
@@ -245,14 +245,8 @@ def main_cli():
         help="Directory to save output plots (default: None, to input_dir)"
     )
 
-    parser.add_argument("--step_f", type=int, default=1, help="Frequency downsampling step size")
-
-    parser.add_argument(
-        "--step_t",
-        type=int,
-        default=1,
-        help="Time downsampling step size"
-    )
+    parser.add_argument("--step_f", type=int, default=4, help="Frequency downsampling step size. Default = 4, allows 0.1 MHz resolution.")
+    parser.add_argument("--step_t", type=int, default=1, help="Time downsampling step size. Default = 1.")
 
     # Parse the arguments
     args = parser.parse_args()
@@ -264,62 +258,48 @@ def main_cli():
 
 def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     # --- 1. Data Ingestion & Setup ---
-    loaded = get_date_state_specs(date_dir, state_indx=state_indx)
-    timestamps, spectra = read_loaded(loaded, sort='ascending')
-    
-    logging.info(f"Total spectra loaded: {len(spectra)}")
-    logging.info(f"Original Timezone: {timestamps[0].tzinfo}")
-    
-    output_dir = output_dir or date_dir
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Convert to local for processing/filenames
-    local_ts = convert_utc_list_to_local(timestamps)
-    logging.info(f"Local Time range: {local_ts[0]} to {local_ts[-1]}")
-
-    # --- 2. Identify Daily Boundaries ---
-    dates = np.array([dt.date() for dt in local_ts])
-    change_indices = np.where(dates[:-1] != dates[1:])[0] + 1
-    boundaries = [0] + list(change_indices) + [len(local_ts)]
-
-    # --- 3. Process each Day ---
-    for i in range(len(boundaries) - 1):
-        start, end = boundaries[i], boundaries[i+1]
+    time_dirs = get_sorted_time_dirs(date_dir)
+    date = pbase(date_dir)
+    for quartered_time_dirs in np.array_split(time_dirs, 4):
+        loaded = get_specs_from_dirs(date, quartered_time_dirs, state_indx)
+        timestamps, spectra = read_loaded(loaded, sort='ascending')
         
-        day_date = dates[start]
-        day_ts = local_ts[start:end]
-        day_spectra = spectra[start:end, :] # Slicing rows (time)
+        logging.info(f"Total spectra loaded: {len(spectra)}")
+        logging.info(f"Original Timezone: {timestamps[0].tzinfo}")
         
-        logging.info(f"Processing Day {i}: {day_date} ({len(day_ts)} samples)")
+        output_dir = output_dir or date_dir
+        os.makedirs(output_dir, exist_ok=True)
 
-        # --- 4. Split Day into Two Segments (AM/PM or Half/Half) ---
-        mid = len(day_ts) // 2
-        
-        # Define segments as (timestamp_list, spectra_slice, label)
-        segments = [
-            (day_ts[:mid], day_spectra[:mid, :], "part1"),
-            (day_ts[mid:], day_spectra[mid:, :], "part2")
-        ]
+        # Convert to local for processing/filenames
+        local_ts = convert_utc_list_to_local(timestamps)
+        logging.info(f"Local Time range: {local_ts[0]} to {local_ts[-1]}")
 
-        for sub_ts, sub_spec, label in segments:
-            if not sub_ts:
-                continue
+        # --- 2. Identify Daily Boundaries ---
+        dates = np.array([dt.date() for dt in local_ts])
+        change_indices = np.where(dates[:-1] != dates[1:])[0] + 1
+        boundaries = [0] + list(change_indices) + [len(local_ts)]
+
+        # --- 3. Process each Day ---
+        for i in range(len(boundaries) - 1):
+            start, end = boundaries[i], boundaries[i+1]
+            
+            day_date = dates[start]
+            day_ts = local_ts[start:end]
+            day_spectra = spectra[start:end, :] # Slicing rows (time)
+            
+            logging.info(f"Processing Day {i}: {day_date} ({len(day_ts)} samples)")
             
             # Metadata for plotting
             f_mhz = faxis  # Assumed global or defined elsewhere
-            title = f"Waterfall Plot Interactive: State {state_indx} ({label.upper()})"
-            output_fn = f"waterfall_{state_indx}_{day_date}_{sub_ts[0].hour:02d}_{label}.html"
+            title = f"Waterfall Plot Interactive: State {state_indx}: {day_ts[0].hour:02d} - {day_ts[-1].hour:02d})"
+            output_fn = f"waterfall_{state_indx}_{day_date}_{day_ts[0].hour:02d}_{day_ts[-1].hour:02d}.html"
             
             # Validation
-            if not validate_spectra_dimensions(sub_ts, f_mhz, sub_spec):
-                logging.warning(f"Validation failed for {day_date} {label}")
+            if not validate_spectra_dimensions(day_ts, f_mhz, day_spectra):
+                logging.warning(f"Validation failed for {day_date}: {day_ts[0].hour:02d} to {day_ts[-1].hour:02d}")
                 continue
 
-            # Downsample and Plot
-            # (Using your existing function signatures)
-            ds_ts, ds_f, ds_spec = downsample_waterfall(
-                sub_ts, f_mhz, sub_spec, step_t=step_t, step_f=step_f
-            )
+            ds_ts, ds_f, ds_spec = downsample_waterfall(day_ts, f_mhz, day_spectra, step_t=step_t, step_f=step_f)
             
             plot_waterfall_heatmap_plotly(
                 ds_ts, 

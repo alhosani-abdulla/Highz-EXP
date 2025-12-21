@@ -5,6 +5,7 @@ import logging, statistics, copy
 import skrf as rf
 from scipy.signal import savgol_filter
 from scipy.ndimage import uniform_filter1d
+from typing import Sequence, Union
 
 def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
     """
@@ -419,28 +420,40 @@ def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, s
         
     return datetimes, faxis, spectra
 
-def get_dynamic_bin_size(datetimes) -> int:
+# Define types for better IDE support
+DatetimeArray = Union[np.ndarray, Sequence[np.datetime64]]
+
+def get_dynamic_bin_size(datetimes: DatetimeArray) -> int:
     """
     Calculates the most frequent time interval (mode) between timestamps.
-    Returns the integer number of seconds.
     
-    Parameters
-    - `datetimes`: np.array of datetime objects. 
+    This function uses NumPy vectorization for performance and ensures a 
+    minimum bin size of 2 seconds. If multiple modes exist, the smallest 
+    interval is returned.
+
+    Args:
+        datetimes: A NumPy array or sequence of datetime objects. 
+            Expected to be sorted chronologically.
+
+    Returns:
+        int: The most frequent interval in seconds (minimum 2).
     """
     if len(datetimes) < 2:
         return 2  # Default fallback
+
+    # Vectorized calculation of differences in seconds
+    # np.diff handles the subtraction across the whole array at once
+    intervals = np.diff(datetimes).astype('timedelta64[s]').astype(int)
     
-    # Calculate all consecutive differences in seconds
-    intervals = [int((datetimes[i] - datetimes[i-1]).total_seconds()) 
-        for i in range(1, len(datetimes))]
-    
-    # Use the most common interval as the bin size
     try:
-        bin_size = statistics.mode(intervals)
-    except statistics.StatisticsError:
-        # If there are multiple modes, take the smallest one
-        bin_size = min(statistics.multimode(intervals))
-    
-    logging.info(f"The most common spacing between two spectra is {max(2, bin_size)} seconds.")
+        # multimode handles both single mode and ties gracefully
+        modes = statistics.multimode(intervals)
+        bin_size = min(modes)
+    except Exception as e:
+        logging.error(f"Failed to calculate mode: {e}")
+        return 2
+
+    final_bin = int(max(2, bin_size))
+    logging.info(f"The most common spacing between two spectra is {final_bin} seconds.")
         
-    return max(2, bin_size) # Ensure it's at least 1 second
+    return final_bin

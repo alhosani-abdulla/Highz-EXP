@@ -310,8 +310,16 @@ def states_to_ntwk(f, loaded_states):
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
-def get_date_state_specs(date_dir, state_indx=0):
-    """Collect all spectrum files for a given date and state index."""
+def get_sorted_time_dirs(date_dir) -> list:
+    """
+    Returns:
+        List[str]: A sorted list of full paths to the subdirectories. 
+            Returns an empty list if no directories are found.
+
+    Example:
+        >>> get_sorted_time_dirs("/data/2023-10-27")
+        ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
+    """
     all_items = glob.glob(pjoin(date_dir, "*"))
     time_dirs = [d for d in all_items if os.path.isdir(d)]
     time_dirs.sort()
@@ -320,9 +328,13 @@ def get_date_state_specs(date_dir, state_indx=0):
         logging.error("No sub directories found in %s", date_dir)
         return
     
+    return time_dirs
+
+def get_specs_from_dirs(date_str, time_dirs, state_indx=0):
+    """Collect all spectrum files for a given date and state index."""
     loaded = {}
     for time_dir in time_dirs:
-        loaded.update(add_timestamp(time_dir, pbase(date_dir), state_indx)) 
+        loaded.update(add_timestamp(time_dir, date_str, state_indx)) 
 
     return loaded
 
