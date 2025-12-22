@@ -17,7 +17,7 @@ def setup_logging(level=logging.INFO, output_file=False):
         logging.basicConfig(filename=file_name)
 
 def __main__():
-    setup_logging(level=logging.DEBUG, output_file=True)
+    setup_logging(level=logging.WARNING, output_file=True)
     logging.info("Starting file compression process...")
 
     help_use = """

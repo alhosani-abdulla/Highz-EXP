@@ -412,7 +412,7 @@ def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, s
         new_w = w_orig // sf
         spectra = spectra[:, :new_w * sf]
         spectra = spectra.reshape(h_curr, new_w, sf).max(axis=2)
-        faxis = faxis[::sf][:new_w]
+        faxis = faxis.reshape(-1, sf).mean(axis=1)
 
     h_f, w_f = spectra.shape
     reduction = (1 - (spectra.size / (h_orig * w_orig))) * 100

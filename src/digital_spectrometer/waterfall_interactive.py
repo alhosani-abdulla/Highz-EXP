@@ -49,7 +49,7 @@ def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
 
     return timestamps[sort_idx], spectra[sort_idx]
 
-def align_spectra_to_grid(datetimes, spectra, bin_size_seconds=8) -> tuple:
+def align_spectra_to_grid(datetimes, spectra, bin_size_seconds=2) -> tuple:
     """
     Creates a regular grid of timestamps and fills missing gaps with NaN.
     """
@@ -94,18 +94,47 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     date = datetimes[0].date()
     
     bin_size = get_dynamic_bin_size(datetimes) 
-    datetimes, spectra = align_spectra_to_grid(datetimes, spectra)
+    datetimes, spectra = align_spectra_to_grid(datetimes, spectra, bin_size_seconds=bin_size)
     
     # Create the heatmap
     fig = go.Figure(data=go.Heatmap(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
-        colorbar=dict(title="Power (dBm)"), connectgaps=False, hoverongaps=False,
+        colorbar=dict(title="Power (dBm)"), connectgaps=True, hoverongaps=False, zsmooth='fast',
         hovertemplate=(
             "Time: %{y}<br>" +
             "Freq: %{x:.2f} MHz<br>" +
             "Power: %{z:.2f} dBm<extra></extra>"
         )
     ))
+    
+    # Add buttons to toggle connectgaps
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                active=0,
+                font=dict(size=14, color="white", family="Arial"),
+                buttons=list([
+                    dict(
+                        args=[{"connectgaps": True, "zsmooth": 'fast'}],
+                        label="Interpolate Gaps",
+                        method="restyle"
+                    ),
+                    dict(
+                        args=[{"connectgaps": False}],
+                        label="Show Gaps (Raw)",
+                        method="restyle" # Use restyle to update trace attributes
+                    )
+                ]),
+                pad={"r": 10, "t": 10},
+                showactive=True,
+                x=1.00,
+                xanchor="right",
+                y=1.15,
+                yanchor="top"
+            ),
+        ])
 
     # Robust logic:
     if datetimes[0] < datetimes[-1]:
@@ -179,45 +208,6 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
             }
         ]
     )
-
-    # # Gradient Adjustment Buttons
-    # fig.update_layout(margin=dict(t=100, b=100),
-    #     updatemenus=[
-    #         dict(
-    #             type="buttons",
-    #             direction="left",
-    #             active=0, x=0.5, y=-0.5,
-    #             xanchor="center",
-    #             yanchor="bottom",
-    #             buttons=[
-    #                 # Default Range
-    #                 dict(label="Reset Range (Min to Max)",
-    #                      method="restyle",
-    #                      args=[{"zmin": vmin, "zmax": vmax}]),
-                    
-    #                 # Narrow Range (High Contrast - useful for faint signals)
-    #                 dict(label="High Contrast [-50, -30]",
-    #                      method="restyle",
-    #                      args=[{"zmin": -50, "zmax": -30}]),
-                    
-    #                 # Wide Range (Deep Noise Floor)
-    #                 dict(label="Wide Range [-80, -20]",
-    #                      method="restyle",
-    #                      args=[{"zmin": -80, "zmax": -20}]),
-                    
-    #                 # See Noise Floor (Lower floor)
-    #                 dict(label="Low Power Level [-80, -60]",
-    #                      method="restyle",
-    #                      args=[{"zmin": -80, "zmax": -60}]),
-                    
-    #                 # See Noise Floor (Lower floor)
-    #                 dict(label="Absolute Noise Floor [-90, -70]",
-    #                      method="restyle",
-    #                      args=[{"zmin": -90, "zmax": -70}])
-    #             ]
-    #         )
-    #     ]
-    # )
 
     # OR call show specifically with the renderer
     fig.write_html(output_path, auto_open=False, include_plotlyjs='cdn')
