@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 import numpy as np
 import logging, statistics, copy
@@ -340,6 +340,43 @@ def compile_heatmap_data(alltime_spectra: np.ndarray, timestamps: List[datetime]
     active_times = daily_timestamps[0]
 
     return active_data, active_times
+
+
+def align_spectra_to_grid(datetimes, spectra, bin_size_seconds=2) -> tuple:
+    """
+    Creates a regular grid of timestamps and fills missing gaps with NaN.
+    """
+    if not datetimes:
+        return [], []
+
+    # 1. Create a regular time grid from start to end
+    start_time = datetimes[0]
+    end_time = datetimes[-1]
+    
+    # Calculate total expected steps
+    total_seconds = int((end_time - start_time).total_seconds())
+    num_steps = (total_seconds // bin_size_seconds) + 1
+    
+    # Generate the regular grid
+    regular_datetimes = [start_time + timedelta(seconds=i * bin_size_seconds) 
+                         for i in range(num_steps)]
+    
+    # 2. Prepare a new matrix filled with NaN
+    # Shape: (number of time steps, number of frequency bins)
+    num_freq_bins = spectra.shape[1]
+    aligned_spectra = np.full((num_steps, num_freq_bins), np.nan)
+
+    # 3. Map original spectra to the nearest grid index
+    for i, dt in enumerate(datetimes):
+        # Calculate which grid index this actual timestamp belongs to
+        delta_seconds = (dt - start_time).total_seconds()
+        grid_idx = int(round(delta_seconds / bin_size_seconds))
+        
+        # Ensure we don't go out of bounds due to rounding
+        if grid_idx < num_steps:
+            aligned_spectra[grid_idx, :] = spectra[i, :]
+
+    return regular_datetimes, aligned_spectra
 
 def validate_spectra_dimensions(datetimes, faxis_mhz, spectra) -> bool:
     """

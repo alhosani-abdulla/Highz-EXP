@@ -1,12 +1,19 @@
 import numpy as np
 import os, glob, re, pickle, zoneinfo
 from datetime import datetime, date, timedelta, timezone
-from typing import List, Dict, Union, Optional
 import skrf as rf
 import logging
+from highz_exp.unit_convert import rfsoc_spec_to_dbm
 
 pjoin = os.path.join
 pbase = os.path.basename
+
+nfft = 32768
+fs = 3276.8/4
+fbins = np.arange(0, nfft//2)
+df = fs/nfft
+faxis = fbins*df
+faxis_hz = faxis*1e6
 
 def load_s1p(s1p_files, labels=None) -> dict:
     """
@@ -330,13 +337,42 @@ def get_sorted_time_dirs(date_dir) -> list:
     
     return time_dirs
 
-def get_specs_from_dirs(date_str, time_dirs, state_indx=0):
+def get_specs_from_dirs(date_str, time_dirs, state_indx=0) -> dict:
     """Collect all spectrum files for a given date and state index."""
     loaded = {}
     for time_dir in time_dirs:
         loaded.update(add_timestamp(time_dir, date_str, state_indx)) 
 
     return loaded
+
+def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
+    """Read timestamps and spectra from loaded data. Sort by timestamps.
+
+    Parameters:
+    -----------
+    loaded: dict. Structure {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
+    date : str. Formated like 20251216."""
+    timestamps = []
+    raw_timestamps_str = []
+    spectra = []
+    for timestamp_str, info_dict in loaded.items():
+        timestamps.append(info_dict['full_timestamp'])
+        spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
+        if len(spectrum) != nfft//2:
+            logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(
+                spectrum), nfft//2, timestamp_str)
+            continue
+        spectra.append(spectrum)
+
+    timestamps = np.array(timestamps)
+    spectra = np.array(spectra)
+
+    sort_idx = np.argsort(
+        timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
+    if sort == 'descending':
+        sort_idx = sort_idx[::-1]
+
+    return timestamps[sort_idx], spectra[sort_idx]
 
 def add_timestamp(time_dir, date_str, state_no) -> dict:
     """Load all spectrum files in a data-collecting cycle (one set of sky spectra + one set of calibration spectra) and return a dict with timestamp keys.

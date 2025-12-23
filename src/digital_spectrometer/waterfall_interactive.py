@@ -3,10 +3,13 @@ import os, logging, sys
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
-import argparse, statistics
+import argparse
 from datetime import timedelta
-from highz_exp.unit_convert import rfsoc_spec_to_dbm, convert_utc_list_to_local
-from highz_exp.file_load import get_sorted_time_dirs, get_specs_from_dirs
+from datetime import datetime, timedelta
+from typing import List, Tuple, Optional
+
+from highz_exp.unit_convert import convert_utc_list_to_local
+from highz_exp.file_load import get_sorted_time_dirs, get_specs_from_dirs, read_loaded
 from file_compressor import setup_logging
 from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimensions, get_dynamic_bin_size
 
@@ -20,70 +23,49 @@ faxis_hz = faxis*1e6
 pjoin = os.path.join
 pbase = os.path.basename
 
-def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
-    """Read timestamps and spectra from loaded data. Sort by timestamps.
-
-    Parameters:
-    -----------
-    loaded: dict. Structure {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
-    date : str. Formated like 20251216."""
-    timestamps = []
-    raw_timestamps_str = []
-    spectra = []
-    for timestamp_str, info_dict in loaded.items():
-        timestamps.append(info_dict['full_timestamp'])
-        spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
-        if len(spectrum) != nfft//2:
-            logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(
-                spectrum), nfft//2, timestamp_str)
-            continue
-        spectra.append(spectrum)
-
-    timestamps = np.array(timestamps)
-    spectra = np.array(spectra)
-
-    sort_idx = np.argsort(
-        timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
-    if sort == 'descending':
-        sort_idx = sort_idx[::-1]
-
-    return timestamps[sort_idx], spectra[sort_idx]
-
-def align_spectra_to_grid(datetimes, spectra, bin_size_seconds=2) -> tuple:
+def inject_gap_spacers(datetimes: List[datetime], 
+    spectra: np.ndarray, threshold_seconds: float = 30.0) -> Tuple[List[datetime], np.ndarray]:
     """
-    Creates a regular grid of timestamps and fills missing gaps with NaN.
+    Detects temporal gaps in spectral data and injects NaN-filled rows.
+
+    This function identifies periods where data collection was interrupted (based 
+    on the threshold) and inserts a single row of NaNs at the midpoint of the gap. 
+    This prevents Plotly from interpolating across the gap and visually 
+    represents the interruption as a black bar.
+
+    Args:
+        datetimes: A list of datetime objects corresponding to the spectra rows.
+        spectra: A 2D NumPy array of shape (N, M) containing power values.
+        threshold_seconds: Gap duration in seconds required to trigger a spacer.
+
+    Returns:
+        A tuple containing:
+            - A new list of datetimes (including injected midpoints).
+            - A new 2D NumPy array with injected NaN rows.
     """
-    if not datetimes:
-        return [], []
+    new_ts: List[datetime] = []
+    new_spectra_list: List[np.ndarray] = []
+    num_freq_bins: int = spectra.shape[1]
 
-    # 1. Create a regular time grid from start to end
-    start_time = datetimes[0]
-    end_time = datetimes[-1]
-    
-    # Calculate total expected steps
-    total_seconds = int((end_time - start_time).total_seconds())
-    num_steps = (total_seconds // bin_size_seconds) + 1
-    
-    # Generate the regular grid
-    regular_datetimes = [start_time + timedelta(seconds=i * bin_size_seconds) 
-                         for i in range(num_steps)]
-    
-    # 2. Prepare a new matrix filled with NaN
-    # Shape: (number of time steps, number of frequency bins)
-    num_freq_bins = spectra.shape[1]
-    aligned_spectra = np.full((num_steps, num_freq_bins), np.nan)
+    for i in range(len(datetimes)):
+        # Add current real data
+        new_ts.append(datetimes[i])
+        new_spectra_list.append(spectra[i])
 
-    # 3. Map original spectra to the nearest grid index
-    for i, dt in enumerate(datetimes):
-        # Calculate which grid index this actual timestamp belongs to
-        delta_seconds = (dt - start_time).total_seconds()
-        grid_idx = int(round(delta_seconds / bin_size_seconds))
-        
-        # Ensure we don't go out of bounds due to rounding
-        if grid_idx < num_steps:
-            aligned_spectra[grid_idx, :] = spectra[i, :]
+        # Check gap between current and next index
+        if i < len(datetimes) - 1:
+            time_diff = (datetimes[i+1] - datetimes[i]).total_seconds()
+            
+            if time_diff > threshold_seconds:
+                # Calculate the midpoint of the interruption
+                gap_midpoint = datetimes[i] + (datetimes[i+1] - datetimes[i]) / 2
+                nan_row = np.full((num_freq_bins,), np.nan)
+                
+                new_ts.append(gap_midpoint)
+                new_spectra_list.append(nan_row)
 
-    return regular_datetimes, aligned_spectra
+    return new_ts, np.array(new_spectra_list)
+
 
 def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_path, vmin=-80, vmax=-20):
     """
@@ -92,9 +74,11 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     """
 
     date = datetimes[0].date()
+
+    datetimes, spectra = inject_gap_spacers(datetimes, spectra, threshold_seconds=30)
     
-    bin_size = get_dynamic_bin_size(datetimes) 
-    datetimes, spectra = align_spectra_to_grid(datetimes, spectra, bin_size_seconds=bin_size)
+    # bin_size = get_dynamic_bin_size(datetimes) 
+    # datetimes, spectra = align_spectra_to_grid(datetimes, spectra, bin_size_seconds=bin_size)
     
     # Create the heatmap
     fig = go.Figure(data=go.Heatmap(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,

@@ -1,12 +1,14 @@
 import numpy as np
-from os.path import join as pjoin
-import sys
+import sys,argparse
 import os
+from pathlib import Path
 
 from highz_exp import plotter, file_load
 from highz_exp.spec_class import Spectrum
 from plot_settings import LEGEND, COLOR_CODE, LEGEND_WO_ANTENNA
 
+pjoin = os.path.join
+pbase = os.path.basename
 
 nfft = 32768
 fs = 3276.8/4
@@ -14,6 +16,18 @@ fbins = np.arange(0, nfft//2)
 df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
+
+def create_image_for_condensed(spec_dir, state_indx=0):
+    spec_path = Path(spec_dir)
+    time = spec_path.name
+    date = spec_path.parent.name
+    loaded = file_load.get_specs_from_dirs(date, [spec_dir], state_indx)
+    timestamps, spectra = file_load.read_loaded(loaded)
+    sample_spectrum = Spectrum(faxis_hz, spectra[0:], name="Antenna")
+    yticks = [-80, -70, -60, -50, -40, -30]
+    plotter.plot_spectrum([sample_spectrum], save_dir=spec_dir, suffix='antenna_states',
+                        title=f'{date}: {time} Spectra', ylabel='PSD [dBm]',
+                        ymin=-80, ymax=-30, yticks=yticks, show_plot=True) 
 
 def create_image(spec_path, show_plots=False):
     """Create and save spectrum images for all spectrum files (wo antenna vs. with antenna) in the specified directory."""
@@ -40,17 +54,33 @@ def create_image(spec_path, show_plots=False):
 
 if __name__ == "__main__":
     print("Creating image for a specified directory of spectrum files...")
-    spec_path = sys.argv[1]
-    spec_path = os.path.abspath(spec_path)
-    # if spec_path.startswith('~'):
-    #     spec_path = os.path.expanduser(spec_path)
-    # elif spec_path.startswith('/'):
-    #     pass
-    # elif spec_path.startswith('.'):
-    #     spec_path = os.path.abspath(spec_path)
-    # else:
-    #     spec_path = pjoin(os.getcwd(), spec_path)
-    #     print(f"Interpreting path as {spec_path}")
-    create_image(spec_path, show_plots=True)
+    
+    parser = argparse.ArgumentParser(description="Process spectrum files from a directory.")
+
+    # Required positional argument for input directory
+    parser.add_argument("input_dir",  type=str, 
+        help="Path to the input directory containing spectrum files")
+
+    # Optional argument for state_indx
+    # nargs='+' allows for one or more integers (a list)
+    parser.add_argument("--state_indx", type=int, nargs='+', 
+        default=[0],
+        help="A single state index or a list of indices (e.g., --state_indx 1 2 3)"
+    )
+
+    args = parser.parse_args()
+
+    # Logic from your snippet
+    print("Creating image for a specified directory of spectrum files...")
+    
+    spec_path = os.path.abspath(args.input_dir)
+    state_indices = args.state_indx
+
+    print(f"Path: {spec_path}")
+    print(f"State Indices: {state_indices}")
+
+    create_image_for_condensed(spec_path, 0)
+
+    # create_image(spec_path, show_plots=True)
     
 
