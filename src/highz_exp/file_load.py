@@ -1,8 +1,10 @@
 import numpy as np
 import os, glob, re, pickle, zoneinfo
+from pathlib import Path
 from datetime import datetime, date, timedelta, timezone
 import skrf as rf
 import logging
+
 from highz_exp.unit_convert import rfsoc_spec_to_dbm
 
 pjoin = os.path.join
@@ -15,45 +17,186 @@ df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
 
-def load_s1p(s1p_files, labels=None) -> dict:
+class LegacyDSFileLoader():
     """
-    Load S1P files and return a dictionary of label: rf.Network objects.
+    A utility class for managing and transforming legacy file format for Digital Spectrometer.
 
-    Parameters:
-    - s1p_files (list of str): Paths to .s1p files.
-    - labels (list of str, optional): Labels for the files.
+    Sample legacy file output: 
+        array({'switch state': 0, 'spectrum': array([274611.,  77320.,  70819., ...,  54413.,  52757.,  48947.])}, dtype=object)
 
-    Returns:
-    - dict: {label: rf.Network}
+    This loader is specifically designed to handle directories containing 
+    fragmented .npy files (each containing 2s-accumulated spectra), providing methods to aggregate them based on 
+    temporal metadata encoded in their filenames.
+
+    Attributes:
+        dir (str): The source directory path where dataset files are located.
     """
-    if labels is None:
-        labels = [pbase(f) for f in s1p_files]
+    def __init__(self, dir_path):
+        self.dir = dir_path
+        pass
+    
+    def condense_npy_by_timestamp(self, output_dir, pattern='*.npy', time_regex=r'_(\d{6})(?:_|$)', use_pickle=False) -> dict:
+        """
+        Aggregates multiple .npy files into a single dictionary keyed by timestamp.
 
-    return {label: rf.Network(file) for file, label in zip(s1p_files, labels)}
+        The method performs a five-step pipeline:
+        1. Discovery: Finds non-empty files matching the glob pattern.
+        2. Extraction: Parses a 'key' (timestamp) from each filename using regex.
+        3. Loading: Reads .npy data.
+        4. Flattening: Reduces single-item lists to raw objects while keeping collisions as lists.
+        5. Serialization: Saves the resulting dictionary to a new file with a generated name.
 
-def get_and_clean_nonempty_files(directory, pattern="*.npy"):
-    """
-    Return a list of non-zero-size files in `directory` matching `pattern`,
-    and remove all 0-byte files.
+        Args:
+            output_dir (str): Directory where the condensed file will be saved.
+            pattern (str): Glob pattern to filter files (default: '*.npy').
+            time_regex (str): Regex to extract the time key. Defaults to a 6-digit 'HHMMSS' format.
+            use_pickle (bool): If True, saves output as .pkl; otherwise saves as .npy.
 
-    Parameters:
-        directory (str): Path to the directory (mounted Google Drive path).
-        pattern (str): Glob pattern, e.g., '*.npy', '*.txt', etc.
+        Returns:
+            dict | None: The condensed dictionary {timestamp: data} if successful, 
+                None if no files were found.
 
-    Returns:
-        List[str]: List of full paths to non-zero-length files.
-    """
-    all_files = glob.glob(os.path.join(directory, pattern))
-    nonempty_files = []
+        Raises:
+            IOError: If the output directory cannot be created or the file cannot be written.
+        """
+        dir_path = self.dir
+        state_files = self.get_and_clean_nonempty_files(dir_path, pattern)
+        raw_buckets = {} # timestamp -> list of data
+        first_filenames = {} # timestamp -> first filename found
+        
+        if not state_files:
+            print(f"No files found in {dir_path}")
+            return None
 
-    for f in all_files:
-        if os.path.getsize(f) > 0:
-            nonempty_files.append(f)
+        # 2. Load and Group
+        for fp in state_files:
+            bn = os.path.basename(fp)
+            match = re.search(time_regex, bn)
+            key = match.group(1) if match else bn.split('_')[1] # fallback
+            
+            try:
+                data = np.load(fp, allow_pickle=True)
+                # Use .item() if it's a 0-d array (common for saved dicts), else raw data
+                if data.ndim != 0:
+                    logging.warning("Possible data corruption detected: npy files containing 2D spectra!")
+                    val = data
+                else:
+                    val = data.item()
+                raw_buckets.setdefault(key, []).append(val)
+                first_filenames.setdefault(key, bn)
+            except Exception as e:
+                logging.error(f"Failed to load {fp}: {e}")
+
+        # 3. Flatten
+        condensed_flat = {}
+        for k,v in raw_buckets.items():
+            if len(v) != 1:
+                logging.warning(f"Multiple files with the same timestamp {k} detected!")
+                condensed_flat[k] = v
+            else:
+                condensed_flat[k] = v[0]
+
+        # 4. Generate Output Filename
+        earliest_key = min(raw_buckets.keys(), key=lambda k: int(k) if k.isdigit() else float('inf'))
+        
+        d_regex = re.compile(r'(\d{8})')
+        p_regex = re.compile(r'(antenna\d*|state\d+|stateOC)', re.IGNORECASE)
+        
+        base_name = self.get_new_output_name(earliest_key, first_filenames[earliest_key], d_regex, p_regex)
+        
+        # 5. Save
+        os.makedirs(output_dir, exist_ok=True)
+        ext = '.pkl' if use_pickle else '.npy'
+        output_path = os.path.join(output_dir, f"{base_name}{ext}")
+
+        if use_pickle:
+            with open(output_path, 'wb') as f: pickle.dump(condensed_flat, f)
         else:
-            print(f"Removing empty file: {f}")
-            os.remove(f)
+            np.save(output_path, condensed_flat, allow_pickle=True)
 
-    return nonempty_files
+        return condensed_flat
+
+    @staticmethod
+    def get_and_clean_nonempty_files(directory, pattern="*.npy") -> list:
+        """
+        Return a list of non-zero-size files in `directory` matching `pattern`,
+        and remove all 0-byte files.
+
+        Parameters:
+            directory (str): Path to the directory (mounted Google Drive path).
+            pattern (str): Glob pattern, e.g., '*.npy', '*.txt', etc.
+
+        Returns:
+            List[str]: List of full paths to non-zero-length files.
+        """
+        all_files = glob.glob(os.path.join(directory, pattern))
+        nonempty_files = []
+
+        for f in all_files:
+            if os.path.getsize(f) > 0:
+                nonempty_files.append(f)
+            else:
+                print(f"Removing empty file: {f}")
+                os.remove(f)
+
+        return nonempty_files
+
+    @staticmethod
+    def load_npy(dir_path, pattern='*state*.npy') -> list:
+        """Load all non-empty .npy files from a specified directory and return them as a list.
+        
+        Return
+            - A list of np.array (spectrum)"""
+        state_files = LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, pattern)
+        states = []
+        for file in state_files:
+            states.append(np.load(file, allow_pickle=True).item())
+        return states
+    
+    @staticmethod
+    def get_new_output_name(earliest_ts, filename, date_regex, part_regex) -> str:
+        """
+        Constructs a standardized, descriptive filename ([Date]_[Timestamp]_[Antenna]_[State]) for compressed files by extracting metadata 
+        from a sample file path (name).
+
+        It prioritizes the 'earliest' timestamp found in the dataset and attempts 
+        to find corresponding identifiers (antenna/state) from the same source filename.
+
+        Args:
+            earliest_ts (str): The primary timestamp (e.g., '123456') to include 
+                in the filename.
+            filename (str): sample filename named in legacy scheme.
+            date_regex (re.Pattern): Compiled regex to extract a date string 
+                (usually YYYYMMDD).
+            part_regex (re.Pattern): Compiled regex to identify 'antenna' or 
+                'state' tokens.
+
+        Returns:
+            str: A sanitized filename without an extension.
+                Example: "20231027_123456_antenna1_state2"
+
+        Note:
+            The function ensures only one 'antenna' and one 'state' token are 
+            included.
+        """
+        date_str = None
+        parts = []
+        
+        date_match = date_regex.search(filename)
+        if date_match:
+            date_str = date_match.group(1)
+            
+        # Find unique antenna/state tokens
+        found_types = set()
+        for m in part_regex.finditer(filename):
+            token = m.group(1)
+            prefix = 'antenna' if 'antenna' in token.lower() else 'state'
+            if prefix not in found_types:
+                parts.append(token)
+                found_types.add(prefix)
+                
+        name_parts = ([date_str] if date_str else []) + [earliest_ts] + parts
+        return re.sub(r'__+', '_', "_".join(name_parts)).strip('_')
 
 def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False) -> np.ndarray:
     """
@@ -93,145 +236,6 @@ def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_ta
             print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
     
     return spike_data
-
-def load_npy(dir_path, pattern='*state*.npy'):
-    """Load all non-empty .npy files from a specified directory and return them as a list"""
-    state_files = get_and_clean_nonempty_files(dir_path, pattern)
-    states = []
-    for file in state_files:
-        states.append(np.load(file, allow_pickle=True).item())
-    return states
-
-def condense_npy_by_timestamp(dir_path, output_dir, pattern='*.npy', time_regex=r'_(\d{6})(?:_|$)', use_pickle=False) -> dict:
-    """
-    Condense many .npy files in dir_path into a single file keyed by a time-stamp
-    extracted from the filename. The returned dictionary is flattened: timestamp -> data
-    (or timestamp -> [data, ...] if multiple files share the same timestamp).
-
-    Parameters:
-        dir_path (str): directory containing .npy files
-        pattern (str): glob pattern for files to include
-        time_regex (str): regex with one capture group that extracts the timestamp key from basename. 
-            Examples of files matching are: '20210915_123456_antenna1_state2.npy' with regex r'_(\d{6})_' to capture '123456'.
-        use_pickle (bool): if True, save with pickle; otherwise save with np.save (allow_pickle=True)
-
-    Returns:
-        dict: mapping timestamp -> data or list of data
-    """
-    state_files = get_and_clean_nonempty_files(dir_path, pattern) # greps all non-empty files matching pattern
-    condensed_data = {}      # key -> list of loaded data objects
-    filenames_by_key = {}    # key -> list of filenames (used to determine state_name/output filename)
-
-    # fp: file path
-    for fp in state_files:
-        # bn: base name of files
-        bn = pbase(fp)
-        # m: match object for time regex
-        m = re.search(time_regex, bn)
-        if m:
-            key = m.group(1)
-        else:
-            logging.warning(f"This file {fp} does not match the time regex {time_regex}, using alternative key extraction.")
-            key = bn.split('_')[1]
-
-        try:
-            loaded = np.load(fp, allow_pickle=True)
-            try:
-                obj = loaded.item()
-            except Exception:
-                obj = loaded
-                logging.warning(f"Loaded object from {fp} is not a dict-like, storing raw loaded object.")
-        except Exception as e:
-            print(f"Skipping file (load error): {fp} -> {e}")
-            continue
-
-        condensed_data.setdefault(key, []).append(obj)
-        filenames_by_key.setdefault(key, []).append(bn)
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    if not condensed_data:
-        print(f"No files found in {dir_path} matching pattern {pattern}")
-        return None
-
-    keys = list(condensed_data.keys())
-
-    def _key_sorter(k):
-        return int(k) if k.isdigit() else float('inf')
-
-    earliest_key = min(keys, key=_key_sorter)
-    if _key_sorter(earliest_key) == float('inf'):
-        earliest_key = min(keys)
-
-    # Determine descriptive parts for output filename from filenames at earliest timestamp
-    # Try to extract a date (YYYYMMDD) and antenna/state parts like 'antenna1' and 'state2'
-    date_regex = re.compile(r'(\d{8})')
-    part_regex = re.compile(r'(antenna\d*|antenna|state\d+|stateOC)', re.IGNORECASE)
-
-    date_str = None
-    parts_list = []
-
-    for bn in filenames_by_key.get(earliest_key, []):
-        if date_str is None:
-            md = date_regex.search(bn)
-            if md:
-                date_str = md.group(1)
-
-        # collect antenna and state parts in order, avoid duplicates (antenna and state at most once)
-        found = {'antenna': False, 'state': False}
-        for pm in part_regex.finditer(bn):
-            token = pm.group(1)
-            tl = token.lower()
-            if tl.startswith('antenna') and not found['antenna']:
-                parts_list.append(token)
-                found['antenna'] = True
-            elif tl.startswith('state') and not found['state']:
-                parts_list.append(token)
-                found['state'] = True
-            if found['antenna'] and found['state']:
-                break
-        if parts_list and date_str:
-            break
-
-    # Fallback: if no parsed parts, reuse previous heuristic to get a state-like name
-    if not parts_list:
-        state_name = None
-        pattern_state = re.compile(r'(state\d+|stateOC|antenna\d*|antenna)', re.IGNORECASE)
-        for bn in filenames_by_key.get(earliest_key, []):
-            m = pattern_state.search(bn)
-            if m:
-                state_name = m.group(1)
-                break
-        if state_name is None:
-            state_name = os.path.splitext(filenames_by_key[earliest_key][0])[0]
-        parts_list = [state_name]
-
-    # Flatten: single-item lists -> the item, multi-item lists kept as lists
-    condensed_flat = {}
-    for k, lst in condensed_data.items():
-        if len(lst) == 1:
-            condensed_flat[k] = lst[0]
-        else:
-            logging.warning(f"Multiple files found for timestamp {k}, storing as list of {len(lst)} items.")
-            condensed_flat[k] = lst
-
-    ext = '.pkl' if use_pickle else '.npy'
-    if date_str:
-        output_basename = f"{date_str}_{earliest_key}_{'_'.join(parts_list)}"
-    else:
-        output_basename = f"{earliest_key}_{'_'.join(parts_list)}"
-    # sanitize any accidental double-underscores
-    output_basename = re.sub(r'__+', '_', output_basename).strip('_')
-    output_file = os.path.join(output_dir, f"{output_basename}{ext}")
-
-    if use_pickle:
-        with open(output_file, 'wb') as fh:
-            pickle.dump(condensed_flat, fh)
-    else:
-        np.save(output_file, condensed_flat, allow_pickle=True)
-
-    print(f"Saved condensed file to: {output_file}")
-    return condensed_flat
 
 def load_npy_dict(file_path):
     """Load a .npy file containing a dictionary of timestamped data.
