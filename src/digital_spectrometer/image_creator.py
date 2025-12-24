@@ -17,13 +17,13 @@ df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
 
-def create_image_for_condensed(spec_dir, state_indx=0):
+def create_image_for_condensed(spec_dir, state_indx=1):
     spec_path = Path(spec_dir)
     time = spec_path.name
     date = spec_path.parent.name
     loaded = file_load.get_specs_from_dirs(date, [spec_dir], state_indx)
     timestamps, spectra = file_load.read_loaded(loaded)
-    sample_spectrum = Spectrum(faxis_hz, spectra[0:], name="Antenna")
+    sample_spectrum = Spectrum(faxis_hz, spectra[0,:], name="Antenna")
     yticks = [-80, -70, -60, -50, -40, -30]
     plotter.plot_spectrum([sample_spectrum], save_dir=spec_dir, suffix='antenna_states',
                         title=f'{date}: {time} Spectra', ylabel='PSD [dBm]',
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     print(f"Path: {spec_path}")
     print(f"State Indices: {state_indices}")
 
-    create_image_for_condensed(spec_path, 0)
+    create_image_for_condensed(spec_path, 1)
 
     # create_image(spec_path, show_plots=True)
     
