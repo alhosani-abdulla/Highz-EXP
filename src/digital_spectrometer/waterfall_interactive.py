@@ -84,10 +84,8 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     fig = go.Figure(data=go.Heatmap(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title="Power (dBm)"), connectgaps=True, hoverongaps=False, zsmooth='fast',
-        hovertemplate=(
-            "Time: %{y}<br>" +
-            "Freq: %{x:.2f} MHz<br>" +
-            "Power: %{z:.2f} dBm<extra></extra>"
+        hovertemplate=("Time: %{y}<br>" +
+            "Freq: %{x:.2f} MHz<br>" + "Power: %{z:.2f} dBm<extra></extra>"
         )
     ))
     
@@ -130,10 +128,8 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     fig.update_layout(
         title=dict(text=f"{date}: {title}", font=dict(size=24)), 
-        xaxis=dict(title=dict(text="Frequency (MHz)")
-                   ),
-        yaxis=dict(
-            title="Time",
+        xaxis=dict(title=dict(text="Frequency (MHz)")),
+        yaxis=dict(title="Time",
             autorange=y_axis_direction,
         ),
         width=1400, height=800, template="plotly_dark",
@@ -194,7 +190,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     )
 
     # OR call show specifically with the renderer
-    fig.write_html(output_path, auto_open=False, include_plotlyjs='cdn')
+    fig.write_html(output_path, auto_open=False, include_plotlyjs=True)
 
     logging.info("=============================================================")
     logging.info(f"Waterfall plot saved to {output_path}.")

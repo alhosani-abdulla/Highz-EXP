@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-from .spec_class import Spectrum
-from os.path import join as pjoin, basename as pbase
+import os, re
+from pathlib import Path
+from typing import Union
 from matplotlib.colors import PowerNorm
 from matplotlib.ticker import NullLocator
 import matplotlib.dates as mdates
@@ -10,6 +10,10 @@ from datetime import datetime
 from typing import List
 import logging
 import skrf as rf
+
+from .spec_class import Spectrum
+
+from os.path import join as pjoin, basename as pbase
 
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'Open Circuit state']
 
