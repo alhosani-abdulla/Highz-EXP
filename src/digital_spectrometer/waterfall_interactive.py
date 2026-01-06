@@ -4,9 +4,9 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 import argparse
-from datetime import timedelta
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Tuple, Optional
+from zoneinfo import ZoneInfo
 
 from highz_exp.unit_convert import convert_utc_list_to_local
 from highz_exp.file_load import get_sorted_time_dirs, get_specs_from_dirs, read_loaded
@@ -241,7 +241,8 @@ def main(date_dir, state_indx, step_f, step_t, output_dir=None):
         os.makedirs(output_dir, exist_ok=True)
 
         # Convert to local for processing/filenames
-        local_ts = convert_utc_list_to_local(timestamps)
+        hwt = ZoneInfo('HST')  # Hawaii Standard Time
+        local_ts = convert_utc_list_to_local(timestamps, local_timezone=hwt)
         logging.info(f"Local Time range: {local_ts[0]} to {local_ts[-1]}")
 
         # --- 2. Identify Daily Boundaries ---
@@ -272,8 +273,7 @@ def main(date_dir, state_indx, step_f, step_t, output_dir=None):
             ds_ts, ds_f, ds_spec = downsample_waterfall(day_ts, f_mhz, day_spectra, step_t=step_t, step_f=step_f)
             
             plot_waterfall_heatmap_plotly(
-                ds_ts, 
-                ds_spec, 
+                ds_ts, ds_spec, 
                 ds_f, 
                 title, 
                 pjoin(output_dir, output_fn)
@@ -284,7 +284,6 @@ if __name__ == "__main__":
     args = main_cli()
 
     # Call main with the parsed values
-    # Note: I've updated the parameter names to match your main function's signature
     main(
         date_dir=args.input_dir, 
         state_indx=args.state_index, 

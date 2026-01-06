@@ -3,6 +3,7 @@ import argparse, os, re
 from pathlib import Path
 import logging, imageio
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Optional, Union, Dict, Any
 
 from highz_exp import plotter, file_load
@@ -86,7 +87,7 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 1,
         return
 
     # Temporal Processing: Convert UTC to Local
-    timestamps: List[datetime] = convert_utc_list_to_local(timestamps)
+    timestamps: List[datetime] = convert_utc_list_to_local(timestamps, local_timezone=ZoneInfo('HST'))
     
     # Update date/time strings to reflect local conversion for filenames/titles
     if timestamps:

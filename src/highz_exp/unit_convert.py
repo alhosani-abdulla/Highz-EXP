@@ -38,11 +38,13 @@ def norm_factor(psd_ref, temperature=300):
     gain = temperature / dbm_to_kelvin(psd_ref)
     return gain
 
-def convert_utc_list_to_local(utc_timestamps):
+def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
     """
     Converts a list of naive UTC datetime objects to local timezone-aware objects.
     """
-    local_timezone = datetime.now().astimezone().tzinfo
+    if local_timezone is None:
+        local_timezone = datetime.now().astimezone().tzinfo 
+        logging.info("No local timezone provided; using system's local timezone.")
     logging.info(f"Current timezone: {local_timezone}.")
     local_timestamps = []
 
