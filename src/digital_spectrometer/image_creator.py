@@ -9,7 +9,7 @@ from typing import List, Optional, Union, Dict, Any
 from highz_exp import plotter, file_load
 from highz_exp.unit_convert import convert_utc_list_to_local
 from highz_exp.spec_class import Spectrum
-from plot_settings import LEGEND, COLOR_CODE, LEGEND_WO_ANTENNA
+from plot_settings import LEGEND, COLOR_CODE, map_filename_to_legend
 
 pjoin = os.path.join
 pbase = os.path.basename
@@ -52,7 +52,7 @@ def create_movie_with_imageio(
 
     logging.info(f"Movie saved successfully: {output_path}")
     
-def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 1, 
+def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0, 
     output_dir: Optional[Union[str, Path]] = None, sample: bool = True) -> None:
     """
     Processes spectral data from a directory to generate line plots.
@@ -63,7 +63,7 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 1,
 
     Args:
         spec_dir: Path to the directory containing spectral data files.
-        state_indx: State index of the data plotted.
+        state_indx: State index of the data plotted. int/list of int.
         output_dir: Directory where the plots will be saved. 
             Defaults to spec_dir if None.
         sample: If True, generates only one plot with the first spectrum. 
@@ -79,25 +79,28 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 1,
     initial_date: str = spec_path.parent.name
     
     # Data Loading
-    loaded = file_load.get_specs_from_dirs(initial_date, [str(spec_path)], state_indx)
-    timestamps, spectra = file_load.read_loaded(loaded)
-    
-    if len(spectra) == 0:
-        logging.warning(f"No spectra found in {spec_dir} for state {state_indx}")
-        return
+    loaded_dict = {}
+    if isinstance(state_indx, int): state_indx = [state_indx]
+    for i, state in enumerate(state_indx):
+        loaded = file_load.get_specs_from_dirs(initial_date, [str(spec_path)], state)
+        timestamps, spectra = file_load.read_loaded(loaded)
 
-    # Temporal Processing: Convert UTC to Local
-    timestamps: List[datetime] = convert_utc_list_to_local(timestamps, local_timezone=ZoneInfo('HST'))
-    
-    # Update date/time strings to reflect local conversion for filenames/titles
-    if timestamps:
-        first_ts: datetime = timestamps[0]
-        date_str: str = first_ts.strftime("%Y-%m-%d")
-        time_str: str = first_ts.strftime("%H%M%S")
-        logging.info(f"Updated metadata to local time: {date_str} at {time_str}")
-    else:
-        date_str, time_str = initial_date, initial_time
-        logging.warning("No timestamps available; falling back to directory-based metadata.")
+        if len(spectra) == 0:
+            logging.warning(f"No spectra found in {spec_dir} for state {state_indx}")
+            return
+        # Temporal Processing: Convert UTC to Local
+        timestamps: List[datetime] = convert_utc_list_to_local(timestamps, local_timezone=ZoneInfo('HST'))
+        loaded_dict[f'state{state}'] = (timestamps, spectra)
+        if i == 0:
+            # Update date/time strings to reflect local conversion for filenames/titles
+            if timestamps:
+                first_ts: datetime = timestamps[0]
+                date_str: str = first_ts.strftime("%Y-%m-%d")
+                time_str: str = first_ts.strftime("%H%M%S")
+                logging.info(f"Updated metadata to local time: {date_str} at {time_str}")
+            else:
+                date_str, time_str = initial_date, initial_time
+                logging.warning("No timestamps available; falling back to directory-based metadata.")
 
     # Directory Management
     final_output_dir: Union[str, Path] = output_dir if output_dir else spec_dir
@@ -115,49 +118,45 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 1,
     }
 
     if sample:
-        # --- Mode 1: Single Sample Plot ---
-        sample_spectrum = Spectrum(faxis_hz, spectra[0, :], name="Antenna")
-        
-        # Override show_plot for single samples if desired
+        ## --- Mode 1: Single Sample Plot ---
+        spectrum_list = []
+        for state, (timestamps, spectra) in loaded_dict.items():
+            sample_spectrum = Spectrum(faxis_hz, spectra[0, :], name=map_filename_to_legend(state))
+            spectrum_list.append(sample_spectrum)
         plotter.plot_spectrum(
-            [sample_spectrum], 
-            suffix='antenna_states',
-            title=f'{date_str}: {time_str} Spectra',
-            **{**base_params, "show_plot": True}
-        )
+            spectrum_list, suffix='antenna_states', title=f'{date_str}: {time_str} Spectra',
+            **{**base_params, "show_plot": True})
     else:
         # --- Mode 2: Batch Plotting (10 spectra per plot) ---
-        batch_size: int = 10
-        total_spectra: int = len(spectra)
-        
-        for start_idx in range(0, total_spectra, batch_size):
-            end_idx: int = min(start_idx + batch_size, total_spectra)
+        for state, (timestamps, spectra) in loaded_dict.items():
+            batch_size: int = 10
+            total_spectra: int = len(spectra)
             
-            # Prepare Spectrum objects for the current batch
-            current_batch: List[Spectrum] = [
-                Spectrum(faxis_hz, spectra[i, :], name=timestamps[i].strftime("%H:%M:%S"))
-                for i in range(start_idx, end_idx)
-            ]
-            
-            batch_num: int = (start_idx // batch_size) + 1
-            suffix: str = f'batch_{batch_num:03d}'
-            title: str = f'{date_str} {time_str}: Batch {batch_num} ({start_idx}-{end_idx-1})'
-            
-            plotter.plot_spectrum(
-                current_batch, 
-                suffix=suffix, 
-                title=title, 
-                **base_params
-            )
-            
-        num_plots = int(np.ceil(total_spectra / batch_size))
-        logging.info(f"Generated {num_plots} plots for {total_spectra} spectra.")
+            for start_idx in range(0, total_spectra, batch_size):
+                end_idx: int = min(start_idx + batch_size, total_spectra)
+                
+                # Prepare Spectrum objects for the current batch
+                current_batch: List[Spectrum] = [
+                    Spectrum(faxis_hz, spectra[i, :], name=timestamps[i].strftime("%H:%M:%S"))
+                    for i in range(start_idx, end_idx)
+                ]
+                
+                batch_num: int = (start_idx // batch_size) + 1
+                suffix: str = f'batch_{batch_num:03d}'
+                title: str = f'{date_str} {time_str}: Batch {batch_num} ({start_idx}-{end_idx-1})'
+                
+                plotter.plot_spectrum(
+                    current_batch, 
+                    suffix=suffix, 
+                    title=title, 
+                    **base_params
+                )
+                
+            num_plots = int(np.ceil(total_spectra / batch_size))
+            logging.info(f"Generated {num_plots} plots for {total_spectra} spectra.")
 
-    num_plots = int(np.ceil(total_spectra / batch_size))
-    logging.info(f"Generated {num_plots} plots for {total_spectra} spectra.")
-
-    # New Step: Generate the movie
-    create_movie_with_imageio(final_output_dir, fps=2)
+            # New Step: Generate the movie
+            create_movie_with_imageio(final_output_dir, output_filename=f"spectra_movie_{state}.mp4", fps=2)
 
 def create_image(spec_path, show_plots=False):
     """Create and save spectrum images for all spectrum files (wo antenna vs. with antenna) in the specified directory."""
@@ -211,7 +210,7 @@ if __name__ == "__main__":
     print(f"Path: {spec_path}")
     print(f"State Indices: {state_indices}")
 
-    create_image_for_condensed(spec_path, 0, output_dir=args.output_dir, sample=False)
+    create_image_for_condensed(spec_path, state_indices, output_dir=args.output_dir, sample=args.sample)
 
     # create_image(spec_path, show_plots=True)
     

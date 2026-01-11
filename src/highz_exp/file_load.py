@@ -29,7 +29,7 @@ class LegacyDSFileLoader():
     temporal metadata encoded in their filenames.
 
     Attributes:
-        dir (str): The source directory path where dataset files are located.
+        dir (str): The source directory path which contains the legacy .npy files.
     """
     def __init__(self, dir_path):
         self.dir = dir_path
@@ -345,7 +345,7 @@ def get_specs_from_dirs(date_str, time_dirs, state_indx=0) -> dict:
     """Collect all spectrum files for a given date and state index."""
     loaded = {}
     for time_dir in time_dirs:
-        loaded.update(add_timestamp(time_dir, date_str, state_indx)) 
+        loaded.update(load_and_add_timestamp(time_dir, date_str, state_indx)) 
 
     return loaded
 
@@ -378,7 +378,7 @@ def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
 
     return timestamps[sort_idx], spectra[sort_idx]
 
-def add_timestamp(time_dir, date_str, state_no) -> dict:
+def load_and_add_timestamp(time_dir, date_str, state_no) -> dict:
     """Load all spectrum files in a data-collecting cycle (one set of sky spectra + one set of calibration spectra) and return a dict with timestamp keys.
 
     Parameters:
