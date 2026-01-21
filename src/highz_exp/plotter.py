@@ -374,15 +374,25 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     else:
         plt.close()
 
-def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None):
+def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=None, 
+              xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
+              marker_freqs=None):
     """Plot gain over a specified frequency range.
     
     Parameters:
         - f (np.ndarray): Frequency axis in MHz.
-        - gain (np.ndarray or list of np.ndarray): Gain values in dB."""
+        - gain (np.ndarray or list of np.ndarray): Gain values.
+        - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
+    """
     # Find the index closest to start_freq and end_freq
-    start_idx = np.argmin(np.abs(f - start_freq))
-    end_idx = np.argmin(np.abs(f - end_freq))
+    if start_freq is None:
+        start_idx = 0
+    else:
+        start_idx = np.argmin(np.abs(f - start_freq))
+    if end_freq is None:
+        end_idx = len(f) - 1
+    else:
+        end_idx = np.argmin(np.abs(f - end_freq))
     plt.figure(figsize=(12, 8))
     if not isinstance(gain, list):
         plt.plot(f[start_idx:end_idx+1], gain[start_idx:end_idx+1])
@@ -393,6 +403,22 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, xlabe
     
     if ymax is not None:
         plt.ylim(top=ymax)
+    if ymin is not None:
+        plt.ylim(bottom=ymin)
+
+    if marker_freqs is not None:
+        for mf in marker_freqs:
+            # Find closest index
+            idx = np.argmin(np.abs(f - mf))
+            marker_gain = gain[idx] if not isinstance(gain, list) else gain[0][idx]
+            marker_freq_mhz = f[idx]
+
+            # Plot marker
+            plt.plot(marker_freq_mhz, marker_gain, 'ro')
+            plt.annotate(f'{marker_gain:.2f} dB\n@ {mf:.0f} MHz',
+                         (marker_freq_mhz, marker_gain),
+                         textcoords="offset points", xytext=(10, 10), ha='left',
+                         fontsize=16, color='darkred')
 
     plt.xlabel(xlabel, fontsize=20)
     plt.ylabel(ylabel, fontsize=20)

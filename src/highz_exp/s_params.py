@@ -4,6 +4,8 @@ import pickle
 import os
 from matplotlib import pyplot as plt
 
+from highz_exp.plotter import plot_gain
+
 pjoin = os.path.join
 
 class S_Params:
@@ -14,6 +16,9 @@ class S_Params:
         - Provide ntwk_dict: a dict of {label: rf.Network} or {label: filepath}
         - Provide pickle_file: path to a pickled dict of networks (same format as ntwk_dict)
         - Provide s_params_files (str or list) and optional labels (str or list)
+
+        Parameters:
+        - labels (str or list): Labels for the S-parameter files.
         """
         # Priority: ntwk_dict > pickle_file > s_params_files
         if ntwk_dict is not None:
@@ -91,10 +96,10 @@ class S_Params:
         Load S-parameters from .s2p files in ntwk_dict, converting to dB if specified.
 
         Parameters:
-        - db (bool): If True, convert S11 to dB scale.
+        - db (bool): If True, convert S21 to dB scale.
 
         Returns:
-        - dict: A dictionary with the same keys as ntwk_dict and values as S11 arrays.
+        - dict: A dictionary {label: S21 values (np.ndarray)}.
         """
         s_params_data = {}
         for label, network in self.ntwk_dict.items():
@@ -152,7 +157,7 @@ class S_Params:
 
         plt.show()
 
-    def plot_s1p(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
+    def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -232,17 +237,18 @@ class S_Params:
 
         plt.show()
     
-        
     def plot_smith_chart(self, suffix='LNA', save_plot=True, save_dir=None, title='Smith Chart',
-                        freq_range=None):
+                        freq_range=None, marker_freq=None, autoscale=False):
         """
         Plot Smith chart from one or more scikit-rf Network objects.
+
         Parameters:
         - suffix (str): Used for output filename if saving.
         - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
                             If None, plots all frequencies.
+        - marker_freq (list): List of frequencies in Hz to mark on the Smith chart.
         """
-        ntwk_dict = self.ntwk_dict
+        ntwk_dict = self.ntwk_dict.copy()
         # Filter networks by frequency range if specified
         if freq_range is not None:
             min_freq, max_freq = freq_range
@@ -252,9 +258,7 @@ class S_Params:
                 freq_mask = (ntwk.f >= min_freq) & (ntwk.f <= max_freq)
                 if np.any(freq_mask):
                     # Create new network with filtered frequencies
-                    filtered_ntwk = ntwk.copy()
-                    filtered_ntwk.f = ntwk.f[freq_mask]
-                    filtered_ntwk.s = ntwk.s[freq_mask]
+                    filtered_ntwk = rf.Network(f=ntwk.f[freq_mask], s=ntwk.s[freq_mask], z0=ntwk.z0[freq_mask])
                     filtered_ntwk_dict[label] = filtered_ntwk
                 else:
                     print(f"Warning: No frequencies in range for {label}")
@@ -265,20 +269,38 @@ class S_Params:
             return
         
         fig, ax = plt.subplots()
-        fig.set_size_inches(10, 8)
+        fig.set_size_inches(14, 12)
         for label, ntwk in ntwk_dict.items():
             ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
-        
+
         for text in ax.texts:
             text.set_fontsize(18)
+        
+        if autoscale:
+            ax.autoscale()
+            ax.set_xlim(1.0)
 
         # Update axis labels (Real and Imaginary)
-        ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=18)
-        ax.set_ylabel(ax.get_ylabel(), fontsize=18, labelpad=18)
+        ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=16)
+        ax.set_ylabel(ax.get_ylabel(), fontsize=18, labelpad=16)
 
         ax.set_title(title, fontsize=20)
         
-        ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0, fontsize=18)
+        if marker_freq is not None:
+            for mfreq in marker_freq:
+                for label, ntwk in ntwk_dict.items():
+                    # Find closest frequency index
+                    idx = (np.abs(ntwk.f - mfreq)).argmin()
+                    s11_point = ntwk.s[idx, 0, 0]
+                    impedance = ntwk.z[idx, 0, 0]
+                    impedance = f'{impedance.real:.1f} + j{impedance.imag:.1f} Ω'
+                    if len(ntwk_dict) > 1:
+                        label = f'{label} @ {mfreq/1e6:.2f} MHz: {impedance}' 
+                    else:
+                        label = f'{mfreq/1e6:.2f} MHz: {impedance}'
+                    ax.plot(np.real(s11_point), np.imag(s11_point), 'o', markersize=7, label=label)
+        
+        ax.legend(loc='upper left', borderaxespad=0, fontsize=18)
         plt.tight_layout()
         
         if save_plot:
@@ -295,6 +317,30 @@ class S_Params:
             
             fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
         plt.show()
+    
+    def plot_gain(self, attenuation=0, title='Gain Measurement', ymax=None, ymin=None, suffix=None,
+                  marker_freqs=None, save_path=None):
+        """
+        Plot gain from multiple .s2p Network objects on the same axes.
+
+        Parameters:
+        - title (str): Title of the plot.
+        - attenuation (float): Attenuation used during measurement (dB). Plotted gain would be (measured gain + attenuation).
+        - ymax (float): Maximum y-axis limit.
+        - ymin (float): Minimum y-axis limit.
+        - suffix (str): optional suffix for saved filename
+        - save_path (str): full path to save the plot
+
+        Returns:
+        - dict: the same ntwk_dict passed in
+        """
+        freq = self.get_freq(MHz=True)
+        gain = self.get_s21(db=True)
+        ordered_labels = list(self.ntwk_dict.keys())
+        ordered_gains = [gain[label] + attenuation for label in ordered_labels]
+        plot_gain(freq, ordered_gains, label=ordered_labels, title=title, ymax=ymax, ymin=ymin, 
+                  save_path=save_path,
+                  marker_freqs=marker_freqs)
             
 def k_factor(s_params):
     """
