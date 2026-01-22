@@ -137,8 +137,9 @@ class Y_Factor_Thermometer:
             pickle.dump(self, f)
     
     @staticmethod
-    def plot_temps(faxis, temp_values, labels, start_freq=10, end_freq=400, ymax=None,
-                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None):
+    def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
+                     title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None,
+                     marker_freqs=None):
         """
         Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
@@ -146,6 +147,7 @@ class Y_Factor_Thermometer:
         - faxis (np.ndarray): Frequency axis in MHz.
         - temp_values (list of np.ndarray): List of temperature arrays at different frequencies.
         - labels (list of str): Labels for each curve.
+        - marker_freqs (list of float, optional): Frequencies at which to place vertical markers (in MHz).
         """
 
         # Find the index closest to start_freq and end_freq
@@ -163,6 +165,20 @@ class Y_Factor_Thermometer:
         #            label=f'Start: {faxis[start_idx]} MHz')
         if ymax is not None:
             plt.ylim(0, ymax)
+        
+        if marker_freqs is not None:
+            for mf in marker_freqs:
+            # Find closest index
+                idx = np.argmin(np.abs(faxis - mf))
+                marker_temp = temp_values[0][idx] if isinstance(temp_values[0], np.ndarray) else temp_values[0]
+                marker_freq_mhz = faxis[idx]
+
+                # Plot marker
+                plt.plot(marker_freq_mhz, marker_temp, 'ro')
+                plt.annotate(f'{marker_temp:.2f} K\n@ {mf:.0f} MHz',
+                        (marker_freq_mhz, marker_temp),
+                        textcoords="offset points", xytext=(10, 10), ha='left',
+                        fontsize=16, color='darkred')
 
         plt.xlabel(xlabel, fontsize=20)
         plt.ylabel(ylabel, fontsize=20)

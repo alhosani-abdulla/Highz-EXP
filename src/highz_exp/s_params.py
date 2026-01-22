@@ -1,4 +1,5 @@
 import numpy as np
+from highz_exp.spec_proc import smooth_spectrum
 import skrf as rf
 import pickle
 import os
@@ -319,7 +320,7 @@ class S_Params:
         plt.show()
     
     def plot_gain(self, attenuation=0, title='Gain Measurement', ymax=None, ymin=None, suffix=None,
-                  marker_freqs=None, save_path=None):
+                  marker_freqs=None, save_path=None, smoothing=False, smoothing_kwargs=None):
         """
         Plot gain from multiple .s2p Network objects on the same axes.
 
@@ -330,17 +331,35 @@ class S_Params:
         - ymin (float): Minimum y-axis limit.
         - suffix (str): optional suffix for saved filename
         - save_path (str): full path to save the plot
+        - marker_freqs (list): List of frequencies in MHz to mark on the gain plot.
+        - smoothing (bool): Whether to apply smoothing to the gain curves.
+        - smoothing_kwargs (dict): Additional keyword arguments for smoothing function.
 
         Returns:
         - dict: the same ntwk_dict passed in
         """
         freq = self.get_freq(MHz=True)
         gain = self.get_s21(db=True)
-        ordered_labels = list(self.ntwk_dict.keys())
-        ordered_gains = [gain[label] + attenuation for label in ordered_labels]
-        plot_gain(freq, ordered_gains, label=ordered_labels, title=title, ymax=ymax, ymin=ymin, 
-                  save_path=save_path,
-                  marker_freqs=marker_freqs)
+        if smoothing:
+            from highz_exp.spec_proc import smooth_spectrum
+            smoothing_kwargs = smoothing_kwargs or {}
+            gain_smoothed = {}
+            for label in gain:
+                gain_smoothed[label] = smooth_spectrum(gain[label], **smoothing_kwargs)
+                # Plot both raw and smoothed
+                ordered_labels = list(self.ntwk_dict.keys())
+                ordered_gains = [gain[label] + attenuation for label in ordered_labels]
+                ordered_gains_smoothed = [gain_smoothed[label] + attenuation for label in ordered_labels]
+                ordered_labels_combined = [f'{label} (raw)' for label in ordered_labels] + [f'{label} (smoothed)' for label in ordered_labels]
+                ordered_gains_combined = ordered_gains + ordered_gains_smoothed
+                plot_gain(freq, ordered_gains_combined, label=ordered_labels_combined, title=title, ymax=ymax, ymin=ymin, 
+                    save_path=save_path, marker_freqs=marker_freqs)
+        else:
+            ordered_labels = list(self.ntwk_dict.keys())
+            ordered_gains = [gain[label] + attenuation for label in ordered_labels]
+            plot_gain(freq, ordered_gains, label=ordered_labels, title=title, ymax=ymax, ymin=ymin, 
+                    save_path=save_path,
+                    marker_freqs=marker_freqs)
             
 def k_factor(s_params):
     """
