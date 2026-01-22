@@ -1,5 +1,6 @@
-# This file contains functions to load and process CSV files saved from Spectrum Analyzer
+# This file contains functions to load and process CSV files saved from Spectrum Analyzer SAX3000.
 import csv, os
+import numpy as np
 import pandas as pd
 
 pjoin = os.path.join
@@ -54,14 +55,15 @@ def split_csv_by_trace_name(input_file, header_file=None, data_file=None):
     print(f"  Header file: {header_file} ({len(header_rows)} rows)")
     print(f"  Data file: {data_file} ({len(data_rows)} rows)")
 
-import csv
 def parse_trace_data(data_file):
     """
-    Parses a CSV file containing multiple trace blocks.
+    Parses a CSV file containing multiple traces in column-oriented format.
     
-    Each trace block starts with 'Trace Name' and contains:
-    - Metadata rows (key-value pairs) before 'Trace Data'
-    - Two columns of data after 'Trace Data': frequency and spectrum
+    Structure:
+    - First row contains headers: 'Trace Name', 'Trace A', 'Trace Name', 'Trace B', etc.
+    - Metadata rows follow (Trace Type, Trace Detector, etc.)
+    - 'Trace Data' row marks the start of frequency/spectrum columns
+    - Data rows contain frequency and spectrum values for each trace in pairs
     
     Args:
         data_file: Path to the data CSV file
@@ -76,67 +78,82 @@ def parse_trace_data(data_file):
         reader = csv.reader(f)
         rows = list(reader)
     
-    # Find all rows with 'Trace Name'
-    trace_starts = []
+    # Parse header row to extract trace names
+    header_row = rows[0]
+    trace_names = []
+    trace_col_pairs = []  # Store (freq_col, spec_col) pairs
+    
+    # Extract trace names and their column positions
+    # Pattern: 'Trace Name', 'Trace A', 'Trace Name', 'Trace B', etc.
+    for i in range(1, len(header_row), 2):
+        if i + 1 < len(header_row):
+            trace_name = header_row[i].strip()
+            if trace_name:
+                trace_names.append(trace_name)
+                trace_col_pairs.append((i - 1, i))  # (frequency col, spectrum col)
+    
+    print(f"Found {len(trace_names)} traces: {trace_names}")
+    print(f"Column pairs: {trace_col_pairs}")
+    
+    if not trace_names:
+        print("No traces found in the file.")
+        return {}
+    
+    # Find the 'Trace Data' row
+    trace_data_row_idx = None
     for i, row in enumerate(rows):
-        if any('Trace Name' in str(cell) for cell in row):
-            trace_starts.append(i)
+        if any('Trace Data' in str(cell) for cell in row):
+            trace_data_row_idx = i
+            break
     
-    if not trace_starts:
-        print("No 'Trace Name' found in the file.")
-        return []
+    if trace_data_row_idx is None:
+        print("Warning: 'Trace Data' marker not found in file")
+        trace_data_row_idx = 3  # Default assumption
     
-    # Add end marker
-    trace_starts.append(len(rows))
+    print(f"'Trace Data' found at row {trace_data_row_idx}")
     
-    # Parse each trace block
+    # Parse metadata rows (between header and 'Trace Data')
+    metadata_dict = {}
+    for row_idx in range(1, trace_data_row_idx):
+        row = rows[row_idx]
+        if len(row) >= 2:
+            key = row[0].strip()
+            if key and key not in ['Trace Name']:
+                metadata_dict[key] = row[1].strip() if len(row) > 1 else ''
+    
+    # Parse data rows (after 'Trace Data')
     traces = {}
-    for idx in range(len(trace_starts) - 1):
-        start = trace_starts[idx]
-        end = trace_starts[idx + 1]
-        block = rows[start:end]
+    
+    for trace_name, (freq_col, spec_col) in zip(trace_names, trace_col_pairs):
+        frequencies = []
+        spectra = []
         
-        # Find 'Trace Data' row within this block
-        trace_data_idx = None
-        for i, row in enumerate(block):
-            if any('Trace Data' in str(cell) for cell in row):
-                trace_data_idx = i
-                break
-        
-        if trace_data_idx is None:
-            print(f"Warning: 'Trace Data' not found in trace block starting at row {start}")
-            continue
-        
-        # Parse metadata (rows between 'Trace Name' (included) and 'Trace Data')
-        metadata = {}
-        for row in block[0:trace_data_idx]: 
-            if len(row) >= 2 and row[0].strip():  # Ensure valid key-value pair
-                key = row[0].strip()
-                value = row[1].strip() if len(row) > 1 else ''
-                metadata[key] = value
-        
-        tracename = metadata.get('Trace Name', 'Unknown')
-        print(f"Parsing trace: {tracename}")
-        metadata.pop('Trace Name')
-        
-        # Parse trace data (rows after 'Trace Data') using pandas
-        data_rows = block[trace_data_idx + 1:]
-        if data_rows:
-            df = pd.DataFrame(data_rows, columns=['frequency', 'spectrum'])
-            df = df.apply(pd.to_numeric, errors='coerce').dropna()
+        # Extract data from the specified column pair (freq, spectrum)
+        for row_idx in range(trace_data_row_idx + 1, len(rows)):
+            row = rows[row_idx]
             
-            traces[tracename] = {
-                'metadata': metadata,
-                'frequency': df['frequency'].to_numpy(),
-                'spectrum': df['spectrum'].to_numpy()
-            }
-        else:
-            print(f"Warning: No data found for trace {tracename}")
-            traces[tracename] = {
-                'metadata': metadata,
-                'frequency': [],
-                'spectrum': []
+            # Get frequency and spectrum values
+            if freq_col < len(row) and spec_col < len(row):
+                freq_str = row[freq_col].strip()
+                spec_str = row[spec_col].strip()
+                
+                if freq_str and spec_str:
+                    try:
+                        freq = float(freq_str)
+                        spec = float(spec_str)
+                        frequencies.append(freq)
+                        spectra.append(spec)
+                    except ValueError:
+                        continue
+        
+        print(f"Trace '{trace_name}': parsed {len(frequencies)} data points")
+        
+        if frequencies and spectra:
+            traces[trace_name] = {
+                'metadata': metadata_dict.copy(),
+                'frequency': np.array(frequencies),
+                'spectrum': np.array(spectra)
             }
     
-    print(f"Parsed {len(traces)} trace block(s)")
+    print(f"Successfully parsed {len(traces)} traces with data")
     return traces

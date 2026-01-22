@@ -38,6 +38,11 @@ If run into import issues, try
 pip install --force-reinstall git+https://github.com/alhosani-abdulla/Highz-EXP.git
 ```
 
+Examples of how to use the various modules and common RF concepts are provided in the [notebooks](notebooks/) directory. 
+[Y-factor calculations](notebooks/Y_factor.ipynb) and [spectrum plotting](notebooks/spectrum_plotting_example.ipynb) are included as starting points.
+
+Scripts used in our data collection/visualization are available in the [scripts](scripts/) directory.
+
 ### Key Classes:
 - `Spectrum`: Class for handling and plotting spectral data.
 ```python

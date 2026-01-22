@@ -64,6 +64,54 @@ class Spectrum:
     def copy(self) -> "Spectrum":
         """Return a deep copy of the Spectrum."""
         return Spectrum(self.freq.copy(), self.spec.copy(), self.name, dict(self.metadata))
+    
+    def plot(self, **plot_kwargs) -> Any:
+        from highz_exp.plotter import plot_spectrum
+        return plot_spectrum(self, **plot_kwargs)
+
+    def unit_convert(self, from_unit: str, to_unit: str, channel_width: Optional[float] = None,
+                     inplace: bool = False) -> "Spectrum":
+        """
+        Convert spectrum units between 'dBm', 'milliwatt', 'watt', and 'kelvin'.
+
+        Args:
+            from_unit: current unit of the spectrum ('dBm', 'milliwatt', 'watt', 'kelvin').
+            to_unit: desired unit of the spectrum ('dBm', 'milliwatt', 'watt', 'kelvin').
+            channel_width: required when converting to/from 'kelvin' (in Hz).
+        Returns:
+            Spectrum: self with converted spectrum.
+        """
+        from highz_exp.unit_convert import dbm_to_milliwatt, watt_to_dbm, dbm_to_kelvin, kelvin_to_dbm
+        unit_options = ['dBm', 'milliwatt', 'watt', 'kelvin']
+        if from_unit not in unit_options:
+            raise ValueError(f"from_unit must be one of {unit_options}")
+        if to_unit not in unit_options:
+            raise ValueError(f"to_unit must be one of {unit_options}")
+        if (from_unit == 'kelvin' or to_unit == 'kelvin') and channel_width is None:
+            raise ValueError("channel_width must be provided when converting to/from 'kelvin'")
+        spec_converted = self.spec.copy()
+        
+        # Convert to dBm first
+        if from_unit == 'milliwatt':
+            spec_converted = watt_to_dbm(spec_converted * 1e-3)
+        elif from_unit == 'watt':
+            spec_converted = watt_to_dbm(spec_converted)
+        elif from_unit == 'kelvin':
+            spec_converted = kelvin_to_dbm(spec_converted, channel_width=channel_width)
+        # Now convert from dBm to target unit
+        if to_unit == 'milliwatt':
+            spec_converted = dbm_to_milliwatt(spec_converted)
+        elif to_unit == 'watt':
+            spec_converted = dbm_to_milliwatt(spec_converted) * 1e-3
+        elif to_unit == 'kelvin':
+            spec_converted = dbm_to_kelvin(spec_converted, channel_width=channel_width)
+
+        if inplace:
+            self.spec = spec_converted
+            return self
+        else:
+            return Spectrum(self.freq.copy(), spec_converted, self.name, dict(self.metadata))
+            
 
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
@@ -104,13 +152,28 @@ class Spectrum:
         import spec_proc
         self.spec = spec_proc.despike(self.spec, window_len=window_len, threshold=threshold, replace=replace)
 
-    def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3) -> "Spectrum":
+    def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3, 
+               freq_interval: Optional[float] = None, inplace: bool = False) -> "Spectrum":
         """
         Smooth the spectrum.
 
-        method: 'savgol' (Savitzky-Golay) or 'moving' (simple moving average).
-        window_len must be odd for savgol.
+        Parameters:
+            window_len: window length in samples (used if freq_interval is None).
+            method: 'savgol' (Savitzky-Golay) or 'moving' (simple moving average).
+            polyorder: polynomial order for savgol filter.
+            freq_interval: optional frequency interval; if provided, window_len is computed from it.
+            inplace: if True, modify the spectrum in place; otherwise, return a new Spectrum object.
+
+        Notes:
+            window_len must be odd for savgol. If freq_interval is provided, it takes precedence.
         """
+        # Compute window_len from freq_interval if provided
+        if freq_interval is not None:
+            if self.freq.size < 2:
+                return self
+            df = float(np.abs(self.freq[1] - self.freq[0]))
+            window_len = max(3, int(np.round(freq_interval / df)))
+        
         if window_len < 3:
             return self
         if method == "savgol":
@@ -121,7 +184,7 @@ class Spectrum:
                 wl = window_len if window_len % 2 == 1 else window_len + 1
                 wl = max(3, wl)
                 try:
-                    self.spec = savgol_filter(self.spec, wl, polyorder, mode="interp")
+                    new_spec = savgol_filter(self.spec, wl, polyorder, mode="interp")
                 except Exception:
                     # fallback
                     method = "moving"
@@ -132,8 +195,13 @@ class Spectrum:
             pad = k // 2
             padded = np.pad(self.spec, pad, mode="edge")
             kernel = np.ones(k) / k
-            self.spec = np.convolve(padded, kernel, mode="valid")
-        return self
+            new_spec = np.convolve(padded, kernel, mode="valid")
+
+        if inplace:
+            self.spec = new_spec
+            return self
+        else:
+            return Spectrum(self.freq.copy(), new_spec, self.name, dict(self.metadata))     
 
     def trim(self, min_freq: Optional[float] = None, max_freq: Optional[float] = None) -> "Spectrum":
         """Keep only data between min_freq and max_freq (inclusive)."""

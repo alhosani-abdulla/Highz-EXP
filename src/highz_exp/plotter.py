@@ -327,7 +327,7 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
             else:
                 color = color_cycle[idx % len(color_cycle)]
 
-            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
+            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
             
             ymax_state = np.max(spectrum)
             if ymax_state > ymax: 
@@ -346,7 +346,7 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
                 color = spec.colorcode
             else:
                 color = color_cycle[idx % len(color_cycle)]
-            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color)
+            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
 
     ylim = (ymin, ymax)
     if ylabel is None:
