@@ -4,12 +4,13 @@ from os.path import join as pjoin
 from . import plotter
 from scipy.constants import Boltzmann as k_B
 from .spec_proc import smooth_spectrum
+from .spec_class import Spectrum
 
 class Y_Factor_Thermometer:
     """
     Class to handle Y-Factor temperature measurements and calculations.
     """
-    def __init__(self, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, cal_hot=None, cal_cold=None, RBW=None):
+    def __init__(self, frequency, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, cal_hot=None, cal_cold=None, RBW=None):
         """
         Initialize with DUT hot and cold spectra. Both in units of milliwatt.
 
@@ -33,6 +34,7 @@ class Y_Factor_Thermometer:
         self.T_cold = T_cold
         self.RBW = RBW
         self.label = DUT_name
+        self.frequency = frequency
         self.T_sys = self.compute_system_temperature(self.Y_factor, T_hot, T_cold)
         if self.CAL_hot is not None and self.CAL_cold is not None:
             self.g = self.gain_with_cal(self.DUT_hot, self.DUT_cold, self.CAL_hot, self.CAL_cold)
@@ -121,6 +123,15 @@ class Y_Factor_Thermometer:
         T_dut = T_sys - T_cal / (10**(g_dut / 10))
         return T_dut
     
+    def smooth_gain(self, kwargs={}):
+        """Smooth the gain spectrum using specified smoothing parameters.
+
+        Parameters:
+            - kwargs (dict): Keyword arguments for the smoothing function.
+        """
+        smoothed_gain = smooth_spectrum(self.g, **kwargs)
+        return smoothed_gain
+    
     def plot_gain(self, f_mhz, **kwargs):
         plotter.plot_gain(f_mhz, self.g, **kwargs)
     
@@ -139,7 +150,7 @@ class Y_Factor_Thermometer:
     @staticmethod
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
                      title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None,
-                     marker_freqs=None):
+                     marker_freqs=None, smoothing=False, smoothing_kwargs={}):
         """
         Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
@@ -148,6 +159,8 @@ class Y_Factor_Thermometer:
         - temp_values (list of np.ndarray): List of temperature arrays at different frequencies.
         - labels (list of str): Labels for each curve.
         - marker_freqs (list of float, optional): Frequencies at which to place vertical markers (in MHz).
+        - smoothing (bool, optional): Whether to apply smoothing to the temperature curves.
+        - smoothing_kwargs (dict, optional): Additional keyword arguments for the smoothing function.
         """
 
         # Find the index closest to start_freq and end_freq
@@ -159,6 +172,10 @@ class Y_Factor_Thermometer:
         # Plot each fitted line
         for temp, label in zip(temp_values, labels):
             plt.plot(faxis[start_idx:end_idx+1], temp[start_idx:end_idx+1], label=label)
+            if smoothing:
+                smoothed_temp = smooth_spectrum(temp[start_idx:end_idx+1], **smoothing_kwargs)
+                plt.plot(faxis[start_idx:end_idx+1], smoothed_temp, linestyle='--',
+                         label=f'{label} (smoothed)')
 
         # Add a vertical marker at the starting frequency
         # plt.axvline(x=faxis[start_idx], color='red', linestyle='--', alpha=0.7,
@@ -191,29 +208,39 @@ class Y_Factor_Thermometer:
             plt.savefig(save_path)
         plt.show()
     
-    def infer_temperature(self, f, spec, start_freq=10, end_freq=400,
-                        smoothing='savgol', window_size=31, ymax=None, title=None, save_path=None):
+    def infer_temperature(self, spectrum: Spectrum, start_freq=10, end_freq=400,
+                        smoothing='savgol', window_size=31, ymin=None, ymax=None, title=None, save_path=None):
         """
-        Plot temperature inference with optional smoothing.
+        Plot temperature inference of a noise source with optional smoothing.
+        This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
+        this infers the temperature at the input of the LNA
 
         Parameters:
         -----------
-        f : np.ndarray. In MHz
+        spectrum: Spectrum
+            Spectrum object containing frequency in Hz and spectrum data in kelvin.
         smoothing : str, optional
             Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
         window_size : int, optional
             Window size for smoothing (must be odd for savgol)
         """
+        f = spectrum.freq/1e6  # MHz
+        spec = spectrum.spec
+    
         # Find the index closest to start_freq and end_freq
         start_idx = np.argmin(np.abs(f - start_freq))
         end_idx = np.argmin(np.abs(f - end_freq))
 
-        g_values = (self.DUT_hot - self.DUT_cold)/(self.T_hot - self.T_cold)
-        noise_values = (self.DUT_cold - g_values * self.T_cold)
+        # conversion of gain from dB to linear scale
+        g_values = 10**(self.g / 10)
+        noise_values = self.T_sys * g_values
 
         y_arr = np.asarray(spec, dtype=float)
-        g_arr = np.asarray(g_values, dtype=float)
-        b_arr = np.asarray(noise_values, dtype=float)
+        
+        # interpolate gain and noise temp to match frequency axis of spec
+        g_arr = np.interp(f, self.f, g_values)
+        b_arr = np.interp(f, self.f, noise_values)
+
         temp_arr = (y_arr - b_arr)/g_arr
 
         # Extract the frequency range

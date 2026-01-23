@@ -393,6 +393,7 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=
         end_idx = len(f) - 1
     else:
         end_idx = np.argmin(np.abs(f - end_freq))
+
     plt.figure(figsize=(12, 8))
     if not isinstance(gain, list):
         plt.plot(f[start_idx:end_idx+1], gain[start_idx:end_idx+1])
@@ -415,7 +416,7 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=
 
             # Plot marker
             plt.plot(marker_freq_mhz, marker_gain, 'ro')
-            plt.annotate(f'{marker_gain:.2f} dB\n@ {mf:.0f} MHz',
+            plt.annotate(f'{marker_gain:.2f} @ {mf:.0f} MHz',
                          (marker_freq_mhz, marker_gain),
                          textcoords="offset points", xytext=(10, 10), ha='left',
                          fontsize=16, color='darkred')

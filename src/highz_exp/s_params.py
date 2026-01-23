@@ -272,7 +272,9 @@ class S_Params:
         fig, ax = plt.subplots()
         fig.set_size_inches(14, 12)
         for label, ntwk in ntwk_dict.items():
-            ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+            # Extract only S11 for Smith chart plotting
+            s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 0:1, 0:1], z0=ntwk.z0)
+            s11_ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
 
         for text in ax.texts:
             text.set_fontsize(18)

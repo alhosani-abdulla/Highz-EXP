@@ -108,6 +108,7 @@ class Spectrum:
 
         if inplace:
             self.spec = spec_converted
+            self.metadata['unit'] = to_unit
             return self
         else:
             return Spectrum(self.freq.copy(), spec_converted, self.name, dict(self.metadata))
