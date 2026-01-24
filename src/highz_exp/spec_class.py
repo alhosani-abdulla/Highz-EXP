@@ -1,6 +1,7 @@
 from typing import Any, Dict, Iterable, Optional
 import numpy as np
 from scipy.signal import savgol_filter
+from . import spec_proc
 
 """
 spec_class.py
@@ -111,7 +112,7 @@ class Spectrum:
             self.metadata['unit'] = to_unit
             return self
         else:
-            return Spectrum(self.freq.copy(), spec_converted, self.name, dict(self.metadata))
+            return Spectrum(self.freq.copy(), spec_converted, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
             
 
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
@@ -150,7 +151,6 @@ class Spectrum:
             as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
             can be used to speed up the local-median computation.
         """
-        import spec_proc
         self.spec = spec_proc.despike(self.spec, window_len=window_len, threshold=threshold, replace=replace)
 
     def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3, 

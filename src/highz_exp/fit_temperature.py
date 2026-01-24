@@ -17,7 +17,7 @@ class Y_Factor_Thermometer:
         Parameters:
             - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW.
             - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in mW.
-            - frequency (np.ndarray): Frequency axis in MHz.
+            - frequency (np.ndarray): Frequency axis in Hz.
             - DUT_name (str): Name/label for the DUT.
             - T_hot (float): Hot source temperature in Kelvin.
             - T_cold (float): Cold source temperature in Kelvin.
@@ -49,7 +49,7 @@ class Y_Factor_Thermometer:
     
     @property
     def f(self) -> np.ndarray:
-        """Frequency axis in MHz."""
+        """Frequency axis in Hz."""
         return self.frequency
     @f.setter
     def f(self, value: np.ndarray) -> None:
@@ -132,7 +132,8 @@ class Y_Factor_Thermometer:
         smoothed_gain = smooth_spectrum(self.g, **kwargs)
         return smoothed_gain
     
-    def plot_gain(self, f_mhz, **kwargs):
+    def plot_gain(self, **kwargs):
+        f_mhz = self.f / 1e6  # Convert frequency to MHz
         plotter.plot_gain(f_mhz, self.g, **kwargs)
     
     def save(self, save_path):
@@ -151,16 +152,16 @@ class Y_Factor_Thermometer:
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
                      title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None,
                      marker_freqs=None, smoothing=False, smoothing_kwargs={}):
-        """
-        Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
+        """Plot temperature of an component (referred to INPUT of the LNA) curves based on fitted line parameters.
 
         Parameters:
-        - faxis (np.ndarray): Frequency axis in MHz.
-        - temp_values (list of np.ndarray): List of temperature arrays at different frequencies.
-        - labels (list of str): Labels for each curve.
-        - marker_freqs (list of float, optional): Frequencies at which to place vertical markers (in MHz).
-        - smoothing (bool, optional): Whether to apply smoothing to the temperature curves.
-        - smoothing_kwargs (dict, optional): Additional keyword arguments for the smoothing function.
+            - faxis (np.ndarray): Frequency axis in MHz.
+            - temp_values (list of np.ndarray): List of temperature arrays at different frequencies.
+            - labels (list of str): Labels for each curve.
+            - marker_freqs (list of float, optional): Frequencies at which to place vertical markers (in MHz).
+            - smoothing (bool, optional): Whether to apply smoothing to the temperature curves.
+            - smoothing_kwargs (dict, optional): Additional keyword arguments for the smoothing function.
+        
         """
 
         # Find the index closest to start_freq and end_freq
@@ -208,21 +209,24 @@ class Y_Factor_Thermometer:
             plt.savefig(save_path)
         plt.show()
     
+    def dut_temp_with_known_gain(self) -> np.ndarray:
+        pass
+    
     def infer_temperature(self, spectrum: Spectrum, start_freq=10, end_freq=400,
                         smoothing='savgol', window_size=31, ymin=None, ymax=None, title=None, save_path=None):
         """
         Plot temperature inference of a noise source with optional smoothing.
         This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
-        this infers the temperature at the input of the LNA
+        this infers the temperature at the input of the LNA.
 
         Parameters:
-        -----------
-        spectrum: Spectrum
-            Spectrum object containing frequency in Hz and spectrum data in kelvin.
-        smoothing : str, optional
-            Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
-        window_size : int, optional
-            Window size for smoothing (must be odd for savgol)
+            - `spectrum`: Spectrum
+                Spectrum object containing frequency in Hz and spectrum data in kelvin.
+            - `smoothing` : str, optional
+                Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
+            - `window_size` : int, optional
+                Window size for smoothing (must be odd for savgol)
+                
         """
         f = spectrum.freq/1e6  # MHz
         spec = spectrum.spec
@@ -238,8 +242,8 @@ class Y_Factor_Thermometer:
         y_arr = np.asarray(spec, dtype=float)
         
         # interpolate gain and noise temp to match frequency axis of spec
-        g_arr = np.interp(f, self.f, g_values)
-        b_arr = np.interp(f, self.f, noise_values)
+        g_arr = np.interp(f, self.f/1e6, g_values)
+        b_arr = np.interp(f, self.f/1e6, noise_values)
 
         temp_arr = (y_arr - b_arr)/g_arr
 
