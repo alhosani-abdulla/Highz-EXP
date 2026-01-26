@@ -213,7 +213,10 @@ class Y_Factor_Thermometer:
         pass
     
     def infer_temperature(self, spectrum: Spectrum, start_freq=10, end_freq=400,
-                        smoothing='savgol', window_size=31, ymin=None, ymax=None, title=None, save_path=None):
+                        marker_freqs=None,
+                        smoothing='savgol', window_size=31, 
+                        ymin=None, ymax=None, title=None, 
+                        save_path=None):
         """
         Plot temperature inference of a noise source with optional smoothing.
         This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
@@ -222,6 +225,12 @@ class Y_Factor_Thermometer:
         Parameters:
             - `spectrum`: Spectrum
                 Spectrum object containing frequency in Hz and spectrum data in kelvin.
+            - `start_freq` : float, optional
+                Start frequency in MHz for plotting.
+            - `end_freq` : float, optional
+                End frequency in MHz for plotting.
+            - `marker_freqs` : list of float, optional
+                Frequencies at which to place markers (in MHz).
             - `smoothing` : str, optional
                 Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
             - `window_size` : int, optional
@@ -263,6 +272,20 @@ class Y_Factor_Thermometer:
         # Plot smoothed line
         plt.plot(freq_range, smoothed, '-', linewidth=2.5,
                 label=f'Smoothed (window={window_size})', color='darkred')
+        
+        if marker_freqs is not None:
+            for mf in marker_freqs:
+                # Find closest index
+                idx = np.argmin(np.abs(freq_range - mf))
+                marker_temp = smoothed[idx]
+                marker_freq_mhz = freq_range[idx]
+
+                # Plot marker
+                plt.plot(marker_freq_mhz, marker_temp, 'ro')
+                plt.annotate(f'{marker_temp:.2f} K\n@ {mf:.0f} MHz',
+                             (marker_freq_mhz, marker_temp),
+                             textcoords="offset points", xytext=(10, 10), ha='left',
+                             fontsize=16, color='darkred')
 
         if ymax is not None:
             plt.ylim(top=ymax)
