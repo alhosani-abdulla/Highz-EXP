@@ -14,9 +14,9 @@ class S_Params:
         """
         Construct S_Params in one of three ways:
 
+        - Provide s_params_files (str or list) and optional labels (str or list)
         - Provide ntwk_dict: a dict of {label: rf.Network} or {label: filepath}
         - Provide pickle_file: path to a pickled dict of networks (same format as ntwk_dict)
-        - Provide s_params_files (str or list) and optional labels (str or list)
 
         Parameters:
         - labels (str or list): Labels for the S-parameter files.
@@ -362,6 +362,45 @@ class S_Params:
             plot_gain(freq, ordered_gains, label=ordered_labels, title=title, ymax=ymax, ymin=ymin, 
                     save_path=save_path,
                     marker_freqs=marker_freqs)
+    
+    @staticmethod
+    def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
+        """
+        Create a new network where S11 = ntwk1.S11 - ntwk2.S11
+
+        Parameters:
+        - ntwk1 (skrf.Network): First network
+        - ntwk2 (skrf.Network): Second network to subtract
+        - new_name (str, optional): Name for the new network. If None, auto-generates name.
+
+        Returns:
+        - skrf.Network: New network with S11 = ntwk1.S11 - ntwk2.S11
+        """
+        import copy
+
+        # Verify frequencies match
+        if not np.allclose(ntwk1.f, ntwk2.f):
+            raise ValueError("Network frequencies don't match!")
+
+        # Verify both networks have the same dimensions
+        if ntwk1.s.shape != ntwk2.s.shape:
+            raise ValueError("Network S-parameter dimensions don't match!")
+
+        # Create new network by copying the first one
+        new_ntwk = copy.deepcopy(ntwk1)
+
+        # Subtract S11 parameters
+        new_ntwk.s[:, 0, 0] = ntwk1.s[:, 0, 0] - ntwk2.s[:, 0, 0]
+
+        # Set the name
+        if new_name is None:
+            name1 = getattr(ntwk1, 'name', 'ntwk1')
+            name2 = getattr(ntwk2, 'name', 'ntwk2')
+            new_ntwk.name = f"{name1}_minus_{name2}"
+        else:
+            new_ntwk.name = new_name
+
+        return new_ntwk
             
 def k_factor(s_params):
     """

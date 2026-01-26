@@ -49,3 +49,6 @@ Scripts used in our data collection/visualization are available in the [scripts]
 from highz_exp.spec_class import Spectrum
 spectrum = Spectrum(frequency_axis, spectral_data, name='example_spectrum', metadata={'obs_time': '2024-01-01T00:00:00Z'})
 ```
+
+### Helper modules:
+- `spec_proc`: Functions for processing spectral data (e.g., averaging, smoothing, downsampling).
