@@ -2,7 +2,7 @@ import numpy as np
 from highz_exp.spec_proc import smooth_spectrum
 import skrf as rf
 import pickle
-import os
+import os, copy
 from matplotlib import pyplot as plt
 
 from highz_exp.plotter import plot_gain
@@ -363,6 +363,54 @@ class S_Params:
                     save_path=save_path,
                     marker_freqs=marker_freqs)
     
+    def apply_to_all_s11s(self, func, inplace=True):
+        """Apply a function to the S11 parameters of all networks."""
+        new_ntwk_dict = {}
+        for key, value in self.ntwk_dict.items():
+            ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
+            spectrum = ntwk_copy.s[:, 0, 0]
+            updated_spectrum = func(spectrum)
+            ntwk_copy.s[:, 0, 0] = updated_spectrum
+            new_ntwk_dict[key] = ntwk_copy
+        if inplace:
+            self.ntwk_dict = new_ntwk_dict
+        return new_ntwk_dict
+    
+    def keep_freq(self, freq_min, freq_max, inplace=True):
+        """Keep only frequencies within [freq_min, freq_max] for all networks.
+        
+        Parameters:
+        - freq_min (float): Minimum frequency to keep (Hz).
+        - freq_max (float): Maximum frequency to keep (Hz).
+        - inplace (bool): If True, modify the ntwk_dict in place. """
+        new_ntwk_dict = {}
+        for key, value in self.ntwk_dict.items():
+            ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
+            indices_to_keep = np.where((ntwk_copy.f >= freq_min) & (ntwk_copy.f <= freq_max))[0]
+            new_ntwk = ntwk_copy[indices_to_keep]
+            new_ntwk_dict[key] = new_ntwk
+        if inplace:
+            self.ntwk_dict = new_ntwk_dict
+        return new_ntwk_dict
+
+    def interpolate_all(self, new_freqs, inplace=True):
+        """Interpolate all networks to a new frequency axis.
+        
+        Parameters:
+        - new_freqs (np.ndarray): New frequency axis (Hz).
+        - inplace (bool): If True, modify the ntwk_dict in place. """
+        new_ntwk_dict = {}
+        for key, value in self.ntwk_dict.items():
+            ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
+            ntwk_interp = ntwk_copy.interpolate(new_freqs)
+            new_ntwk_dict[key] = ntwk_interp
+        if inplace:
+            self.ntwk_dict = new_ntwk_dict
+        return new_ntwk_dict
+
+
+
+    
     @staticmethod
     def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
         """
@@ -429,3 +477,58 @@ def k_factor(s_params):
 
     k = numerator / denominator
     return k, delta
+
+
+def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
+    """
+    Interpolate all ntwk objects in a dictionary to the target frequencies and remove frequencies outside the specified range.
+
+    Parameters:
+    - ntwk_dict (dict): Dictionary of {'label': skrf.Network}
+    - target_freqs (array-like): Frequencies to interpolate to (in Hz)
+    - freq_range (tuple, optional): (min_freq, max_freq) to override common range
+
+    Returns:
+    - dict: New dictionary with deepcopied and interpolated skrf.Network objects
+            with frequencies outside freq_range removed
+    """
+    # Find the common frequency range across all networks
+    common_min_freq = max(np.min(ntwk.f) for ntwk in ntwk_dict.values())
+    common_max_freq = min(np.max(ntwk.f) for ntwk in ntwk_dict.values())
+
+    # Determine the frequency range to use
+    if freq_range is not None:
+        min_freq, max_freq = freq_range
+        if not (common_min_freq <= min_freq <= max_freq <= common_max_freq):
+            print(f"Warning: Requested range {freq_range[0]/1e6:.1f}-{freq_range[1]/1e6:.1f} MHz is outside common range "
+                  f"{common_min_freq/1e6:.1f}-{common_max_freq/1e6:.1f} MHz")
+            # Clip the requested range to the available data range
+            min_freq = max(min_freq, common_min_freq)
+            max_freq = min(max_freq, common_max_freq)
+    else:
+        min_freq, max_freq = common_min_freq, common_max_freq
+
+    new_ntwk_dict = {}
+    for label, ntwk in ntwk_dict.items():
+        # Get the actual frequency range for this specific network
+        ntwk_min_freq = np.min(ntwk.f)
+        ntwk_max_freq = np.max(ntwk.f)
+
+        # Clip target frequencies to both the desired range AND the network's actual range
+        effective_min = max(min_freq, ntwk_min_freq)
+        effective_max = min(max_freq, ntwk_max_freq)
+
+        # Filter target frequencies to the effective range
+        mask = (target_freqs >= effective_min) & (target_freqs <= effective_max)
+        clipped_freqs = target_freqs[mask]
+
+        if len(clipped_freqs) == 0:
+            print(f"Warning: No target frequencies within valid range for {label}")
+            continue
+
+        # Create a copy and interpolate to the clipped frequencies
+        ntwk_copy = copy.deepcopy(ntwk)
+        interp_ntwk = ntwk_copy.interpolate(clipped_freqs)
+        new_ntwk_dict[label] = interp_ntwk
+
+    return new_ntwk_dict
