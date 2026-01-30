@@ -75,12 +75,12 @@ def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
 
     return psd_cleaned
    
-def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
+def despike(arr, window: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
     """
     Remove narrow RFI spikes by comparing each point to a local median and MAD.
 
     Parameters:
-        window_len: odd integer window size for local statistics (>=3).
+        window: odd integer window size for local statistics (>=3).
         threshold: multiple of local MAD (median absolute deviation) above which a point is considered a spike.
         replace: 'median' to replace spikes with local median, 'interp' to interpolate
                     across spike points using neighboring good points.
@@ -90,11 +90,9 @@ def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "m
         as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
         can be used to speed up the local-median computation.
     """
-
-
-    if window_len < 3:
+    if window < 3:
         return arr
-    wl = int(window_len)
+    wl = int(window)
     if wl % 2 == 0:
         wl += 1
     pad = wl // 2
@@ -148,6 +146,42 @@ def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "m
     else:
         raise ValueError("replace must be 'median' or 'interp'")
 
+    return arr
+
+def remove_broad_rfi(arr, freq_width_hz: float, freq_axis: np.ndarray = None, 
+                        method: str = "notch") -> np.ndarray:
+    """
+    Remove broad RFI features by frequency or time-domain filtering.
+    
+    Parameters:
+        arr: Input array (power spectrum or time series)
+        freq_width_hz: Approximate width of broad RFI feature in Hz
+        freq_axis: Frequency axis (required if method='notch')
+        method: 'notch' (frequency domain), 'median' (morphological), or 'savgol' (smoothing)
+        threshold: Sensitivity for feature detection (lower = more aggressive)
+    
+    Returns:
+        Cleaned array with broad RFI attenuated
+    """
+    if method == "notch":
+        # Identify and attenuate broad features via FFT
+        fft_vals = np.fft.fft(arr)
+        freqs = np.fft.fftfreq(len(arr))
+        # Suppress low frequencies (broad features)
+        mask = np.abs(freqs) < (freq_width_hz / (2 * np.max(freq_axis)))
+        fft_vals[mask] *= 0.1
+        return np.real(np.fft.ifft(fft_vals))
+    
+    elif method == "median":
+        # Morphological opening: removes broad peaks
+        window = int(freq_width_hz / np.mean(np.diff(freq_axis))) if freq_axis is not None else 51
+        opened = median_filter(arr, size=window)
+        return np.minimum(arr, opened)
+    
+    elif method == "savgol":
+        # High-order smoothing to suppress broad features
+        return arr - smooth_spectrum(arr, method='savgol', window=51, polyorder=5)
+    
     return arr
 
 def interpolate_arrs(target_freqs, arr_freq, arr) -> tuple[np.ndarray, float, float]:

@@ -221,7 +221,8 @@ class Y_Factor_Thermometer:
         def _smooth_attributes(obj):
             obj.g = smooth_spectrum(obj.g, **smoothing_kwargs)
             obj.T_sys = smooth_spectrum(obj.T_sys, **smoothing_kwargs)
-            obj.T_dut = smooth_spectrum(obj.T_dut, **smoothing_kwargs)
+            if obj.T_dut is not None:
+                obj.T_dut = smooth_spectrum(obj.T_dut, **smoothing_kwargs)
             return obj
         
         if inplace:
@@ -312,6 +313,9 @@ class Y_Factor_Thermometer:
 
         if ymax is not None:
             plt.ylim(top=ymax)
+        
+        if ymin is not None:
+            plt.ylim(bottom=ymin)
 
         plt.xlabel('Frequency (MHz)', fontsize=20)
         plt.ylabel('Temperature (Kelvin)', fontsize=20)
