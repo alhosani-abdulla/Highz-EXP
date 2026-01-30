@@ -6,6 +6,8 @@ import skrf as rf
 from scipy.signal import savgol_filter
 from scipy.ndimage import uniform_filter1d, median_filter
 from typing import Sequence, Union
+from numpy.lib.stride_tricks import sliding_window_view
+from scipy.signal import medfilt
 
 def smooth_spectrum(data, method='savgol', window=31, polyorder=3):
     """
@@ -88,8 +90,7 @@ def despike(arr, window_len: int = 11, threshold: float = 5.0, replace: str = "m
         as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
         can be used to speed up the local-median computation.
     """
-    from numpy.lib.stride_tricks import sliding_window_view
-    from scipy.signal import medfilt
+
 
     if window_len < 3:
         return arr

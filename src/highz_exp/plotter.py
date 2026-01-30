@@ -300,54 +300,58 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=-75, ymax=None, 
-                  freq_range=None, yticks=None, title='Recorded Spectrum', show_plot=True):
+def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=None, ymax=None,
+                  marker_freqs=None, freq_range=None, yticks=None, 
+                  title='Recorded Spectrum', show_plot=True):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
         - loaded_specs: list of Spectrum objects to plot, with frequency in Hz.
         - ymin (float): Minimum y-axis value
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
+        - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
         - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
     """
     plt.figure(figsize=(14, 8))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    
-    if ymax is None:
-        ymax = ymin  # Initialize with ymin
+    for idx, spec in enumerate(loaded_specs):
+        freq = spec.freq  # in Hz
+        spectrum = spec.spec
+        
+        # Convert frequency to MHz for plotting
+        faxis_mhz = freq / 1e6
+        
+        if spec.colorcode is not None:
+            color = spec.colorcode
+        else:
+            color = color_cycle[idx % len(color_cycle)]
 
-        for idx, spec in enumerate(loaded_specs):
-            freq = spec.freq  # in Hz
-            spectrum = spec.spec
-            
-            # Convert frequency to MHz for plotting
-            faxis_mhz = freq / 1e6
-            
-            if spec.colorcode is not None:
-                color = spec.colorcode
-            else:
-                color = color_cycle[idx % len(color_cycle)]
-
-            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
-            
+        plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
+        
+        if ymax is None:
             ymax_state = np.max(spectrum)
-            if ymax_state > ymax: 
+            if ymax_state > (ymax or -np.inf): 
                 ymax = ymax_state
         
-        # Adjust ymax with some padding
-    else:
-        for idx, spec in enumerate(loaded_specs):
-            freq = spec.freq  # in Hz
-            spectrum = spec.spec
-            
-            # Convert frequency to MHz for plotting
-            faxis_mhz = freq / 1e6
-            
-            if spec.colorcode is not None:
-                color = spec.colorcode
-            else:
-                color = color_cycle[idx % len(color_cycle)]
-            plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
+        if ymin is None:
+            ymin_state = np.min(spectrum)
+            if ymin_state < (ymin or np.inf): 
+                ymin = ymin_state
+        
+        if marker_freqs is not None:
+            for mf in marker_freqs:
+                # Find closest index
+                target_freq_hz = mf * 1e6
+                idx = np.argmin(np.abs(freq - target_freq_hz))
+                marker_psd = spectrum[idx]
+                marker_freq_mhz = freq[idx] / 1e6
+
+                # Plot marker
+                plt.plot(marker_freq_mhz, marker_psd, 'ro')
+                plt.annotate(f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
+                             (marker_freq_mhz, marker_psd),
+                             textcoords="offset points", xytext=(10, 10), ha='left',
+                             fontsize=16, color='darkred')
 
     ylim = (ymin, ymax)
     if ylabel is None:
