@@ -270,7 +270,7 @@ class DSFileLoader():
     def __init__(self, dir_path):
         self.dir = dir_path
     
-    def load(self):
+    def load(self, time_range, state_no):
         pass
         
     @staticmethod
@@ -291,7 +291,28 @@ class DSFileLoader():
             raise ValueError(f"Loaded object from {file_path} is not a dictionary.")
         
         return loaded_dict
-       
+    
+    @staticmethod
+    def get_sorted_time_dirs(date_dir) -> list:
+        """
+        Returns:
+            List[str]: A sorted list of full paths to the subdirectories. 
+                Returns an empty list if no directories are found.
+
+        Example:
+            >>> get_sorted_time_dirs("/data/2023-10-27")
+            ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
+        """
+        all_items = glob.glob(pjoin(date_dir, "*"))
+        time_dirs = [d for d in all_items if os.path.isdir(d)]
+        time_dirs.sort()
+        logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
+        if len(time_dirs) == 0:
+            logging.error("No sub directories found in %s", date_dir)
+            return
+        
+        return time_dirs
+        
     @staticmethod
     def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
         """Load all spectrum files for a given date and state index, with timestamp keys.
@@ -390,25 +411,7 @@ def states_to_ntwk(f, loaded_states):
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
-def get_sorted_time_dirs(date_dir) -> list:
-    """
-    Returns:
-        List[str]: A sorted list of full paths to the subdirectories. 
-            Returns an empty list if no directories are found.
 
-    Example:
-        >>> get_sorted_time_dirs("/data/2023-10-27")
-        ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
-    """
-    all_items = glob.glob(pjoin(date_dir, "*"))
-    time_dirs = [d for d in all_items if os.path.isdir(d)]
-    time_dirs.sort()
-    logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
-    if len(time_dirs) == 0:
-        logging.error("No sub directories found in %s", date_dir)
-        return
-    
-    return time_dirs
 
 
 
