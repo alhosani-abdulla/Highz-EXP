@@ -1,4 +1,5 @@
 import numpy as np
+import copy
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
 from . import plotter
@@ -15,6 +16,7 @@ class Y_Factor_Thermometer:
         Initialize with DUT hot and cold spectra. Both in units of milliwatt.
 
         Parameters:
+            - frequency (np.ndarray): Frequency axis in Hz.
             - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW.
             - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in mW.
             - frequency (np.ndarray): Frequency axis in Hz.
@@ -148,6 +150,11 @@ class Y_Factor_Thermometer:
         with open(save_path, 'wb') as f:
             pickle.dump(self, f)
     
+    def plot_system_temperature(self, **kwargs):
+        """Plot the system temperature spectrum."""
+        f_mhz = self.f / 1e6  # Convert frequency to MHz
+        plotter.plot_system_temperature(f_mhz, self.T_sys, **kwargs)
+    
     @staticmethod
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
                      title="DUT Temperature", xlabel="Frequency (MHz)", ylabel="Temperature (Kelvin)", save_path=None,
@@ -209,6 +216,21 @@ class Y_Factor_Thermometer:
             plt.savefig(save_path)
         plt.show()
     
+    def smooth(self, inplace=False, smoothing_kwargs={}):
+        """Smooth the gain, system temperature, and DUT temperature spectra."""
+        def _smooth_attributes(obj):
+            obj.g = smooth_spectrum(obj.g, **smoothing_kwargs)
+            obj.T_sys = smooth_spectrum(obj.T_sys, **smoothing_kwargs)
+            if obj.T_dut is not None:
+                obj.T_dut = smooth_spectrum(obj.T_dut, **smoothing_kwargs)
+            return obj
+        
+        if inplace:
+            return _smooth_attributes(self)
+        else:
+            new_thermo = copy.deepcopy(self)
+            return _smooth_attributes(new_thermo)
+
     def dut_temp_with_known_gain(self) -> np.ndarray:
         pass
     
@@ -221,6 +243,8 @@ class Y_Factor_Thermometer:
         Plot temperature inference of a noise source with optional smoothing.
         This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
         this infers the temperature at the input of the LNA.
+        
+        Automatically interpolates the gain and system temperature to match the frequency axis of the input spectrum.
 
         Parameters:
             - `spectrum`: Spectrum
@@ -289,6 +313,9 @@ class Y_Factor_Thermometer:
 
         if ymax is not None:
             plt.ylim(top=ymax)
+        
+        if ymin is not None:
+            plt.ylim(bottom=ymin)
 
         plt.xlabel('Frequency (MHz)', fontsize=20)
         plt.ylabel('Temperature (Kelvin)', fontsize=20)
@@ -301,6 +328,8 @@ class Y_Factor_Thermometer:
         if save_path is not None:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.show()
+        
+        inferred_spectrum = Spectrum(frequency=spectrum.freq, spectrum=temp_arr, name=spectrum.name)
 
-        return smoothed  # Return smoothed data if needed for further analysis
+        return inferred_spectrum  # Return smoothed data if needed for further analysis
 

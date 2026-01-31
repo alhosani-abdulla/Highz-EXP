@@ -64,7 +64,7 @@ class Spectrum:
 
     def copy(self) -> "Spectrum":
         """Return a deep copy of the Spectrum."""
-        return Spectrum(self.freq.copy(), self.spec.copy(), self.name, dict(self.metadata))
+        return Spectrum(self.freq.copy(), self.spec.copy(), self.name, self.colorcode, self.metadata)
     
     def plot(self, **plot_kwargs) -> Any:
         from highz_exp.plotter import plot_spectrum
@@ -113,7 +113,6 @@ class Spectrum:
             return self
         else:
             return Spectrum(self.freq.copy(), spec_converted, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
-            
 
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
@@ -136,12 +135,12 @@ class Spectrum:
         self.spec = new_spec
         return self
     
-    def despike(self, window_len: int = 11, threshold: float = 5.0, replace: str = "median") -> "Spectrum":
+    def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median") -> "Spectrum":
         """
         Remove narrow RFI spikes by comparing each point to a local median and MAD.
 
         Parameters:
-            window_len: odd integer window size for local statistics (>=3).
+            window: odd integer window size for local statistics (>=3).
             threshold: multiple of local MAD above which a point is considered a spike.
             replace: 'median' to replace spikes with local median, 'interp' to interpolate
                      across spike points using neighboring good points.
@@ -151,38 +150,38 @@ class Spectrum:
             as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
             can be used to speed up the local-median computation.
         """
-        self.spec = spec_proc.despike(self.spec, window_len=window_len, threshold=threshold, replace=replace)
+        self.spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
 
-    def smooth(self, window_len: int = 11, method: str = "savgol", polyorder: int = 3, 
+    def smooth(self, window: int = 11, method: str = "savgol", polyorder: int = 3, 
                freq_interval: Optional[float] = None, inplace: bool = False) -> "Spectrum":
         """
         Smooth the spectrum.
 
         Parameters:
-            window_len: window length in samples (used if freq_interval is None).
+            window: window length in samples (used if freq_interval is None).
             method: 'savgol' (Savitzky-Golay) or 'moving' (simple moving average).
             polyorder: polynomial order for savgol filter.
-            freq_interval: optional frequency interval; if provided, window_len is computed from it.
+            freq_interval: optional frequency interval; if provided, window is computed from it.
             inplace: if True, modify the spectrum in place; otherwise, return a new Spectrum object.
 
         Notes:
-            window_len must be odd for savgol. If freq_interval is provided, it takes precedence.
+            window must be odd for savgol. If freq_interval is provided, it takes precedence.
         """
-        # Compute window_len from freq_interval if provided
+        # Compute window from freq_interval if provided
         if freq_interval is not None:
             if self.freq.size < 2:
                 return self
             df = float(np.abs(self.freq[1] - self.freq[0]))
-            window_len = max(3, int(np.round(freq_interval / df)))
+            window = max(3, int(np.round(freq_interval / df)))
         
-        if window_len < 3:
+        if window < 3:
             return self
         if method == "savgol":
             if savgol_filter is None:
                 # fallback to moving average if scipy not available
                 method = "moving"
             else:
-                wl = window_len if window_len % 2 == 1 else window_len + 1
+                wl = window if window % 2 == 1 else window + 1
                 wl = max(3, wl)
                 try:
                     new_spec = savgol_filter(self.spec, wl, polyorder, mode="interp")
@@ -190,7 +189,7 @@ class Spectrum:
                     # fallback
                     method = "moving"
         if method == "moving":
-            k = int(window_len)
+            k = int(window)
             if k % 2 == 0:
                 k += 1
             pad = k // 2
@@ -202,7 +201,7 @@ class Spectrum:
             self.spec = new_spec
             return self
         else:
-            return Spectrum(self.freq.copy(), new_spec, self.name, dict(self.metadata))     
+            return Spectrum(self.freq.copy(), new_spec, self.name, self.colorcode, self.metadata)     
 
     def trim(self, min_freq: Optional[float] = None, max_freq: Optional[float] = None) -> "Spectrum":
         """Keep only data between min_freq and max_freq (inclusive)."""

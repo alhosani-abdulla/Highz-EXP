@@ -110,7 +110,9 @@ class S_Params:
             s_params_data[label] = s21
         return s_params_data
     
-    def plot_impedance(self, title='Impedance Measurement', ymax=None, ymin=None, save_dir=None, suffix=None):
+    def plot_impedance(self, title='Impedance Measurement', ymax=None, ymin=None, 
+                       plot_imaginary=True,
+                       save_dir=None, suffix=None) -> None:
         """
         Plot multiple impedances from .s1p Network objects on the same axes.
 
@@ -130,16 +132,32 @@ class S_Params:
             return ntwk_dict
 
         fig, ax = plt.subplots(figsize=(14, 8))
+        if plot_imaginary:
+            # Replace single axis with two stacked axes
+            fig.clf()
+            gs = fig.add_gridspec(2, 1, height_ratios=[1, 1])
+            ax = fig.add_subplot(gs[0])
+            ax2 = fig.add_subplot(gs[1], sharex=ax)
+        else:
+            ax2 = None
+
         color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
         for idx, (label, network) in enumerate(ntwk_dict.items()):
             freq = network.f
-            z = network.z[:, 0, 0].real  # Take real part of impedance
+            z_real = network.z[:, 0, 0].real
+            z_imag = network.z[:, 0, 0].imag
             color = color_cycle[idx % len(color_cycle)]
-            ax.plot(freq / 1e6, z, label=f'{label}', color=color)
+            ax.plot(freq / 1e6, z_real, label=f'{label}', color=color)
+            if plot_imaginary:
+                ax2.plot(freq / 1e6, z_imag, color=color, linestyle='--', label=f'{label}')
 
-        ax.set_xlabel('Frequency [MHz]', fontsize=20)
-        ax.set_ylabel('Impedance [Ohms]', fontsize=20)
+        if not plot_imaginary:
+            ax.set_xlabel('Frequency [MHz]', fontsize=20)
+        else:
+            ax2.set_xlabel('Frequency [MHz]', fontsize=20)
+
+        ax.set_ylabel('Real Impedance [Ω]', fontsize=20)
         ax.grid(True)
         ax.tick_params(axis='both', which='major', labelsize=18)
         if ymax is not None:
@@ -149,6 +167,13 @@ class S_Params:
 
         ax.legend(loc='best', fontsize=18)
         ax.set_title(title, fontsize=22)
+
+        if plot_imaginary:
+            ax2.set_ylabel('Imaginary Impedance [Ω]', fontsize=20)
+            ax2.grid(True)
+            ax2.tick_params(axis='both', which='major', labelsize=18)
+            ax2.legend(loc='best', fontsize=18)
+
         fig.tight_layout()
 
         if save_dir is not None:
@@ -376,13 +401,16 @@ class S_Params:
             self.ntwk_dict = new_ntwk_dict
         return new_ntwk_dict
     
-    def keep_freq(self, freq_min, freq_max, inplace=True):
+    def keep_freq(self, freq_min, freq_max, inplace=True) -> dict:
         """Keep only frequencies within [freq_min, freq_max] for all networks.
         
         Parameters:
         - freq_min (float): Minimum frequency to keep (Hz).
         - freq_max (float): Maximum frequency to keep (Hz).
-        - inplace (bool): If True, modify the ntwk_dict in place. """
+        - inplace (bool): If True, modify the ntwk_dict in place.
+        
+        Return 
+        - dict: New dictionary of networks with frequencies outside the range removed."""
         new_ntwk_dict = {}
         for key, value in self.ntwk_dict.items():
             ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
