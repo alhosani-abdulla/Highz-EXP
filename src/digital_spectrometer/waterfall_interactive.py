@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 from zoneinfo import ZoneInfo
 
 from highz_exp.unit_convert import convert_utc_list_to_local
-from highz_exp.file_load import get_sorted_time_dirs, read_loaded, DSFileLoader
+from highz_exp.file_load import get_sorted_time_dirs, DSFileLoader
 from file_compressor import setup_logging
 from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimensions, get_dynamic_bin_size
 
