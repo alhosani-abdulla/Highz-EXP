@@ -6,6 +6,7 @@ import skrf as rf
 import logging
 
 from highz_exp.unit_convert import rfsoc_spec_to_dbm
+from highz_exp.spec_proc import count_spikes
 
 pjoin = os.path.join
 pbase = os.path.basename
@@ -197,119 +198,187 @@ class LegacyDSFileLoader():
                 
         name_parts = ([date_str] if date_str else []) + [earliest_ts] + parts
         return re.sub(r'__+', '_', "_".join(name_parts)).strip('_')
-
-def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False) -> np.ndarray:
-    """
-    Count the number of peaks in a signal that exceed a specified height and threshold.
-    Optionally return the heights and print a table of (x, height).
-
-    Parameters:
-        y (array-like): The signal data.
-        x (array-like, optional): The x-axis values corresponding to y. If None, indices are used.
-        height (float or None): Required height of peaks.
-        threshold (float or None): Required threshold of peaks.
-        distance (int or None): Required minimal horizontal distance (in samples) between neighboring peaks.
-        print_table (bool): If True, print a table of (x, height) for each detected spike.
-
-    Returns:
-        spike_data (np.ndarray): 2D array with shape (n_spikes, 2) containing [x_vals, heights].
-    """
-    from scipy.signal import find_peaks
-    peaks, properties = find_peaks(y, height=height, threshold=threshold, distance=distance)
-    heights = properties.get('peak_heights', np.array([]))
     
-    if x is None:
-        x_vals = peaks
-    else:
-        x_vals = np.asarray(x)[peaks]
-    
-    # Create 2D array with x_vals and heights
-    if len(x_vals) > 0:
-        spike_data = np.column_stack((x_vals, heights))
-    else:
-        spike_data = np.empty((0, 2))
-    
-    if print_table:
-        print("Spike # |    x    |  height")
-        print("---------------------------")
-        for i, (xi, hi) in enumerate(zip(x_vals, heights)):
-            print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
-    
-    return spike_data
+    @staticmethod
+    def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, include_antenna=False):
+        """Load all calibration state files from a specified directory and return them as a dictionary. 
+        
+        Parameters:
+            pick_snapshot (list, optional): List of indices specifying which snapshot to load for each state.
+            cal_names (list, optional): List of calibration state names.
+            include_antenna (bool): If True, also load antenna states (state0 and state1).
 
-def load_npy_dict(file_path):
-    """Load a .npy file containing a dictionary of timestamped data.
+        Returns:
+            dict: Dictionary containing the loaded calibration states: {cal_name: loaded_data}
+        """
+        from .unit_convert import rfsoc_spec_to_dbm
+        state_files = []
+        if not os.path.exists(dir_path):
+            raise FileNotFoundError(f"Directory does not exist: {dir_path}. Double check the path.")
 
-    Parameters:
-        file_path (str): Path to the .npy file.
-
-    Returns:
-        dict: dictionary of timestamp -> data
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File does not exist: {file_path}. Double check the path.")
-
-    loaded_dict = np.load(file_path, allow_pickle=True).item()
-    if not isinstance(loaded_dict, dict):
-        raise ValueError(f"Loaded object from {file_path} is not a dictionary.")
-    
-    return loaded_dict
-
-def load_npy_cal(dir_path, pick_snapshot=None, cal_names=None, offset=-135, include_antenna=False):
-    """Load all calibration state files from a specified directory and return them as a dictionary. 
-    
-    Parameters:
-        pick_snapshot (list, optional): List of indices specifying which snapshot to load for each state.
-        cal_names (list, optional): List of calibration state names.
-        include_antenna (bool): If True, also load antenna states (state0 and state1).
-
-    Returns:
-        dict: Dictionary containing the loaded calibration states: {cal_name: loaded_data}
-    """
-    from .unit_convert import rfsoc_spec_to_dbm
-    state_files = []
-    if not os.path.exists(dir_path):
-        raise FileNotFoundError(f"Directory does not exist: {dir_path}. Double check the path.")
-
-    if not get_and_clean_nonempty_files(dir_path, '*state*.npy'):
-        raise FileNotFoundError(f"No '*state*.npy' files found in directory: {dir_path}")
-    
-    # Load antenna states if requested
-    if include_antenna:
-        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state0*.npy'))
-        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state1*.npy'))
-    else:
-        _ = get_and_clean_nonempty_files(dir_path, f'*state1*.npy')
-        _ = get_and_clean_nonempty_files(dir_path, f'*state0*.npy')
-    
-    # Load calibration states (state2-7)
-    for i in range(2, 8):
-        state_files.append(get_and_clean_nonempty_files(dir_path, f'*state{i}*.npy'))
-    # state_files.append(get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
-
-    load_states = {}
-
-    for i, file_list in enumerate(state_files):
-        state_name = cal_names[i] 
-        if not file_list:
-            continue  # skip if no files found for this state
-
-        if isinstance(pick_snapshot, list):
-            idx = pick_snapshot[i]
-        elif pick_snapshot is not None:
-            spikes = [count_spikes(rfsoc_spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum'], offset=offset), height=20) for file in file_list]
-            if min(spikes) > 0:
-                print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
-            idx = int(np.argmin(spikes))
+        if not LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, '*state*.npy'):
+            raise FileNotFoundError(f"No '*state*.npy' files found in directory: {dir_path}")
+        
+        # Load antenna states if requested
+        if include_antenna:
+            state_files.append(LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, f'*state0*.npy'))
+            state_files.append(LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, f'*state1*.npy'))
         else:
-            idx = 0
+            _ = LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, f'*state1*.npy')
+            _ = LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, f'*state0*.npy')
+        
+        # Load calibration states (state2-7)
+        for i in range(2, 8):
+            state_files.append(LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, f'*state{i}*.npy'))
+        # state_files.append(LegacyDSFileLoader.get_and_clean_nonempty_files(dir_path, "*stateOC*.npy"))
+        load_states = {}
 
-        load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
+        for i, file_list in enumerate(state_files):
+            state_name = cal_names[i] 
+            if not file_list:
+                continue  # skip if no files found for this state
+
+            if isinstance(pick_snapshot, list):
+                idx = pick_snapshot[i]
+            elif pick_snapshot is not None:
+                spikes = [count_spikes(rfsoc_spec_to_dbm(np.load(file, allow_pickle=True).item()['spectrum'], offset=offset), height=20) for file in file_list]
+                if min(spikes) > 0:
+                    print(f"All the recorded spectrum files for {state_name} have spikes with more than 20 dB of height")
+                idx = int(np.argmin(spikes))
+            else:
+                idx = 0
+
+            load_states[state_name] = np.load(file_list[idx], allow_pickle=True).item()
+        
+        load_type = "calibration and antenna states" if include_antenna else "calibration states"
+        print(f"Loading {load_type} measurements in digital spectrometer box, in the recorded power with no conversion.")
+
+        return load_states
+
+class DSFileLoader():
+    """
+    A utility class for managing and transforming file format for Digital Spectrometer.
+
+    This loader is specifically designed to handle directories containing 
+    .npy files (each containing a dictionary of spectra, {timestamp: np.array}), 
+    providing methods to aggregate them based on 
+    temporal metadata encoded in their filenames.
+
+    Attributes:
+        dir (str): The source directory path which contains the data for one-day collecting cycle.
+    """
+    def __init__(self, dir_path):
+        self.dir = dir_path
     
-    load_type = "calibration and antenna states" if include_antenna else "calibration states"
-    print(f"Loading {load_type} measurements in digital spectrometer box, in the recorded power with no conversion.")
+    def load(self):
+        pass
+        
+    @staticmethod
+    def load_npy_dict(file_path):
+        """Load a .npy file containing a dictionary of timestamped data.
 
-    return load_states
+        Parameters:
+            file_path (str): Path to the .npy file.
+
+        Returns:
+            dict: dictionary of timestamp -> data
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File does not exist: {file_path}. Double check the path.")
+
+        loaded_dict = np.load(file_path, allow_pickle=True).item()
+        if not isinstance(loaded_dict, dict):
+            raise ValueError(f"Loaded object from {file_path} is not a dictionary.")
+        
+        return loaded_dict
+       
+    @staticmethod
+    def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
+        """Load all spectrum files for a given date and state index, with timestamp keys.
+
+        Parameters:
+        -----------
+        date_str : str
+                    Date string in 'YYYYMMDD' format representing the date of data collection.
+        time_dirs : str or list
+                    Path to a directory or list of directories containing spectrum .npy files.
+        state_no : int
+                    State number to filter spectrum files.
+        
+        Returns:
+        --------
+        loaded : dict
+                Dictionary with the following structure:
+                {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
+        """
+        # Handle both single directory and list of directories
+        if isinstance(time_dirs, str):
+            time_dirs = [time_dirs]
+        
+        loaded = {}
+        datestamp = datetime.strptime(date_str, '%Y%m%d').date()
+        
+        for time_dir in time_dirs:
+            all_specs = sorted(glob.glob(pjoin(time_dir, f"*state{state_no}*")))
+            for spec_file in all_specs:
+                loaded.update(DSFileLoader.load_npy_dict(spec_file))
+            
+            time_dirname = pbase(time_dir)
+            
+            for timestamp_str in loaded.keys():
+                if 'full_timestamp' not in loaded[timestamp_str]:
+                    timestamp = datetime.strptime(timestamp_str, '%H%M%S').time()
+                    if time_dirname.startswith("23"):
+                        if timestamp.hour <= 1:
+                            full_timestamp = datetime.combine(
+                                datestamp + timedelta(days=1), timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+                        else:
+                            full_timestamp = datetime.combine(
+                                datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+                    else:
+                        full_timestamp = datetime.combine(
+                            datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+                    loaded[timestamp_str]['full_timestamp'] = full_timestamp
+        
+        return loaded
+
+    @staticmethod
+    def read_loaded(loaded, sort='ascending', convert=False) -> tuple[np.array, np.array]:
+        """Read timestamps and spectra from loaded data. Sort by timestamps and compile spectra into 2D array.
+
+        Parameters:
+        -----------
+        loaded: dict. Structure {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
+        convert: bool. If True, convert raw spectrum to dBm using rfsoc_spec_to_dbm.
+        
+        Returns:
+        --------
+        timestamps: np.array of datetime objects, sorted.
+        spectra: 2D np.array of spectra, sorted according to timestamps."""
+        timestamps = []
+        spectra = []
+        for timestamp_str, info_dict in loaded.items():
+            timestamps.append(info_dict['full_timestamp'])
+            if convert:
+                spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
+            else:
+                spectrum = info_dict['spectrum']
+            if len(spectrum) != nfft//2:
+                logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(
+                    spectrum), nfft//2, timestamp_str)
+                continue
+            spectra.append(spectrum)
+
+        timestamps = np.array(timestamps)
+        spectra = np.array(spectra)
+
+        sort_idx = np.argsort(
+            timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
+        if sort == 'descending':
+            sort_idx = sort_idx[::-1]
+
+        return timestamps[sort_idx], spectra[sort_idx]
+
 
 def states_to_ntwk(f, loaded_states):
     """Convert loaded spectrum states to a dictionary of rf.Network objects with frequency f."""
@@ -341,77 +410,5 @@ def get_sorted_time_dirs(date_dir) -> list:
     
     return time_dirs
 
-def get_specs_from_dirs(date_str, time_dirs, state_indx=0) -> dict:
-    """Collect all spectrum files for a given date and state index."""
-    loaded = {}
-    for time_dir in time_dirs:
-        loaded.update(load_and_add_timestamp(time_dir, date_str, state_indx)) 
 
-    return loaded
 
-def read_loaded(loaded, sort='ascending') -> tuple[np.array, np.array]:
-    """Read timestamps and spectra from loaded data. Sort by timestamps.
-
-    Parameters:
-    -----------
-    loaded: dict. Structure {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
-    date : str. Formated like 20251216."""
-    timestamps = []
-    raw_timestamps_str = []
-    spectra = []
-    for timestamp_str, info_dict in loaded.items():
-        timestamps.append(info_dict['full_timestamp'])
-        spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
-        if len(spectrum) != nfft//2:
-            logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(
-                spectrum), nfft//2, timestamp_str)
-            continue
-        spectra.append(spectrum)
-
-    timestamps = np.array(timestamps)
-    spectra = np.array(spectra)
-
-    sort_idx = np.argsort(
-        timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
-    if sort == 'descending':
-        sort_idx = sort_idx[::-1]
-
-    return timestamps[sort_idx], spectra[sort_idx]
-
-def load_and_add_timestamp(time_dir, date_str, state_no) -> dict:
-    """Load all spectrum files in a data-collecting cycle (one set of sky spectra + one set of calibration spectra) and return a dict with timestamp keys.
-
-    Parameters:
-    -----------
-    time_dir : str
-                Path to the directory containing spectrum .npy files for a specific cycle.
-
-    Returns:
-    --------
-    loaded : dict
-            Dictionary with the following structure:
-            {'timestamp_str': {'spectrum': np.ndarray, ...}, 'full_timestamp': datetime, ...}
-    """
-    all_specs = sorted(glob.glob(pjoin(time_dir, f"*state{state_no}*")))
-    loaded = {}
-    for spec_file in all_specs:
-        loaded.update(load_npy_dict(spec_file))
-    time_dirname = pbase(time_dir)
-    datestamp = datetime.strptime(date_str, '%Y%m%d').date()
-
-    for timestamp_str in loaded.keys():
-        timestamp = datetime.strptime(timestamp_str, '%H%M%S').time()
-        if time_dirname.startswith("23"):
-            if timestamp.hour <= 1:
-                # Assign to next day
-                full_timestamp = datetime.combine(
-                    datestamp + timedelta(days=1), timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
-            else:
-                full_timestamp = datetime.combine(
-                    datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
-        else:
-            full_timestamp = datetime.combine(
-                datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
-        loaded[timestamp_str]['full_timestamp'] = full_timestamp
-  
-    return loaded

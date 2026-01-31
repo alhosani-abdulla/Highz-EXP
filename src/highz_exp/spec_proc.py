@@ -409,3 +409,43 @@ def get_dynamic_bin_size(datetimes: DatetimeArray) -> int:
     logging.info(f"The most common spacing between two spectra is {final_bin} seconds.")
         
     return final_bin
+
+def count_spikes(y, x=None, height=None, threshold=None, distance=None, print_table=False) -> np.ndarray:
+    """
+    Count the number of peaks in a signal that exceed a specified height and threshold.
+    Optionally return the heights and print a table of (x, height).
+
+    Parameters:
+        y (array-like): The signal data.
+        x (array-like, optional): The x-axis values corresponding to y. If None, indices are used.
+        height (float or None): Required height of peaks.
+        threshold (float or None): Required threshold of peaks.
+        distance (int or None): Required minimal horizontal distance (in samples) between neighboring peaks.
+        print_table (bool): If True, print a table of (x, height) for each detected spike.
+
+    Returns:
+        spike_data (np.ndarray): 2D array with shape (n_spikes, 2) containing [x_vals, heights].
+    """
+    from scipy.signal import find_peaks
+    peaks, properties = find_peaks(y, height=height, threshold=threshold, distance=distance)
+    heights = properties.get('peak_heights', np.array([]))
+    
+    if x is None:
+        x_vals = peaks
+    else:
+        x_vals = np.asarray(x)[peaks]
+    
+    # Create 2D array with x_vals and heights
+    if len(x_vals) > 0:
+        spike_data = np.column_stack((x_vals, heights))
+    else:
+        spike_data = np.empty((0, 2))
+    
+    if print_table:
+        print("Spike # |    x    |  height")
+        print("---------------------------")
+        for i, (xi, hi) in enumerate(zip(x_vals, heights)):
+            print(f"{i+1:7d} | {xi:7.3f} | {hi:7.3f}")
+    
+    return spike_data
+

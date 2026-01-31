@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 from zoneinfo import ZoneInfo
 
 from highz_exp.unit_convert import convert_utc_list_to_local
-from highz_exp.file_load import get_sorted_time_dirs, get_specs_from_dirs, read_loaded
+from highz_exp.file_load import get_sorted_time_dirs, read_loaded, DSFileLoader
 from file_compressor import setup_logging
 from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimensions, get_dynamic_bin_size
 
@@ -231,8 +231,8 @@ def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     time_dirs = get_sorted_time_dirs(date_dir)
     date = pbase(date_dir)
     for quartered_time_dirs in np.array_split(time_dirs, 4):
-        loaded = get_specs_from_dirs(date, quartered_time_dirs, state_indx)
-        timestamps, spectra = read_loaded(loaded, sort='ascending')
+        loaded = DSFileLoader.load_and_add_timestamp(date, quartered_time_dirs, state_indx)
+        timestamps, spectra = DSFileLoader.read_loaded(loaded, sort='ascending', convert=True)
         
         logging.info(f"Total spectra loaded: {len(spectra)}")
         logging.info(f"Original Timezone: {timestamps[0].tzinfo}")
