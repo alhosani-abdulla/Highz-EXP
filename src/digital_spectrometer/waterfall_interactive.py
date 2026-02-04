@@ -228,7 +228,7 @@ def main_cli():
 
 def main(date_dir, state_indx, step_f, step_t, output_dir=None):
     # --- 1. Data Ingestion & Setup ---
-    time_dirs = get_sorted_time_dirs(date_dir)
+    time_dirs = DSFileLoader.get_sorted_time_dirs(date_dir)
     date = pbase(date_dir)
     for quartered_time_dirs in np.array_split(time_dirs, 4):
         loaded = DSFileLoader.load_and_add_timestamp(date, quartered_time_dirs, state_indx)

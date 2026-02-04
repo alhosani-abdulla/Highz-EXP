@@ -270,9 +270,26 @@ class DSFileLoader():
     def __init__(self, dir_path):
         self.dir = dir_path
     
-    def load(self):
-        pass
+    def load(self, state_no, convert, time_range=None) -> tuple[np.array, np.array]:
+        """Load all spectrum files for a given date and state index, returning timestamps and spectra arrays.
         
+        Parameters:
+            `state_no` : int
+                State number to filter spectrum files.
+            `convert` : bool
+                If True, convert raw spectrum to dBm using rfsoc_spec_to_dbm.
+            `time_range` : tuple, optional
+                A tuple of (start_time, end_time) to filter timestamps.
+            
+        """
+        time_dirs = self.get_sorted_time_dirs(self.dir)
+        date = pbase(self.dir)
+        if time_range is not None:
+            pass  # To be implemented: filter time_dirs based on time_range
+        loaded = self.load_and_add_timestamp(date, time_dirs, state_no)
+        timestamps, spectra = self.read_loaded(loaded, sort='ascending', convert=convert)
+        return timestamps, spectra
+
     @staticmethod
     def load_npy_dict(file_path):
         """Load a .npy file containing a dictionary of timestamped data.
@@ -291,10 +308,32 @@ class DSFileLoader():
             raise ValueError(f"Loaded object from {file_path} is not a dictionary.")
         
         return loaded_dict
-       
+    
+    @staticmethod
+    def get_sorted_time_dirs(date_dir) -> list:
+        """
+        Returns:
+            List[str]: A sorted list of full paths to the subdirectories. 
+                Returns an empty list if no directories are found.
+
+        Example:
+            >>> get_sorted_time_dirs("/data/2023-10-27")
+            ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
+        """
+        all_items = glob.glob(pjoin(date_dir, "*"))
+        time_dirs = [d for d in all_items if os.path.isdir(d)]
+        time_dirs.sort()
+        logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
+        if len(time_dirs) == 0:
+            logging.error("No sub directories found in %s", date_dir)
+            return
+        
+        return time_dirs
+        
     @staticmethod
     def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
-        """Load all spectrum files for a given date and state index, with timestamp keys.
+        """Load all spectrum files for a given date and state index, with timestamp keys. 
+        By default, the timestamps would be in UTC timezone.
 
         Parameters:
         -----------
@@ -390,25 +429,7 @@ def states_to_ntwk(f, loaded_states):
         print("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
-def get_sorted_time_dirs(date_dir) -> list:
-    """
-    Returns:
-        List[str]: A sorted list of full paths to the subdirectories. 
-            Returns an empty list if no directories are found.
 
-    Example:
-        >>> get_sorted_time_dirs("/data/2023-10-27")
-        ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
-    """
-    all_items = glob.glob(pjoin(date_dir, "*"))
-    time_dirs = [d for d in all_items if os.path.isdir(d)]
-    time_dirs.sort()
-    logging.info("Found %d time directories in %s", len(time_dirs), date_dir)
-    if len(time_dirs) == 0:
-        logging.error("No sub directories found in %s", date_dir)
-        return
-    
-    return time_dirs
 
 
 

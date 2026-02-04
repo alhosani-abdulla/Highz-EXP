@@ -3,6 +3,7 @@ from scipy.constants import Boltzmann as k_B
 import copy, logging
 from datetime import datetime
 import skrf as rf
+from astropy.time import Time
 
 # Define some helper functions
 def sparam_to_dB(s11):
@@ -56,3 +57,16 @@ def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
         local_timestamps.append(local_aware_dt)
         
     return local_timestamps
+
+def sidereal_hours_from_utcs(utc_list, longitude):
+    """Convert a list of UTC datetime objects to sidereal hours at the given longitude.
+     Args:
+         utc_list (list): List of UTC datetime objects.
+         longitude (Longitude): Longitude for sidereal time calculation.
+     Returns:
+         np.array: Array of sidereal hours.
+     """
+    return np.array([
+        Time(ts, scale="utc").sidereal_time("apparent", longitude=longitude).hour
+        for ts in utc_list
+    ])
