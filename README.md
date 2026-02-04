@@ -1,12 +1,19 @@
 # Highz-EXP
 This is a preliminary version for plotting and analyzing data collected from the HighZ-EXP experiment. It includes modules for loading files, processing reflection data, plotting spectra, and converting units.
 
+## Table of Contents
+- [Related Repositories](#related-repositories)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Modules Overview](#modules-overview)
+
 ## Related Repositories
 
 The HighZ-EXP project has been split into focused component repositories:
 
 - **[adf4351-controller](https://github.com/alhosani-abdulla/adf4351-controller)** - Arduino controller programs for the ADF4351 PLL frequency synthesizer used as the Local Oscillator
 - **[highz-filterbank](https://github.com/alhosani-abdulla/highz-filterbank)** - Multi-channel filterbank spectrometer for detecting the 21-cm cosmological signal from Cosmic Dawn
+
 
 ## Installation
 
@@ -38,16 +45,20 @@ If run into import issues, try
 pip install --force-reinstall git+https://github.com/alhosani-abdulla/Highz-EXP.git
 ```
 
-Examples of how to use the various modules and common RF concepts are provided in the [notebooks](notebooks/) directory. 
-[Y-factor calculations](notebooks/Y_factor.ipynb) and [spectrum plotting](notebooks/spectrum_plotting_example.ipynb) are included as starting points.
+### Best Practices
+To get familiar with what this package can do and the way it's most commonly used, we recommend going through the example notebooks in the [notebooks](notebooks/) directory.
 
 Scripts used in our data collection/visualization are available in the [scripts](scripts/) directory.
 
+## Modules Overview
+
 ### Key Classes:
-- `Spectrum`: Class for handling and plotting spectral data.
+- `Spectrum`: Class for handling and plotting spectral data. It also contains basic processing utilities (e.g., averaging, smoothing).
 ```python
 from highz_exp.spec_class import Spectrum
 spectrum = Spectrum(frequency_axis, spectral_data, name='example_spectrum', metadata={'obs_time': '2024-01-01T00:00:00Z'})
+spectrum.smooth(window=5) # To smooth the data
+spectrum.plot() # To visualize
 ```
 
 ### Helper modules:

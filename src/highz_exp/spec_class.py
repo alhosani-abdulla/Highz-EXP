@@ -20,6 +20,7 @@ class Spectrum:
         frequency: 1D array-like of frequency (or wavelength) values.
         spectrum: 1D array-like of measured intensities (same length as frequency).
         name: descriptive name for this recorded spectrum.
+        colorcode: optional color code for plotting.
         metadata: optional dict of additional metadata.
 
     Notes:
