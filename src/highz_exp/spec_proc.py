@@ -11,8 +11,12 @@ from scipy.signal import medfilt
 
 def smooth_spectrum(data, method='savgol', window=31, polyorder=3):
     """
-    Return a smoothed copy of `data` using the requested method.
+    Return a smoothed copy of `data` (1D array) using the requested method.
     Safe-guards window size to be appropriate for the data length.
+
+    Parameters:
+        data: np.ndarray
+            1D array of spectral data to smooth.
     """
     n = len(data)
     w = int(window)
@@ -38,6 +42,50 @@ def smooth_spectrum(data, method='savgol', window=31, polyorder=3):
     else:
         # unknown method -> return original
         return data.copy()
+    
+def rebin(freq, power_spec, factor, mode='average'):
+    """
+    Rebin a power spectrum to a new size.
+
+    Parameters:
+        freq: np.ndarray
+            Original frequency axis.
+        power_spec: np.ndarray
+            Original power spectrum, in linear units (mW, W).
+        factor: int
+            Rebinning factor (i.e., new length = old length // factor).
+        mode: str
+            Rebinning mode, 'average' (default) or 'sum'.
+
+    Returns:
+        new_freq: np.ndarray
+            Rebinned frequency axis.
+        new_power_spec: np.ndarray
+            Rebinned power spectrum.
+    """
+    old_size = len(power_spec)
+    if old_size < 2:
+        logging.warning("Spectrum too small to rebin; returning original spectrum.")
+        return freq.copy(), power_spec.copy()
+    
+    new_size = old_size // factor
+    if new_size < 1:
+        logging.warning("Rebin factor too large; returning original spectrum.")
+        return freq.copy(), power_spec.copy()
+
+    # Trim arrays to be divisible by factor
+    trimmed_size = new_size * factor
+    freq_trimmed = freq[:trimmed_size]
+    power_trimmed = power_spec[:trimmed_size]
+
+    # Reshape and average
+    new_freq = freq_trimmed.reshape(new_size, factor).mean(axis=1)
+    if mode == 'sum':
+        new_power_spec = power_trimmed.reshape(new_size, factor).sum(axis=1)
+    else:
+        new_power_spec = power_trimmed.reshape(new_size, factor).mean(axis=1)
+
+    return new_freq, new_power_spec
 
 def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
     """

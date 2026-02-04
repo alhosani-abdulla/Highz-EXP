@@ -17,7 +17,7 @@ class Spectrum:
     Lightweight spectrum container with common processing utilities.
 
     Args:
-        frequency: 1D array-like of frequency (or wavelength) values.
+        frequency: 1D array-like of frequency (or wavelength) values, in Hz.
         spectrum: 1D array-like of measured intensities (same length as frequency).
         name: descriptive name for this recorded spectrum.
         colorcode: optional color code for plotting.
@@ -114,6 +114,16 @@ class Spectrum:
             return self
         else:
             return Spectrum(self.freq.copy(), spec_converted, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
+    
+    def rebin(self, factor: int, mode: str = 'average', inplace=False) -> "Spectrum":
+        """Rebin a spectrum by an integer factor, either through 'average' or 'sum' mode."""
+        new_freq, new_spec = spec_proc.rebin(self.freq, self.spec, factor, mode=mode)
+        if inplace:
+            self.freq = new_freq
+            self.spec = new_spec
+            return self
+        else:
+            return Spectrum(new_freq, new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
 
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
