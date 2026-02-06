@@ -123,8 +123,7 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
         for state, (timestamps, spectra) in loaded_dict.items():
             sample_spectrum = Spectrum(faxis_hz, spectra[0, :], name=map_filename_to_legend(state))
             spectrum_list.append(sample_spectrum)
-        plotter.plot_spectrum(
-            spectrum_list, suffix='antenna_states', title=f'{date_str}: {time_str} Spectra',
+        plotter.plot_spectra(spectrum_list, save_path=pjoin(final_output_dir, f'{date_str}_{time_str}_spectra.png'), title=f'{date_str}: {time_str} Spectra',
             **{**base_params, "show_plot": True})
     else:
         # --- Mode 2: Batch Plotting (10 spectra per plot) ---
@@ -145,9 +144,8 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
                 suffix: str = f'batch_{batch_num:03d}'
                 title: str = f'{date_str} {time_str}: Batch {batch_num} ({start_idx}-{end_idx-1})'
                 
-                plotter.plot_spectrum(
-                    current_batch, 
-                    suffix=suffix, 
+                plotter.plot_spectra(
+                    current_batch, save_path=pjoin(final_output_dir, f'{date_str}_{time_str}_{suffix}.png'),
                     title=title, 
                     **base_params
                 )
@@ -169,13 +167,15 @@ def create_image(spec_path, show_plots=False):
     print("Loaded and preprocessed spectrum states...")
     date_dir = os.path.basename(os.path.dirname(spec_path))
     yticks = [-80, -70, -60, -50, -40, -30]
-    plotter.plot_spectrum(dbm_spec_states.values(), save_dir=spec_path, suffix='all_states',
-                          title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', ylabel='PSD [dBm]',
-                          ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
+    plotter.plot_spectra(dbm_spec_states.values(), save_path=pjoin(spec_path, f'{date_dir}_all_states_spectra.png'), 
+                        title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', suffix='all_states',
+                        title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', ylabel='PSD [dBm]',
+                        ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
     wo_antenna_dbm_states = {k: v for k, v in dbm_spec_states.items() if k != 'Antenna'}
 
     yticks = [-80, -70, -60, -50, -40, -30]
-    plotter.plot_spectrum(wo_antenna_dbm_states.values(), save_dir=spec_path, suffix='wo_antenna',
+    plotter.plot_spectra(wo_antenna_dbm_states.values(), 
+                         save_path=pjoin(spec_path, f'{date_dir}_wo_antenna_spectra.png'), 
                           title=f'{date_dir}: {os.path.basename(spec_path)} Spectra (w/o Antenna)', ylabel='PSD [dBm]',
                           ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
 

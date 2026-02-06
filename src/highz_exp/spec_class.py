@@ -67,8 +67,8 @@ class Spectrum:
         return Spectrum(self.freq.copy(), self.spec.copy(), self.name, self.colorcode, self.metadata)
     
     def plot(self, **plot_kwargs) -> Any:
-        from highz_exp.plotter import plot_spectrum
-        return plot_spectrum(self, **plot_kwargs)
+        from highz_exp.plotter import plot_spectra
+        return plot_spectra([self], **plot_kwargs)
 
     def unit_convert(self, from_unit: str, to_unit: str, channel_width: Optional[float] = None,
                      inplace: bool = False) -> "Spectrum":

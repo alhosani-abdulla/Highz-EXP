@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os, re
+import pygdsm
+import healpy as hp
 from pathlib import Path
 from typing import Union
 from matplotlib.colors import PowerNorm
@@ -300,17 +302,20 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
     return network
 
-def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffix='', ymin=None, ymax=None,
+def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_range=None,
                   marker_freqs=None, freq_range=None, yticks=None, 
                   title='Recorded Spectrum', show_plot=True):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
         - loaded_specs: list of Spectrum objects to plot, with frequency in Hz.
-        - ymin (float): Minimum y-axis value
+        - save_path (str, optional): Path to save the plot. If None, the plot is not saved.
+        - ylabel (str, optional): Y-axis label. If None, defaults to 'PSD [dBm]'.
+        - y_range (tuple, optional): Y-axis range to plot (ymin, ymax).
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
-        - s_param (tuple): S-parameter indices (i, j) to plot. Default (0, 0) for S11.
+        - yticks (list, optional): Y-axis ticks to set.
+        - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
     """
     plt.figure(figsize=(14, 8))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -328,16 +333,20 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
 
         plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
         
+        ymin, ymax = y_range if y_range is not None else (None, None)
+        
+        # Dynamically adjust y-axis limits based on the data if not provided
         if ymax is None:
             ymax_state = np.max(spectrum)
             if ymax_state > (ymax or -np.inf): 
                 ymax = ymax_state
-        
+
         if ymin is None:
             ymin_state = np.min(spectrum)
             if ymin_state < (ymin or np.inf): 
                 ymin = ymin_state
         
+        # Plot markers if specified
         if marker_freqs is not None:
             for mf in marker_freqs:
                 # Find closest index
@@ -371,21 +380,21 @@ def plot_spectrum(loaded_specs:list[Spectrum], save_dir=None, ylabel=None, suffi
     plt.tight_layout()
     
     # Save the plot
-    if save_dir is not None:
-        os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(f'{save_dir}/spectrum_{suffix}.png', dpi=150, bbox_inches='tight')
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
     if show_plot:
         plt.show()
     else:
         plt.close()
 
-def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=None, 
+def plot_gain(f_mhz, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=None, 
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
               marker_freqs=None):
     """Plot gain over a specified frequency range.
     
     Parameters:
-        - f (np.ndarray): Frequency axis in MHz.
+        - f_mhz (np.ndarray): Frequency axis in MHz.
         - gain (np.ndarray or list of np.ndarray): Gain values.
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
     """
@@ -393,18 +402,17 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=
     if start_freq is None:
         start_idx = 0
     else:
-        start_idx = np.argmin(np.abs(f - start_freq))
+        start_idx = np.argmin(np.abs(f_mhz - start_freq))
     if end_freq is None:
-        end_idx = len(f) - 1
+        end_idx = len(f_mhz) - 1
     else:
-        end_idx = np.argmin(np.abs(f - end_freq))
-
+        end_idx = np.argmin(np.abs(f_mhz - end_freq))
     plt.figure(figsize=(12, 8))
     if not isinstance(gain, list):
-        plt.plot(f[start_idx:end_idx+1], gain[start_idx:end_idx+1])
+        plt.plot(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1])
     else:
         for g, lab in zip(gain, label):
-            plt.plot(f[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
+            plt.plot(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
         plt.legend(fontsize=18)
     
     if ymax is not None:
@@ -415,9 +423,9 @@ def plot_gain(f, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=
     if marker_freqs is not None:
         for mf in marker_freqs:
             # Find closest index
-            idx = np.argmin(np.abs(f - mf))
+            idx = np.argmin(np.abs(f_mhz - mf))
             marker_gain = gain[idx] if not isinstance(gain, list) else gain[0][idx]
-            marker_freq_mhz = f[idx]
+            marker_freq_mhz = f_mhz[idx]
 
             # Plot marker
             plt.plot(marker_freq_mhz, marker_gain, 'ro')
@@ -443,7 +451,11 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
     Parameters:
     -----------
     - datetimes: np.array of datetime objects. 
-    - local_tz_obj: A datetime.timezone object (e.g., timezone(timedelta(hours=-5)))"""
+    - spectra: 2D np.array of shape (num_time_points, num_freq_points) containing power levels in dBm.
+    - faxis_mhz: 1D np.array of frequency values in MHz corresponding to the columns of spectra.
+    - output_path: Optional string path to save the plot image. If None, the plot is not saved.
+    - local_tz_obj: A datetime.timezone object (e.g., timezone(timedelta(hours=-5))). 
+                     If None, it will be inferred from the first datetime entry."""
 
     from datetime import timezone
     
@@ -503,6 +515,85 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
         plt.show()
     else:
         plt.close()
+
+# From Theo Dardio
+def generate_static_hp_map(frequency_mhz, utc_timestamp, location, observer='LFSM'):
+    """
+    this will generate the galactic image for a specified frequency, time, and location.
+    It will automatically transform the image from galactic coordinates
+    to equatorial coordinates and center on the zenith (straight up)
+
+    the "top" of the of the healpix map is the zenith (straight up)
+
+    Parameters
+    ----------
+    frequency_mhz : float
+        frequency in MHz
+    utc_timestamp : datetime.datetime object
+        UTC timestamp as a datetime object (e.g., datetime.datetime(2023, 1, 1, 12, 0, 0))
+    location: tuple
+        Tuple containing (latitude, longitude, elevation) of the observation site.
+    observer: str
+        Options: '08', '16', 'LFSM', 'Haslam'
+    """
+    if observer == '08':
+        ov = pygdsm.GSMObserver08()
+    elif observer == '16':
+        ov = pygdsm.GSMObserver16()
+    elif observer == 'Haslam':
+        ov = pygdsm.HaslamObserver()
+    elif observer == 'LFSM':
+        ov = pygdsm.LFSMObserver()
+    else:
+        raise ValueError("Invalid observer type. Choose from '08', '16', 'LFSM', 'Haslam'.")
+    
+    # Set observer location and time
+    lat, lon, elev = location
+    ov.lon = lon
+    ov.lat = lat
+    ov.elev = elev
+    ov.date = utc_timestamp
+
+    hmap = ov.generate(frequency_mhz)
+    hmap = np.ma.filled(hmap,fill_value=0)
+    return hmap
+
+# From Theo Dardio
+def visualize_static_hmap(hmap, title="Example Galactic Healpix Map"):
+    """
+    Visualize the healpix map with azimuth and zenith angle labels.
+
+    Parameters
+    ----------
+    hmap : array
+        Healpix map data.
+    """
+        
+    hp.orthview(hmap, half_sky=True, min=0, max=3000, coord='C', title=title, unit="K")
+
+    # Now add custom labels for azimuth and zenith angle
+    ax = plt.gca()
+
+    # Add concentric zenith angle circles (like elevation rings)
+    zenith_angles = [10, 30, 60, 80]
+    for za in zenith_angles:
+        circle = plt.Circle((0, 0), np.sin(np.radians(za)), color='white', ls='--', fill=False, alpha=0.5)
+        ax.add_artist(circle)
+        plt.text(0, np.sin(np.radians(za)) + 0.01, f"{za}°", color='white', ha='center')
+
+    # Add azimuth angle labels
+    az_labels = [0, 90, 180, 270]
+    label_pos = {
+        0: (0, 1.05),       # North (up)
+        90: (1.05, 0),      # East (right)
+        180: (0, -1.1),     # South (down)
+        270: (-1.1, 0),     # West (left)
+    }
+    for az in az_labels:
+        x, y = label_pos[az]
+        plt.text(x, y, f"{az}°", color='white', ha='center', va='center')
+
+    plt.show()
 
 # Adapted from Marcus Bosca's code
 def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mode: str = "collection",
