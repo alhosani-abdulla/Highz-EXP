@@ -63,3 +63,4 @@ spectrum.plot() # To visualize
 
 ### Helper modules:
 - `spec_proc`: Functions for processing spectral data (e.g., averaging, smoothing, downsampling).
+- `plotter`: Functions for plotting spectra and related visualizations. Commonly used functions are `plot_spectra` and `plot_waterfall`. 
