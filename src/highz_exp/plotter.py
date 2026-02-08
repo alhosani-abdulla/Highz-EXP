@@ -388,16 +388,18 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     else:
         plt.close()
 
-def plot_gain(f_mhz, gain, label=None, start_freq=10, end_freq=400, ymax=None, ymin=None, 
+def plot_gain(f_mhz, gain, label=None, freq_range=(10,400), y_range=(None, None),
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
               marker_freqs=None):
     """Plot gain over a specified frequency range.
     
     Parameters:
         - f_mhz (np.ndarray): Frequency axis in MHz.
+        - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz. If (None, None), plots the entire range of f_mhz.
         - gain (np.ndarray or list of np.ndarray): Gain values.
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
     """
+    start_freq, end_freq = freq_range
     # Find the index closest to start_freq and end_freq
     if start_freq is None:
         start_idx = 0
@@ -414,6 +416,8 @@ def plot_gain(f_mhz, gain, label=None, start_freq=10, end_freq=400, ymax=None, y
         for g, lab in zip(gain, label):
             plt.plot(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
         plt.legend(fontsize=18)
+   
+    ymin, ymax = y_range 
     
     if ymax is not None:
         plt.ylim(top=ymax)
