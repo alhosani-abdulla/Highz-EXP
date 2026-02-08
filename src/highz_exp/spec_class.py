@@ -128,7 +128,6 @@ class Spectrum:
     def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
         """
         Resample spectrum onto new_freq. Uses numpy.interp for linear interpolation.
-        kind currently supports only 'linear'.
         """
         new_freq_arr = np.asarray(new_freq, dtype=float)
         if kind != "linear":
@@ -146,7 +145,8 @@ class Spectrum:
         self.spec = new_spec
         return self
     
-    def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median") -> "Spectrum":
+    def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median",
+                inplace: bool = False) -> "Spectrum":
         """
         Remove narrow RFI spikes by comparing each point to a local median and MAD.
 
@@ -155,13 +155,19 @@ class Spectrum:
             threshold: multiple of local MAD above which a point is considered a spike.
             replace: 'median' to replace spikes with local median, 'interp' to interpolate
                      across spike points using neighboring good points.
+            inplace: if True, modify the spectrum in place; otherwise, return a new Spectrum object.
 
         Notes:
             This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
             as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
             can be used to speed up the local-median computation.
         """
-        self.spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+        if inplace:
+            self.spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+            return self
+        else:
+            new_spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+            return Spectrum(self.freq.copy(), new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
 
     def smooth(self, window: int = 11, method: str = "savgol", polyorder: int = 3, 
                freq_interval: Optional[float] = None, inplace: bool = False) -> "Spectrum":
@@ -212,7 +218,7 @@ class Spectrum:
             self.spec = new_spec
             return self
         else:
-            return Spectrum(self.freq.copy(), new_spec, self.name, self.colorcode, self.metadata)     
+            return Spectrum(self.freq.copy(), new_spec, self.name, self.colorcode, self.metadata.copy())     
 
     def trim(self, min_freq: Optional[float] = None, max_freq: Optional[float] = None) -> "Spectrum":
         """Keep only data between min_freq and max_freq (inclusive)."""

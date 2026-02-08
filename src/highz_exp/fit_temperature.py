@@ -245,6 +245,7 @@ class Y_Factor_Thermometer:
         this infers the temperature at the input of the LNA.
         
         Automatically interpolates the gain and system temperature to match the frequency axis of the input spectrum.
+        A smoothed curve is plotted alongside the raw inferred temperature for better visualization. 
 
         Parameters:
             - `spectrum`: Spectrum
@@ -274,7 +275,7 @@ class Y_Factor_Thermometer:
 
         y_arr = np.asarray(spec, dtype=float)
         
-        # interpolate gain and noise temp to match frequency axis of spec
+        # interpolate gain and noise temp to match frequency axis of the input spectrum
         g_arr = np.interp(f, self.f/1e6, g_values)
         b_arr = np.interp(f, self.f/1e6, noise_values)
 
@@ -331,5 +332,5 @@ class Y_Factor_Thermometer:
         
         inferred_spectrum = Spectrum(frequency=spectrum.freq, spectrum=temp_arr, name=spectrum.name)
 
-        return inferred_spectrum  # Return smoothed data if needed for further analysis
+        return inferred_spectrum
 
