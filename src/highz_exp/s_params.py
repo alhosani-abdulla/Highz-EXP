@@ -112,7 +112,7 @@ class S_Params:
     
     def plot_impedance(self, title='Impedance Measurement', ymax=None, ymin=None, 
                        plot_imaginary=True,
-                       save_dir=None, suffix=None) -> None:
+                       save_path=None) -> None:
         """
         Plot multiple impedances from .s1p Network objects on the same axes.
 
@@ -120,8 +120,7 @@ class S_Params:
         - title (str): Title of the plot.
         - ymax (float): Maximum y-axis limit.
         - ymin (float): Minimum y-axis limit.
-        - save_dir (str): directory to save the combined plot
-        - suffix (str): optional suffix for saved filename
+        - save_path (str): filepath to save the combined plot
 
         Returns:
         - dict: the same ntwk_dict passed in
@@ -176,14 +175,14 @@ class S_Params:
 
         fig.tight_layout()
 
-        if save_dir is not None:
-            os.makedirs(save_dir, exist_ok=True)
-            safe_suffix = f"_{suffix}" if suffix else ""
-            plt.savefig(f'{save_dir}/Impedance{safe_suffix}.png', dpi=150, bbox_inches='tight')
+        if save_path is not None:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
         plt.show()
 
-    def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
+    def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, 
+                             show_phase=False, attenuation=0, save_path=None):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -191,8 +190,7 @@ class S_Params:
         - db (bool): If True, plot reflection in dB
         - show_phase (bool): If True, also plot phase in degrees (dashed lines)
         - attenuation (float): Attenuation added to the magnitude (dB)
-        - save_dir (str): directory to save the combined plot
-        - suffix (str): optional suffix for saved filename
+        - save_path (str): filepath to save the combined plot
 
         Returns:
         - dict: the same ntwk_dict passed in
@@ -256,14 +254,13 @@ class S_Params:
         ax1.set_title(title, fontsize=22)
         fig.tight_layout()
 
-        if save_dir is not None:
-            os.makedirs(save_dir, exist_ok=True)
-            safe_suffix = f"_{suffix}" if suffix else ""
-            plt.savefig(f'{save_dir}/Reflection{safe_suffix}.png', dpi=150, bbox_inches='tight')
+        if save_path is not None:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
         plt.show()
     
-    def plot_smith_chart(self, suffix='LNA', save_plot=True, save_dir=None, title='Smith Chart',
+    def plot_smith_chart(self, save_path=None, save_plot=True, title='Smith Chart',
                         freq_range=None, marker_freq=None, autoscale=False):
         """
         Plot Smith chart from one or more scikit-rf Network objects.
@@ -332,21 +329,12 @@ class S_Params:
         plt.tight_layout()
         
         if save_plot:
-            suffix = suffix.replace(' ', '_')
-            # Save to current directory if no path info is available
-            if save_dir is None:
-                save_dir = os.getcwd()
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-            
-            # Add frequency range to filename if specified
-            filename = f'{suffix}_smith_chart'
-            filename += '.png'
-            
-            fig.savefig(pjoin(save_dir, filename), bbox_inches='tight')
+            if save_path is not None:
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                fig.savefig(save_path, bbox_inches='tight')
         plt.show()
     
-    def plot_gain(self, attenuation=0, title='Gain Measurement', ymax=None, ymin=None, suffix=None,
+    def plot_gain(self, attenuation=0, title='Gain Measurement', y_range=(None, None),
                   marker_freqs=None, save_path=None, smoothing=False, smoothing_kwargs=None):
         """
         Plot gain from multiple .s2p Network objects on the same axes.
@@ -354,9 +342,7 @@ class S_Params:
         Parameters:
         - title (str): Title of the plot.
         - attenuation (float): Attenuation used during measurement (dB). Plotted gain would be (measured gain + attenuation).
-        - ymax (float): Maximum y-axis limit.
-        - ymin (float): Minimum y-axis limit.
-        - suffix (str): optional suffix for saved filename
+        - y_range (tuple): (y_min, y_max) limits for the y-axis. Use (None, None) for auto-scaling.
         - save_path (str): full path to save the plot
         - marker_freqs (list): List of frequencies in MHz to mark on the gain plot.
         - smoothing (bool): Whether to apply smoothing to the gain curves.
@@ -379,12 +365,12 @@ class S_Params:
                 ordered_gains_smoothed = [gain_smoothed[label] + attenuation for label in ordered_labels]
                 ordered_labels_combined = [f'{label} (raw)' for label in ordered_labels] + [f'{label} (smoothed)' for label in ordered_labels]
                 ordered_gains_combined = ordered_gains + ordered_gains_smoothed
-                plot_gain(freq, ordered_gains_combined, label=ordered_labels_combined, title=title, ymax=ymax, ymin=ymin, 
+                plot_gain(freq, ordered_gains_combined, label=ordered_labels_combined, title=title, y_range=y_range, 
                     save_path=save_path, marker_freqs=marker_freqs)
         else:
             ordered_labels = list(self.ntwk_dict.keys())
             ordered_gains = [gain[label] + attenuation for label in ordered_labels]
-            plot_gain(freq, ordered_gains, label=ordered_labels, title=title, ymax=ymax, ymin=ymin, 
+            plot_gain(freq, ordered_gains, label=ordered_labels, title=title, y_range=y_range, 
                     save_path=save_path,
                     marker_freqs=marker_freqs)
     
@@ -435,8 +421,6 @@ class S_Params:
         if inplace:
             self.ntwk_dict = new_ntwk_dict
         return new_ntwk_dict
-
-
 
     
     @staticmethod

@@ -304,7 +304,8 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
 
 def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_range=None,
                   marker_freqs=None, freq_range=None, yticks=None, 
-                  title='Recorded Spectrum', show_plot=True):
+                  title='Recorded Spectrum', show_plot=True,
+                  **kwargs):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
@@ -316,6 +317,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
         - yticks (list, optional): Y-axis ticks to set.
         - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
+        - kwargs (dict): Additional keyword arguments for plt.plot() when plotting the spectra.
     """
     plt.figure(figsize=(14, 8))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -331,7 +333,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         else:
             color = color_cycle[idx % len(color_cycle)]
 
-        plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, linewidth=2)
+        plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, **kwargs)
         
         ymin, ymax = y_range if y_range is not None else (None, None)
         
@@ -388,9 +390,9 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     else:
         plt.close()
 
-def plot_gain(f_mhz, gain, label=None, freq_range=(10,400), y_range=(None, None),
+def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, None),
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
-              marker_freqs=None):
+              marker_freqs=None, **plot_kwargs):
     """Plot gain over a specified frequency range.
     
     Parameters:
@@ -411,10 +413,10 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(10,400), y_range=(None, None)
         end_idx = np.argmin(np.abs(f_mhz - end_freq))
     plt.figure(figsize=(12, 8))
     if not isinstance(gain, list):
-        plt.plot(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1])
+        plt.errorbar(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1], **plot_kwargs)
     else:
         for g, lab in zip(gain, label):
-            plt.plot(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab)
+            plt.errorbar(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab, **plot_kwargs)
         plt.legend(fontsize=18)
    
     ymin, ymax = y_range 

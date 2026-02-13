@@ -140,7 +140,7 @@ class Spectrum:
         else:
             freq_sorted = self.freq
             spec_sorted = self.spec
-        new_spec = np.interp(new_freq_arr, freq_sorted, spec_sorted, left=np.nan, right=np.nan)
+        new_spec = np.interp(new_freq_arr, freq_sorted, spec_sorted)
         self.freq = new_freq_arr
         self.spec = new_spec
         return self
@@ -167,6 +167,16 @@ class Spectrum:
             return self
         else:
             new_spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+            return Spectrum(self.freq.copy(), new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
+    
+    def median_smooth(self, kernel_size: int = 11, inplace: bool = False) -> "Spectrum":
+        """Smooth the spectrum using a median filter."""
+        from scipy.signal import medfilt
+        if inplace:
+            self.spec = medfilt(self.spec, kernel_size=kernel_size)
+            return self
+        else:
+            new_spec = medfilt(self.spec, kernel_size=kernel_size)
             return Spectrum(self.freq.copy(), new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
 
     def smooth(self, window: int = 11, method: str = "savgol", polyorder: int = 3, 

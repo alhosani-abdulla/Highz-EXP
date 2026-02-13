@@ -1,10 +1,12 @@
 import numpy as np
 import copy
 import matplotlib.pyplot as plt
+import scipy
+import skrf as rf
 from os.path import join as pjoin
 from . import plotter
 from scipy.constants import Boltzmann as k_B
-from .spec_proc import smooth_spectrum
+from . import spec_proc
 from .spec_class import Spectrum
 
 class Y_Factor_Thermometer:
@@ -98,6 +100,23 @@ class Y_Factor_Thermometer:
         g_dut = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold) * k_B * RBW))
         return g_dut
     
+    def export_gain(self, export_path=None) -> rf.Network:
+        """Export the inferred gain spectrum as a scikit-rf Network object.
+
+        Parameters:
+            - export_path (str, optional): 
+                If provided, the Network object will be saved to this path in Touchstone format.
+        """
+        ntwk = rf.Network()
+        ntwk.f = self.f
+        ntwk.s = np.zeros((len(self.f), 2, 2), dtype=complex)  # Initialize S-parameter array
+        ntwk.s[:, 1, 0] = 10**(self.g / 20)  # Convert gain from dB to linear scale in voltage gain
+        
+        if export_path is not None:
+            ntwk.write_touchstone(export_path)
+        
+        return ntwk
+    
     @staticmethod
     def gain_with_cal(DUT_hot, DUT_cold, cal_hot, cal_cold) -> np.ndarray:
         """
@@ -131,12 +150,52 @@ class Y_Factor_Thermometer:
         Parameters:
             - kwargs (dict): Keyword arguments for the smoothing function.
         """
-        smoothed_gain = smooth_spectrum(self.g, **kwargs)
+        smoothed_gain = spec_proc.smooth_spectrum(self.g, **kwargs)
         return smoothed_gain
     
     def plot_gain(self, **kwargs):
         f_mhz = self.f / 1e6  # Convert frequency to MHz
         plotter.plot_gain(f_mhz, self.g, **kwargs)
+    
+    def resample(self, new_freq, reducer=np.nanmean, inplace=True) -> 'Y_Factor_Thermometer':
+        """
+        Resample spectra onto a lower-resolution frequency axis by bin-averaging.
+
+        Parameters
+        ----------
+        new_freq : np.ndarray
+            Target frequency bin centers (Hz).
+        reducer : callable, optional
+            Function used to combine samples inside each bin
+            (e.g. np.nanmean, np.nanmedian).
+        inplace : bool, optional
+            Modify object in place or return a copy.
+
+        Returns
+        -------
+        Y_Factor_Thermometer
+        """
+        new_freq = np.asarray(new_freq)
+        edges = _bin_edges_from_centers(new_freq)
+
+        T_sys_new = _bin_average(self.frequency, self.T_sys, edges, reducer)
+
+        T_dut_new = None
+        if self.T_dut is not None:
+            T_dut_new = _bin_average(self.frequency, self.T_dut, edges, reducer)
+
+        g_new = None
+        if self.g is not None:
+            g_new = _bin_average(self.frequency, self.g, edges, reducer)
+
+        target = self if inplace else copy.deepcopy(self)
+
+        target.frequency = new_freq
+        target.T_sys = T_sys_new
+        target.T_dut = T_dut_new
+        target.g = g_new
+
+        return target
     
     def save(self, save_path):
         """
@@ -152,8 +211,9 @@ class Y_Factor_Thermometer:
     
     def plot_system_temperature(self, **kwargs):
         """Plot the system temperature spectrum."""
-        f_mhz = self.f / 1e6  # Convert frequency to MHz
-        plotter.plot_system_temperature(f_mhz, self.T_sys, **kwargs)
+        # convert system temperature to spectrum object
+        system_spec = Spectrum(frequency=self.f, spectrum=self.T_sys, name=f'{self.label} System Temperature')
+        plotter.plot_spectra([system_spec], ylabel='Temperature (K)', **kwargs)
     
     @staticmethod
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
@@ -181,7 +241,7 @@ class Y_Factor_Thermometer:
         for temp, label in zip(temp_values, labels):
             plt.plot(faxis[start_idx:end_idx+1], temp[start_idx:end_idx+1], label=label)
             if smoothing:
-                smoothed_temp = smooth_spectrum(temp[start_idx:end_idx+1], **smoothing_kwargs)
+                smoothed_temp = spec_proc.smooth_spectrum(temp[start_idx:end_idx+1], **smoothing_kwargs)
                 plt.plot(faxis[start_idx:end_idx+1], smoothed_temp, linestyle='--',
                          label=f'{label} (smoothed)')
 
@@ -219,10 +279,10 @@ class Y_Factor_Thermometer:
     def smooth(self, inplace=False, smoothing_kwargs={}):
         """Smooth the gain, system temperature, and DUT temperature spectra."""
         def _smooth_attributes(obj):
-            obj.g = smooth_spectrum(obj.g, **smoothing_kwargs)
-            obj.T_sys = smooth_spectrum(obj.T_sys, **smoothing_kwargs)
+            obj.g = spec_proc.smooth_spectrum(obj.g, **smoothing_kwargs)
+            obj.T_sys = spec_proc.smooth_spectrum(obj.T_sys, **smoothing_kwargs)
             if obj.T_dut is not None:
-                obj.T_dut = smooth_spectrum(obj.T_dut, **smoothing_kwargs)
+                obj.T_dut = spec_proc.smooth_spectrum(obj.T_dut, **smoothing_kwargs)
             return obj
         
         if inplace:
@@ -231,13 +291,37 @@ class Y_Factor_Thermometer:
             new_thermo = copy.deepcopy(self)
             return _smooth_attributes(new_thermo)
 
-    def dut_temp_with_known_gain(self) -> np.ndarray:
-        pass
+    def infer_temp_with_known_gain(self, spectrum, s21_ntwk) -> np.ndarray:
+        """Calculate the DUT temperature spectrum using a known gain spectrum from an S-parameter measurement.
+
+        Parameters:
+            - s21_ntwk (scikit-rf Network): Network object containing the S21 parameter (gain) of the DUT.
+
+        Returns:
+            - T_dut (np.ndarray): Inferred DUT temperature spectrum in Kelvin.
+        """
+        # Extract S21 parameter (gain) from the Network object and convert to linear scale in power gain
+        g_s21 = np.abs(s21_ntwk.s[:, 1, 0])**2  
+        
+        # get three arrays of frequencies
+        freq_g = s21_ntwk.f / 1e6  # Convert frequency to MHz
+        freq_noise = self.f / 1e6  
+        freq_spec = spectrum.freq / 1e6 
+        
+        # interpolate all arrays to the same frequency axis (that of the input spectrum)
+        g_interp = np.interp(freq_spec, freq_g, g_s21)
+        noise_interp = np.interp(freq_spec, freq_noise, self.T_sys)
+        
+        temp_arr = (spectrum.spec - noise_interp) / g_interp
+
+        inferred_spectrum = Spectrum(frequency=spectrum.freq, spectrum=temp_arr, name=spectrum.name)
     
-    def infer_temperature(self, spectrum: Spectrum, start_freq=10, end_freq=400,
+        return inferred_spectrum
+    
+    def infer_temperature(self, spectrum: Spectrum, freq_range=(None, None),
                         marker_freqs=None,
                         smoothing='savgol', window_size=31, 
-                        ymin=None, ymax=None, title=None, 
+                        y_range=(None, None), title=None, show_plot=True,
                         save_path=None):
         """
         Plot temperature inference of a noise source with optional smoothing.
@@ -250,10 +334,8 @@ class Y_Factor_Thermometer:
         Parameters:
             - `spectrum`: Spectrum
                 Spectrum object containing frequency in Hz and spectrum data in kelvin.
-            - `start_freq` : float, optional
-                Start frequency in MHz for plotting.
-            - `end_freq` : float, optional
-                End frequency in MHz for plotting.
+            - `freq_range` : tuple of (float, float), optional
+                Frequency range to plot/calculate (fmin, fmax) in MHz.
             - `marker_freqs` : list of float, optional
                 Frequencies at which to place markers (in MHz).
             - `smoothing` : str, optional
@@ -266,8 +348,15 @@ class Y_Factor_Thermometer:
         spec = spectrum.spec
     
         # Find the index closest to start_freq and end_freq
-        start_idx = np.argmin(np.abs(f - start_freq))
-        end_idx = np.argmin(np.abs(f - end_freq))
+        start_freq, end_freq = freq_range
+        if start_freq is not None:
+            start_idx = np.argmin(np.abs(f - start_freq))
+        else:
+            start_idx = 0
+        if end_freq is not None:
+            end_idx = np.argmin(np.abs(f - end_freq))
+        else:
+            end_idx = len(f) - 1
 
         # conversion of gain from dB to linear scale
         g_values = 10**(self.g / 10)
@@ -286,51 +375,70 @@ class Y_Factor_Thermometer:
         temp_range = temp_arr[start_idx:end_idx+1]
 
         # Apply smoothing
-        smoothed = smooth_spectrum(temp_range, method=smoothing, window=window_size)
+        smoothed = spec_proc.smooth_spectrum(temp_range, method=smoothing, window=window_size)
 
-        plt.figure(figsize=(12, 8))
+        if show_plot:
+            plt.figure(figsize=(12, 8))
 
-        # Plot raw data
-        plt.plot(freq_range, temp_range, 'o', alpha=0.4, markersize=6,
-                label='Raw data', color='steelblue')
+            # Plot raw data
+            plt.plot(freq_range, temp_range, 'o', alpha=0.4, markersize=6,
+                    label='Raw data', color='steelblue')
 
-        # Plot smoothed line
-        plt.plot(freq_range, smoothed, '-', linewidth=2.5,
-                label=f'Smoothed (window={window_size})', color='darkred')
-        
-        if marker_freqs is not None:
-            for mf in marker_freqs:
-                # Find closest index
-                idx = np.argmin(np.abs(freq_range - mf))
-                marker_temp = smoothed[idx]
-                marker_freq_mhz = freq_range[idx]
+            # Plot smoothed line
+            plt.plot(freq_range, smoothed, '-', linewidth=2.5,
+                    label=f'Smoothed (window={window_size})', color='darkred')
+            
+            if marker_freqs is not None:
+                for mf in marker_freqs:
+                    # Find closest index
+                    idx = np.argmin(np.abs(freq_range - mf))
+                    marker_temp = smoothed[idx]
+                    marker_freq_mhz = freq_range[idx]
 
-                # Plot marker
-                plt.plot(marker_freq_mhz, marker_temp, 'ro')
-                plt.annotate(f'{marker_temp:.2f} K\n@ {mf:.0f} MHz',
-                             (marker_freq_mhz, marker_temp),
-                             textcoords="offset points", xytext=(10, 10), ha='left',
-                             fontsize=16, color='darkred')
+                    # Plot marker
+                    plt.plot(marker_freq_mhz, marker_temp, 'ro')
+                    plt.annotate(f'{marker_temp:.2f} K\n@ {mf:.0f} MHz',
+                                (marker_freq_mhz, marker_temp),
+                                textcoords="offset points", xytext=(10, 10), ha='left',
+                                fontsize=16, color='darkred')
 
-        if ymax is not None:
-            plt.ylim(top=ymax)
-        
-        if ymin is not None:
-            plt.ylim(bottom=ymin)
+            ymin, ymax = y_range
 
-        plt.xlabel('Frequency (MHz)', fontsize=20)
-        plt.ylabel('Temperature (Kelvin)', fontsize=20)
-        plt.tick_params(axis='both', which='major', labelsize=18)
-        plt.title(title, fontsize=22)
-        plt.legend(fontsize=16)
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
+            if ymax is not None:
+                plt.ylim(top=ymax)
+            
+            if ymin is not None:
+                plt.ylim(bottom=ymin)
 
-        if save_path is not None:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.show()
+            plt.xlabel('Frequency (MHz)', fontsize=20)
+            plt.ylabel('Temperature (Kelvin)', fontsize=20)
+            plt.tick_params(axis='both', which='major', labelsize=18)
+            plt.title(title, fontsize=22)
+            plt.legend(fontsize=16)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+
+            if save_path is not None:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.show()
         
         inferred_spectrum = Spectrum(frequency=spectrum.freq, spectrum=temp_arr, name=spectrum.name)
 
         return inferred_spectrum
+    
+def _bin_edges_from_centers(f_centers):
+    edges = np.zeros(len(f_centers) + 1)
+    edges[1:-1] = 0.5 * (f_centers[1:] + f_centers[:-1])
+    edges[0] = f_centers[0] - (edges[1] - f_centers[0])
+    edges[-1] = f_centers[-1] + (f_centers[-1] - edges[-2])
+    return edges
+
+def _bin_average(x, y, edges, reducer=np.nanmean):
+    out = np.full(len(edges) - 1, np.nan)
+    for i in range(len(out)):
+        mask = (x >= edges[i]) & (x < edges[i+1])
+        if np.any(mask):
+            out[i] = reducer(y[mask])
+    return out
+
 
