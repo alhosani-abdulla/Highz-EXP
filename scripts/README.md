@@ -1,45 +1,100 @@
-# Filterbank Spectrometer Scripts
+# Scripts
 
-Command-line scripts and utilities for working with High-Z filterbank spectrometer data.
+Command-line utilities and batch runners for filterbank processing/visualization.
+
+## Important
+
+These scripts currently contain hardcoded absolute paths from the original environment.
+
+Before use on a new machine, update path variables near the top of each script:
+
+- `scripts/consolidate_all.sh`
+- `scripts/batch_waterfall.sh`
+- `scripts/highz_alias.sh`
+- `scripts/create_animations.py`
+
+## Prerequisites
+
+- Run from repository root.
+- Install project deps and pipenv environment.
+- `ffmpeg` is required for MP4 generation in `create_animations.py`.
 
 ## Quick Start
 
-### Consolidate Raw Data
 ```bash
-bash consolidate_all.sh 11042025
+bash scripts/consolidate_all.sh
+bash scripts/batch_waterfall.sh 20251102
+pipenv run python scripts/create_animations.py 20251102
 ```
 
-### Create Waterfall Plots
+## Script Details
+
+### `consolidate_all.sh`
+
+Batch consolidation across predefined days using filter calibration data.
+
+Current behavior:
+
+- Processes a fixed internal `DAYS` list (`11012025` to `11062025`).
+- Runs `pipenv run python scripts/consolidate_filterbank_data.py ...` for each day.
+- Uses hardcoded `FILTERCAL_DIR`, `OUTPUT_DIR`, and `BANDPASS_DIR`.
+
+Usage:
+
 ```bash
-bash batch_waterfall.sh 20251102
+bash scripts/consolidate_all.sh
 ```
 
-### Create Animations
+### `batch_waterfall.sh`
+
+Runs waterfall generation for all states, optionally for selected filter indices.
+
+Usage:
+
 ```bash
-pipenv run python create_animations.py 20251102
+bash scripts/batch_waterfall.sh [DATE] [FILTER_0 FILTER_1 ...]
 ```
 
-## Scripts
+Arguments:
 
-### consolidate_all.sh
-Consolidate all days from the raw Bandpass directory with automatic filter calibration matching.
+- `DATE` (optional): Format `YYYYMMDD`; default is `20251102`.
+- Filters (optional): Zero-based filter indices (`0-20`). If omitted, all filters are processed.
 
-Usage: `./consolidate_all.sh [DATE]`
-- DATE: Format YYYYMMDD (e.g., 20251102)
+Current behavior:
 
-### batch_waterfall.sh
-Create waterfall plots for all filters and states for a given date.
+- States processed: `0 1 2 3 4 5 6 7 1_OC`.
+- Uses `tools/waterfall_plotter.py` with `--no-interactive`.
+- Writes outputs under a day-specific folder derived from `DATE`.
 
-Usage: `./batch_waterfall.sh [DATE] [filters_to_process]`
-- DATE: Format YYYYMMDD
-- Filters: Optional, space-separated filter numbers (0-20)
+### `create_animations.py`
 
-### create_animations.py
-Create animated GIFs and MP4 videos from waterfall plots.
+Creates GIF and MP4 animations per state by stitching waterfall PNG frames across filters.
 
-Usage: `python create_animations.py [DATE]`
-- DATE: Format YYYYMMDD
+Usage:
 
-## Examples Directory
+```bash
+pipenv run python scripts/create_animations.py [DATE]
+```
 
-The `examples/` subdirectory contains example usage scripts and diagnostics.
+Arguments:
+
+- `DATE` (optional): Format `YYYYMMDD`; default is `20251102`.
+
+Outputs:
+
+- `state_<STATE>_waterfall_animation.gif`
+- `state_<STATE>_waterfall_animation.mp4`
+
+for each state in: `0,1,2,3,4,5,6,7,1_OC`.
+
+### `highz_alias.sh`
+
+Shell aliases/functions for interactive local workflows (viewing spectra, compression, plot creation).
+
+Usage:
+
+```bash
+source scripts/highz_alias.sh
+```
+
+Then use the defined aliases/functions in your shell session.

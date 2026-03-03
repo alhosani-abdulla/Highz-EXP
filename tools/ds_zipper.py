@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Utility script to condense multiple .npy files from observation cycles in DS into a single file.
+
+The old DS file format uses the class LegacyDSFileLoader. This packs them into a file format that uses the class DSFileLoader.
+
 This is useful for reducing file clutter and improving data management after a day's worth of observations.
 """
 import sys, os, logging, argparse
