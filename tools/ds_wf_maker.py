@@ -12,7 +12,6 @@ from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimension
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.params import *
 
-
 class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
 
