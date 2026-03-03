@@ -92,7 +92,7 @@ class S_Params:
             freq = freq / 1e6
         return freq
     
-    def get_s21(self, db=True) -> tuple[dict, dict]:
+    def get_s21(self, db=True) -> dict:
         """
         Load S-parameters from .s2p files in ntwk_dict, converting to dB if specified.
 
@@ -110,22 +110,42 @@ class S_Params:
             s_params_data[label] = s21
         return s_params_data
     
-    def plot_impedance(self, title='Impedance Measurement', ymax=None, ymin=None, 
-                       plot_imaginary=True,
+    def get_s12(self, db=True) -> dict:
+        """
+        Load S-parameters from .s2p files in ntwk_dict, converting to dB if specified.
+
+        Parameters:
+        - db (bool): If True, convert S12 to dB scale.
+
+        Returns:
+        - dict: A dictionary {label: S12 values (np.ndarray)}.
+        """
+        s_params_data = {}
+        for label, network in self.ntwk_dict.items():
+            s12 = network.s[:, 0, 1]
+            if db:
+                s12 = 20 * np.log10(np.abs(s12))
+            s_params_data[label] = s12
+        return s_params_data
+    
+    def plot_impedance(self, title='Impedance Measurement', y_range=(None, None), 
+                       s_type='s11', plot_imaginary=True,
                        save_path=None) -> None:
         """
-        Plot multiple impedances from .s1p Network objects on the same axes.
+        Plot multiple impedances from S parameter Network objects on the same axes.
 
         Parameters:
         - title (str): Title of the plot.
-        - ymax (float): Maximum y-axis limit.
-        - ymin (float): Minimum y-axis limit.
+        - y_range (tuple): (ymin, ymax) tuple for y-axis limits.
+        - s_type (str): S-parameter type to plot ('s11' or 's22').
         - save_path (str): filepath to save the combined plot
 
         Returns:
         - dict: the same ntwk_dict passed in
         """
         ntwk_dict = self.ntwk_dict
+        ymin, ymax = y_range
+        
         if not ntwk_dict:
             print("No networks provided.")
             return ntwk_dict
@@ -144,8 +164,14 @@ class S_Params:
 
         for idx, (label, network) in enumerate(ntwk_dict.items()):
             freq = network.f
-            z_real = network.z[:, 0, 0].real
-            z_imag = network.z[:, 0, 0].imag
+            if s_type == 's11':
+                z_real = network.z[:, 0, 0].real
+                z_imag = network.z[:, 0, 0].imag
+            elif s_type == 's22':
+                z_real = network.z[:, 1, 1].real
+                z_imag = network.z[:, 1, 1].imag
+            else:
+                raise ValueError(f"Unsupported s_type: {s_type}")
             color = color_cycle[idx % len(color_cycle)]
             ax.plot(freq / 1e6, z_real, label=f'{label}', color=color)
             if plot_imaginary:
@@ -181,8 +207,8 @@ class S_Params:
 
         plt.show()
 
-    def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, 
-                             show_phase=False, attenuation=0, save_path=None):
+    def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
+            s_type='s11', show_phase=False, attenuation=0, save_path=None):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -214,7 +240,13 @@ class S_Params:
 
         for idx, (label, network) in enumerate(ntwk_dict.items()):
             freq = network.f
-            s11 = network.s[:, 0, 0]
+            if s_type == 's11':
+                s11 = network.s[:, 0, 0]
+            elif s_type == 's22':
+                s11 = network.s[:, 1, 1]
+            else:
+                raise ValueError(f"Unsupported s_type: {s_type}")
+
             mag = 20 * np.log10(np.abs(s11)) + attenuation if db else np.abs(s11)
             phase = np.angle(s11, deg=True)
 
@@ -231,6 +263,8 @@ class S_Params:
         ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
         ax1.grid(True)
         ax1.tick_params(axis='both', which='major', labelsize=18)
+
+        ymin, ymax = y_range
         if ymax is not None:
             ax1.set_ylim(top=ymax)
         if ymin is not None:
@@ -260,16 +294,14 @@ class S_Params:
 
         plt.show()
     
-    def plot_smith_chart(self, save_path=None, save_plot=True, title='Smith Chart',
-                        freq_range=None, marker_freq=None, autoscale=False):
-        """
-        Plot Smith chart from one or more scikit-rf Network objects.
-
+    def plot_smith_chart(self, save_path=None, title='Smith Chart',
+            s_type='s11', freq_range=None, marker_freqs=None, autoscale=False):
+        """Plot Smith chart from one or more scikit-rf Network objects.
         Parameters:
-        - suffix (str): Used for output filename if saving.
-        - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
-                            If None, plots all frequencies.
-        - marker_freq (list): List of frequencies in Hz to mark on the Smith chart.
+            - suffix (str): Used for output filename if saving.
+            - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
+                                If None, plots all frequencies.
+            - marker_freqs (list): List of frequencies in Hz to mark on the Smith chart.
         """
         ntwk_dict = self.ntwk_dict.copy()
         # Filter networks by frequency range if specified
@@ -295,7 +327,12 @@ class S_Params:
         fig.set_size_inches(14, 12)
         for label, ntwk in ntwk_dict.items():
             # Extract only S11 for Smith chart plotting
-            s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 0:1, 0:1], z0=ntwk.z0)
+            if s_type == 's11':
+                s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 0, 0], z0=ntwk.z0)
+            elif s_type == 's22':
+                s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 1, 1], z0=ntwk.z0)
+            else:
+                raise ValueError(f"Unsupported s_type: {s_type}")
             s11_ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
 
         for text in ax.texts:
@@ -311,12 +348,17 @@ class S_Params:
 
         ax.set_title(title, fontsize=20)
         
-        if marker_freq is not None:
-            for mfreq in marker_freq:
+        if marker_freqs is not None:
+            for mfreq in marker_freqs:
                 for label, ntwk in ntwk_dict.items():
                     # Find closest frequency index
                     idx = (np.abs(ntwk.f - mfreq)).argmin()
-                    s11_point = ntwk.s[idx, 0, 0]
+                    if s_type == 's11':
+                        s11_point = ntwk.s[idx, 0, 0]
+                    elif s_type == 's22':
+                        s11_point = ntwk.s[idx, 1, 1]
+                    else:
+                        raise ValueError(f"Unsupported s_type: {s_type}")
                     impedance = ntwk.z[idx, 0, 0]
                     impedance = f'{impedance.real:.1f} + j{impedance.imag:.1f} Ω'
                     if len(ntwk_dict) > 1:
@@ -328,14 +370,14 @@ class S_Params:
         ax.legend(loc='upper left', borderaxespad=0, fontsize=18)
         plt.tight_layout()
         
-        if save_plot:
-            if save_path is not None:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                fig.savefig(save_path, bbox_inches='tight')
+        if save_path is not None:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            fig.savefig(save_path, bbox_inches='tight')
         plt.show()
     
     def plot_gain(self, attenuation=0, title='Gain Measurement', y_range=(None, None),
-                  marker_freqs=None, save_path=None, smoothing=False, smoothing_kwargs=None):
+                  type='s21', marker_freqs=None, save_path=None, plot_kwargs={},
+                  smoothing=False, smoothing_kwargs=None):
         """
         Plot gain from multiple .s2p Network objects on the same axes.
 
@@ -343,6 +385,7 @@ class S_Params:
         - title (str): Title of the plot.
         - attenuation (float): Attenuation used during measurement (dB). Plotted gain would be (measured gain + attenuation).
         - y_range (tuple): (y_min, y_max) limits for the y-axis. Use (None, None) for auto-scaling.
+        - type (str): Type of gain to plot. Choose between 's21' (forward gain) and 's12' (reverse gain).
         - save_path (str): full path to save the plot
         - marker_freqs (list): List of frequencies in MHz to mark on the gain plot.
         - smoothing (bool): Whether to apply smoothing to the gain curves.
@@ -352,7 +395,16 @@ class S_Params:
         - dict: the same ntwk_dict passed in
         """
         freq = self.get_freq(MHz=True)
-        gain = self.get_s21(db=True)
+        
+        # Get gain values based on specified type 
+        if type == 's21':
+            gain = self.get_s21(db=True)
+        elif type == 's12':
+            gain = self.get_s12(db=True)
+        else:
+            raise ValueError(f"Invalid type: {type}")
+
+        # Apply smoothing if requested
         if smoothing:
             from highz_exp.spec_proc import smooth_spectrum
             smoothing_kwargs = smoothing_kwargs or {}
@@ -366,13 +418,12 @@ class S_Params:
                 ordered_labels_combined = [f'{label} (raw)' for label in ordered_labels] + [f'{label} (smoothed)' for label in ordered_labels]
                 ordered_gains_combined = ordered_gains + ordered_gains_smoothed
                 plot_gain(freq, ordered_gains_combined, label=ordered_labels_combined, title=title, y_range=y_range, 
-                    save_path=save_path, marker_freqs=marker_freqs)
+                        save_path=save_path, marker_freqs=marker_freqs, **plot_kwargs)
         else:
             ordered_labels = list(self.ntwk_dict.keys())
             ordered_gains = [gain[label] + attenuation for label in ordered_labels]
             plot_gain(freq, ordered_gains, label=ordered_labels, title=title, y_range=y_range, 
-                    save_path=save_path,
-                    marker_freqs=marker_freqs)
+                    save_path=save_path, marker_freqs=marker_freqs, **plot_kwargs)
     
     def apply_to_all_s11s(self, func, inplace=True):
         """Apply a function to the S11 parameters of all networks."""

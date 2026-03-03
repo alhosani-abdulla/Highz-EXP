@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 from zoneinfo import ZoneInfo
 
 from highz_exp.unit_convert import convert_utc_list_to_local
-from highz_exp.file_load import get_sorted_time_dirs, DSFileLoader
+from highz_exp.file_load import DSFileLoader
 from file_compressor import setup_logging
 from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimensions, get_dynamic_bin_size
 
@@ -215,6 +215,7 @@ def main_cli():
         help="Directory to save output plots (default: None, to input_dir)"
     )
 
+    parser.add_argument("--segment", type=int, default=4, help="Number of segments to split the day into for processing. Default = 4.")
     parser.add_argument("--step_f", type=int, default=4, help="Frequency downsampling step size. Default = 4, allows 0.1 MHz resolution.")
     parser.add_argument("--step_t", type=int, default=1, help="Time downsampling step size. Default = 1.")
 
@@ -226,11 +227,11 @@ def main_cli():
 
     return args
 
-def main(date_dir, state_indx, step_f, step_t, output_dir=None):
+def main(date_dir, state_indx, step_f, step_t, segment, output_dir=None):
     # --- 1. Data Ingestion & Setup ---
     time_dirs = DSFileLoader.get_sorted_time_dirs(date_dir)
     date = pbase(date_dir)
-    for quartered_time_dirs in np.array_split(time_dirs, 4):
+    for quartered_time_dirs in np.array_split(time_dirs, segment):
         loaded = DSFileLoader.load_and_add_timestamp(date, quartered_time_dirs, state_indx)
         timestamps, spectra = DSFileLoader.read_loaded(loaded, sort='ascending', convert=True)
         
@@ -289,5 +290,6 @@ if __name__ == "__main__":
         state_indx=args.state_index, 
         output_dir=args.output_dir,
         step_f=args.step_f,
-        step_t=args.step_t
+        step_t=args.step_t,
+        segment=args.segment
     )

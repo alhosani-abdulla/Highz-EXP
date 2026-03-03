@@ -7,6 +7,7 @@ from .unit_convert import *
 from .reflection_proc import impedance_from_s11
 from scipy.constants import Boltzmann as k_B
 
+
 def compute_spike_height_ratios(spike_data1, spike_data2, tolerance=0.1):
     """
     Compute the ratio of spike heights between two datasets with tolerance matching.

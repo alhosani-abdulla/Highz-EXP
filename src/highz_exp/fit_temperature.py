@@ -117,6 +117,10 @@ class Y_Factor_Thermometer:
         
         return ntwk
     
+    def copy(self):
+        """Create a copy of the Y_Factor_Thermometer object."""
+        return copy.deepcopy(self)
+    
     @staticmethod
     def gain_with_cal(DUT_hot, DUT_cold, cal_hot, cal_cold) -> np.ndarray:
         """
@@ -214,6 +218,13 @@ class Y_Factor_Thermometer:
         # convert system temperature to spectrum object
         system_spec = Spectrum(frequency=self.f, spectrum=self.T_sys, name=f'{self.label} System Temperature')
         plotter.plot_spectra([system_spec], ylabel='Temperature (K)', **kwargs)
+    
+    def plot_dut_temperature(self, **kwargs):
+        """Plot the DUT temperature spectrum."""
+        if self.T_dut is None:
+            raise ValueError("DUT temperature spectrum is not available. Please compute it first.")
+        dut_spec = Spectrum(frequency=self.f, spectrum=self.T_dut, name=f'{self.label} DUT Temperature')
+        plotter.plot_spectra([dut_spec], ylabel='Temperature (K)', **kwargs)
     
     @staticmethod
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
@@ -339,7 +350,8 @@ class Y_Factor_Thermometer:
             - `marker_freqs` : list of float, optional
                 Frequencies at which to place markers (in MHz).
             - `smoothing` : str, optional
-                Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'
+                Type of smoothing: 'savgol' (Savitzky-Golay), 'moving_avg', or 'lowess'.
+                If None, no smoothing is applied.
             - `window_size` : int, optional
                 Window size for smoothing (must be odd for savgol)
                 
@@ -375,7 +387,8 @@ class Y_Factor_Thermometer:
         temp_range = temp_arr[start_idx:end_idx+1]
 
         # Apply smoothing
-        smoothed = spec_proc.smooth_spectrum(temp_range, method=smoothing, window=window_size)
+        if smoothing is not None:
+            smoothed = spec_proc.smooth_spectrum(temp_range, method=smoothing, window=window_size)
 
         if show_plot:
             plt.figure(figsize=(12, 8))
@@ -384,9 +397,10 @@ class Y_Factor_Thermometer:
             plt.plot(freq_range, temp_range, 'o', alpha=0.4, markersize=6,
                     label='Raw data', color='steelblue')
 
-            # Plot smoothed line
-            plt.plot(freq_range, smoothed, '-', linewidth=2.5,
-                    label=f'Smoothed (window={window_size})', color='darkred')
+            # Plot smoothed line if smoothing is applied
+            if smoothing is not None:
+                plt.plot(freq_range, smoothed, '-', linewidth=2.5,
+                        label=f'Smoothed (window={window_size})', color='darkred')
             
             if marker_freqs is not None:
                 for mf in marker_freqs:
