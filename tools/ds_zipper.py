@@ -1,20 +1,15 @@
-from datetime import datetime
+#!/usr/bin/env python3
+"""
+Utility script to condense multiple .npy files from observation cycles in DS into a single file.
+This is useful for reducing file clutter and improving data management after a day's worth of observations.
+"""
 import sys, os, logging, argparse
 
 from highz_exp.file_load import LegacyDSFileLoader
+from digital_spectrometer.io_utils import setup_logging
+
 pbase = os.path.basename
 pjoin = os.path.join
-
-def setup_logging(level=logging.INFO, output_file=False):
-    """Setup logging configuration"""
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    if output_file:
-        file_name = f'file_compressor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
-        logging.basicConfig(filename=file_name)
 
 def main():
     # 1. Initialize Logging

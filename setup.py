@@ -10,7 +10,8 @@ setup(
     description="A Python package for Highz-EXP project.",
     author="High-Z Team",
     author_email="highz.team@example.com",
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=requirements,
     python_requires=">=3.10",
     classifiers=[
