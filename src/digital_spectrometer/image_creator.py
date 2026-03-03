@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from typing import List, Optional, Union, Dict, Any
 
 from highz_exp import plotter, file_load
+from highz_exp.file_load import DSFileLoader
 from highz_exp.unit_convert import convert_utc_list_to_local
 from highz_exp.spec_class import Spectrum
 from plot_settings import LEGEND, COLOR_CODE, map_filename_to_legend
@@ -20,6 +21,71 @@ fbins = np.arange(0, nfft//2)
 df = fs/nfft
 faxis = fbins*df
 faxis_hz = faxis*1e6
+
+class SmartFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    """Formatter that preserves line breaks and shows defaults in help text."""
+    pass
+
+def build_parser() -> argparse.ArgumentParser:
+    """Create and return the command-line parser for this script."""
+    epilog = """
+Examples:
+  # Plot a single snapshot (default state 0)
+  python image_creator.py /path/to/spec_dir --sample
+
+  # Plot multiple hardware states into a custom output directory
+  python image_creator.py /path/to/spec_dir --state_indx 0 2 4 --output_dir /tmp/plots
+
+  # Generate batch plots and movie for one state with verbose logging
+  python image_creator.py /path/to/spec_dir --state_indx 1 -v
+
+Notes:
+  - --state_indx accepts one or more integers.
+  - --sample generates one representative plot; omit it for full batch processing.
+  - Output defaults to the input directory when --output_dir is not provided.
+"""
+
+    parser = argparse.ArgumentParser(
+        prog="image_creator.py",
+        description=(
+            "Generate spectrum plots from condensed digital spectrometer files. "
+            "Supports single-snapshot visualization and full batch plotting with movie export."
+        ),
+        epilog=epilog,
+        formatter_class=SmartFormatter,
+    )
+
+    parser.add_argument(
+        "input_dir",
+        type=str,
+        help="Path to the input directory containing spectrum files",
+    )
+    parser.add_argument(
+        "--state_indx",
+        type=int,
+        nargs='+',
+        default=[0],
+        metavar="STATE",
+        help="One or more state indices to process (space-separated)",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Path to the output directory where images are generated",
+    )
+    parser.add_argument(
+        "--sample",
+        action="store_true",
+        help="Generate only one snapshot plot instead of full batches",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    return parser
 
 def create_movie_with_imageio(
     image_dir: Union[str, Path], 
@@ -82,8 +148,8 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
     loaded_dict = {}
     if isinstance(state_indx, int): state_indx = [state_indx]
     for i, state in enumerate(state_indx):
-        loaded = file_load.get_specs_from_dirs(initial_date, [str(spec_path)], state)
-        timestamps, spectra = file_load.read_loaded(loaded)
+        loaded = DSFileLoader.load_and_add_timestamp(initial_date, [str(spec_path)], state)
+        timestamps, spectra = DSFileLoader.read_loaded(loaded, convert=True)
 
         if len(spectra) == 0:
             logging.warning(f"No spectra found in {spec_dir} for state {state_indx}")
@@ -102,6 +168,8 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
                 date_str, time_str = initial_date, initial_time
                 logging.warning("No timestamps available; falling back to directory-based metadata.")
 
+    logging.info(f"Loaded spectra for states: {list(loaded_dict.keys())}")
+
     # Directory Management
     final_output_dir: Union[str, Path] = output_dir if output_dir else spec_dir
     os.makedirs(final_output_dir, exist_ok=True)
@@ -109,10 +177,8 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
     # Visualization Configuration
     yticks: List[int] = [-80, -70, -60, -50, -40, -30]
     base_params: Dict[str, Any] = {
-        "save_dir": final_output_dir,
         "ylabel": 'PSD [dBm]',
-        "ymin": -80,
-        "ymax": -30,
+        "y_range": (-80, -30),
         "yticks": yticks,
         "show_plot": False
     }
@@ -121,10 +187,11 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
         ## --- Mode 1: Single Sample Plot ---
         spectrum_list = []
         for state, (timestamps, spectra) in loaded_dict.items():
-            sample_spectrum = Spectrum(faxis_hz, spectra[0, :], name=map_filename_to_legend(state))
+            logging.info(f"The shape of spectra for state {state} is {spectra.shape}")
+            sample_spectrum = Spectrum(faxis_hz, spectra[1, :], name=map_filename_to_legend(state))
             spectrum_list.append(sample_spectrum)
         plotter.plot_spectra(spectrum_list, save_path=pjoin(final_output_dir, f'{date_str}_{time_str}_spectra.png'), title=f'{date_str}: {time_str} Spectra',
-            **{**base_params, "show_plot": True})
+            **{**base_params, "show_plot": False})
     else:
         # --- Mode 2: Batch Plotting (10 spectra per plot) ---
         for state, (timestamps, spectra) in loaded_dict.items():
@@ -145,8 +212,9 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
                 title: str = f'{date_str} {time_str}: Batch {batch_num} ({start_idx}-{end_idx-1})'
                 
                 plotter.plot_spectra(
-                    current_batch, save_path=pjoin(final_output_dir, f'{date_str}_{time_str}_{suffix}.png'),
-                    title=title, 
+                    current_batch, 
+                    save_path=pjoin(final_output_dir, f'{date_str}_{time_str}_{suffix}.png'),
+                    title=title,
                     **base_params
                 )
                 
@@ -169,8 +237,7 @@ def create_image(spec_path, show_plots=False):
     yticks = [-80, -70, -60, -50, -40, -30]
     plotter.plot_spectra(dbm_spec_states.values(), save_path=pjoin(spec_path, f'{date_dir}_all_states_spectra.png'), 
                         title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', suffix='all_states',
-                        title=f'{date_dir}: {os.path.basename(spec_path)} Spectra', ylabel='PSD [dBm]',
-                        ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
+                        ylabel='PSD [dBm]', ymin=-80, ymax=-30, yticks=yticks, show_plot=show_plots)
     wo_antenna_dbm_states = {k: v for k, v in dbm_spec_states.items() if k != 'Antenna'}
 
     yticks = [-80, -70, -60, -50, -40, -30]
@@ -182,25 +249,14 @@ def create_image(spec_path, show_plots=False):
     print(f"Image saved to {spec_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process spectrum files from a directory.")
-
-    # Required positional argument for input directory
-    parser.add_argument("input_dir",  type=str, 
-        help="Path to the input directory containing spectrum files")
-
-    # Optional argument for state_indx
-    # nargs='+' allows for one or more integers (a list)
-    parser.add_argument("--state_indx", type=int, nargs='+', 
-        default=[0],
-        help="A single state index or a list of indices (e.g., --state_indx 1 2 3)"
-    )
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Path to the output directory where images will be generated.")
-    parser.add_argument("--sample", action="store_true",
-                        help="Pick only one snapshot of spectra to plot.")
-
+    parser = build_parser()
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    else:
+        logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+        
     # Logic from your snippet
     logging.info("Creating image for a specified directory of spectrum files...")
     

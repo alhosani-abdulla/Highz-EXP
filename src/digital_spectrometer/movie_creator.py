@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 from highz_exp import file_load, plotter
-from image_creator import create_image
-from plot_settings import LEGEND, DATA_PATH, COLOR_CODE
+from digital_spectrometer.image_creator import create_image
+from digital_spectrometer.plot_settings import LEGEND, DATA_PATH, COLOR_CODE
 
 nfft = 32768
 fs = 3276.8/4
