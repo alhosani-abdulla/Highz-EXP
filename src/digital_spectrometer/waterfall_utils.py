@@ -51,7 +51,8 @@ def inject_gap_spacers(datetimes: List[datetime],
 
     return new_ts, np.array(new_spectra_list)
 
-def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_path, vmin=-80, vmax=-20):
+def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_path, vmin=-80, vmax=-20,
+                                  ):
     """
     Creates an interactive waterfall plot using Plotly.
     Includes hover data, zooming, and a dynamic color-range slider.
@@ -132,7 +133,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     # 1. Define steps for zmin (Floor)
     min_steps = []
-    for val in range(-90, -30, 5):
+    for val in range(vmin-10, vmax-10, 5):
         min_steps.append({
             "method": "restyle",
             "label": str(val),
@@ -141,7 +142,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
 
     # 2. Define steps for zmax (Ceiling)
     max_steps = []
-    for val in range(-80, -10, 5):
+    for val in range(vmin, vmax, 5):
         max_steps.append({
             "method": "restyle",
             "label": str(val),
