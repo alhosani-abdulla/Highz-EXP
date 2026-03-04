@@ -69,17 +69,47 @@ class SystemCalibrationProcessor:
 			height=self.site_elevation_m * u.m,
 		)
 
-	def load_states(self, data_folder: str | Path, convert: bool = False) -> dict[str, dict[str, Any]]:
+	def load_states(
+		self,
+		data_folder: str | Path,
+		convert: bool = False,
+		tail_fraction: float = 1.0,
+		states_to_load: list[str] | None = None,
+	) -> dict[str, dict[str, Any]]:
 		"""Load all configured switch states using ``DSFileLoader``.
 
 		Returns a dictionary keyed by state name with:
 		- ``timestamps``: np.ndarray of UTC datetimes
 		- ``spectra``: np.ndarray of raw/converted spectra
+
+		Parameters
+		----------
+		tail_fraction : float, optional
+			Fraction of samples to keep from the end of each state's data.
+			Use ``1.0`` for full-day loading and ``0.25`` for the last quarter.
+		states_to_load : list[str] | None, optional
+			Subset of state names to load. If None, loads all states in ``state_list``.
 		"""
+		if not (0 < tail_fraction <= 1.0):
+			raise ValueError("tail_fraction must be in the range (0, 1].")
+		if states_to_load is not None:
+			unknown = sorted(set(states_to_load) - set(self.state_list))
+			if unknown:
+				raise ValueError(f"Unknown states requested: {unknown}")
+			state_filter = set(states_to_load)
+		else:
+			state_filter = set(self.state_list)
+
 		loader = DSFileLoader(str(data_folder))
 		loaded: dict[str, dict[str, Any]] = {}
 		for state_no, name in enumerate(self.state_list):
+			if name not in state_filter:
+				continue
 			timestamps, spectra = loader.load(state_no, convert)
+			if tail_fraction < 1.0 and len(timestamps) > 0:
+				start_idx = int((1.0 - tail_fraction) * len(timestamps))
+				timestamps = timestamps[start_idx:]
+				spectra = spectra[start_idx:]
 			loaded[name] = {"timestamps": timestamps, "spectra": spectra}
 		self.raw_states = loaded
 		return loaded
@@ -161,6 +191,7 @@ class SystemCalibrationProcessor:
 		noise_diode_freq_f1_mhz: float = 50.0,
 		noise_diode_freq_f2_mhz: float = 200.0,
 		resistor_temp_k: float = 275.0,
+		resistor_median: np.ndarray | None = None,
 	) -> tuple[np.ndarray, np.ndarray]:
 		"""Compute system gain and system temperature from median diode/resistor spectra.
 
@@ -181,8 +212,15 @@ class SystemCalibrationProcessor:
 			/ (noise_diode_freq_f2_mhz - noise_diode_freq_f1_mhz)
 		) * (self.frequencies_mhz - noise_diode_freq_f1_mhz)
 
+		if "noise_diode" not in self.state_medians:
+			raise ValueError("'noise_diode' median is required for calibration.")
 		noise_diode = self.state_medians["noise_diode"]
-		resistor = self.state_medians["resistor"]
+		if resistor_median is None:
+			if "resistor" not in self.state_medians:
+				raise ValueError("'resistor' median missing. Provide resistor_median or load resistor state.")
+			resistor = self.state_medians["resistor"]
+		else:
+			resistor = np.asarray(resistor_median)
 
 		self.system_gain = (noise_diode - resistor) / (self.nd_temp - resistor_temp_k)
 		self.system_temp = resistor / self.system_gain - resistor_temp_k
