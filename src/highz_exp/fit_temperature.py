@@ -455,4 +455,3 @@ def _bin_average(x, y, edges, reducer=np.nanmean):
             out[i] = reducer(y[mask])
     return out
 
-

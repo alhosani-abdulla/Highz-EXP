@@ -19,6 +19,25 @@ from os.path import join as pjoin, basename as pbase
 
 LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load','Noise diode',"8' cable short",'Open Circuit state']
 
+DEFAULT_MATPLOTLIB_STYLE = {
+    'axes.titlesize': 20,
+    'axes.labelsize': 18,
+    'xtick.labelsize': 16,
+    'ytick.labelsize': 16,
+    'legend.fontsize': 16,
+    'figure.titlesize': 20,
+}
+
+def set_matplotlib_defaults(style_overrides: dict | None = None) -> dict:
+    """Apply and return global matplotlib defaults for plotting in this module."""
+    style = DEFAULT_MATPLOTLIB_STYLE.copy()
+    if style_overrides is not None:
+        style.update(style_overrides)
+    plt.rcParams.update(style)
+    return style
+
+set_matplotlib_defaults()
+
 def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum', show_residual=False, show_bottom_panel=True):
     """
     Plot magnitude for measured and fitted spectrum data, and optionally a ratio panel (measured/fitted) or residual panel.
@@ -49,7 +68,7 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     ax_mag.plot(freq / 1e6, mag_measured, label=f'{keys[0]}', color='C0')
     ax_mag.plot(freq / 1e6, mag_fitted, label=f'{keys[1]}', color='C1', linestyle='--')
-    ax_mag.set_ylabel(ylabel, fontsize=14)
+    ax_mag.set_ylabel(ylabel)
     ax_mag.legend(loc='best')
     ax_mag.grid(True)
 
@@ -60,20 +79,20 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
             residual = mag_measured - mag_fitted
             ax_bottom.plot(freq / 1e6, residual, color='C2')
             ax_bottom.axhline(0, color='red', linestyle='-', linewidth=1.5, label='residual = 0')
-            ax_bottom.set_ylabel('Residual (Measured - Theory)', fontsize=14)
+            ax_bottom.set_ylabel('Residual (Measured - Theory)')
         else:
             ratio = mag_measured / mag_fitted
             ax_bottom.plot(freq / 1e6, 1 / ratio, color='C2')
             ax_bottom.axhline(1, color='red', linestyle='-', linewidth=1.5, label='measured/theory = 1')
-            ax_bottom.set_ylabel('Measured/Theory', fontsize=14)
+            ax_bottom.set_ylabel('Measured/Theory')
         
-        ax_bottom.set_xlabel('Frequency [MHz]', fontsize=14)
+        ax_bottom.set_xlabel('Frequency [MHz]')
         ax_bottom.grid(True)
         ax_bottom.legend(loc='best')
     else:
-        ax_mag.set_xlabel('Frequency [MHz]', fontsize=14)
+        ax_mag.set_xlabel('Frequency [MHz]')
 
-    fig.suptitle(title, fontsize=16)
+    fig.suptitle(title)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:
@@ -123,23 +142,22 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
         if show_phase:
             ax_phase.plot(freq / 1e6, phase, label=f'{label}', color=color, linestyle='--')
 
-    ax_mag.set_ylabel(ylabel, fontsize=20)
+    ax_mag.set_ylabel(ylabel)
     ax_mag.grid(True)
-    ax_mag.legend(loc='best', fontsize=20)
-    ax_mag.tick_params(axis='both', labelsize=20, which='major')
+    ax_mag.legend(loc='best')
 
     if ylim is not None:
         ax_mag.set_ylim(ylim)
 
     if show_phase:
-        ax_phase.set_xlabel('Frequency [MHz]', fontsize=20)
-        ax_phase.set_ylabel('Phase [deg]', fontsize=18)
+        ax_phase.set_xlabel('Frequency [MHz]')
+        ax_phase.set_ylabel('Phase [deg]')
         ax_phase.grid(True)
-        ax_phase.legend(loc='best', fontsize=18)
+        ax_phase.legend(loc='best')
 
-    ax_mag.set_xlabel('Frequency [MHz]', fontsize=20)
+    ax_mag.set_xlabel('Frequency [MHz]')
 
-    fig.suptitle(title, fontsize=20)
+    fig.suptitle(title)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     if save_plot:
@@ -193,27 +211,25 @@ def plot_s1p(ntwk_dict, db=True, title='Reflection Measurement (S11)', ymax=None
         if show_phase:
             ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
 
-    ax1.set_xlabel('Frequency [MHz]', fontsize=20)
-    ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
+    ax1.set_xlabel('Frequency [MHz]')
+    ax1.set_ylabel('Reflection' + (' [dB]' if db else ''))
     ax1.grid(True)
-    ax1.tick_params(axis='both', which='major', labelsize=18)
     if ymax is not None:
         ax1.set_ylim(top=ymax)
     if ymin is not None:
         ax1.set_ylim(bottom=ymin)
 
     if show_phase:
-        ax2.set_ylabel('Phase [deg]', color='r', fontsize=18)
-        ax2.tick_params(axis='y', labelsize=16)
+        ax2.set_ylabel('Phase [deg]', color='r')
 
         # Combine legends from both axes
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
-        ax1.legend(h1 + h2, l1 + l2, fontsize=18, loc='best')
+        ax1.legend(h1 + h2, l1 + l2, loc='best')
     else:
-        ax1.legend(loc='best', fontsize=18)
+        ax1.legend(loc='best')
 
-    plt.title(title, fontsize=22)
+    plt.title(title)
     fig.tight_layout()
 
     if save_dir is not None:
@@ -265,14 +281,13 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
     if x_scale == 'log':
         ax1.set_xscale('log')
     ax1.plot(freq / 1e6, mag, label='Gain (S21)' + (' [dB]' if db else ''))
-    ax1.set_xlabel('Frequency [MHz]', fontsize=20)
-    ax1.set_ylabel('Gain' + (' [dB]' if db else ''), fontsize=20)
+    ax1.set_xlabel('Frequency [MHz]')
+    ax1.set_ylabel('Gain' + (' [dB]' if db else ''))
     if ymax is not None:
         ax1.set_ylim(top=ymax)
     if ymin is not None:
         ax1.set_ylim(bottom=ymin)
     ax1.grid(True)
-    ax1.tick_params(axis='both', which='major', labelsize=18)
 
     marker_freqs_mhz = [20, 200]
     for f_mhz in marker_freqs_mhz:
@@ -294,7 +309,7 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
         ax2.set_ylabel('Phase [deg]', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
 
-    plt.title(title, fontsize=22)
+    plt.title(title)
     fig.tight_layout()
     if save_dir is not None:
         plt.savefig(f'{save_dir}/Gain_{suffix}.png')
@@ -371,13 +386,12 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     plt.ylim(*ylim)
     if freq_range is not None:
         plt.xlim(*freq_range)
-    plt.legend(fontsize=18, ncol=2, loc='best')
-    plt.ylabel(ylabel, fontsize=20)
-    plt.xlabel('Frequency [MHz]', fontsize=20)
-    plt.tick_params(axis='both', which='major', labelsize=18)
+    plt.legend(ncol=2, loc='best')
+    plt.ylabel(ylabel)
+    plt.xlabel('Frequency [MHz]')
     if yticks is not None:
         plt.yticks(yticks)
-    plt.title(title, fontsize=22)
+    plt.title(title)
     plt.grid(True)
     plt.tight_layout()
     
@@ -417,7 +431,7 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
     else:
         for g, lab in zip(gain, label):
             plt.errorbar(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab, **plot_kwargs)
-        plt.legend(fontsize=18)
+        plt.legend()
    
     ymin, ymax = y_range 
     
@@ -440,10 +454,9 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
                          textcoords="offset points", xytext=(10, 10), ha='left',
                          fontsize=16, color='darkred')
 
-    plt.xlabel(xlabel, fontsize=20)
-    plt.ylabel(ylabel, fontsize=20)
-    plt.tick_params(axis='both', which='major', labelsize=18)
-    plt.title(title, fontsize=22)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     if save_path is not None:
@@ -484,7 +497,7 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
     ax.yaxis.set_major_formatter(local_form)
     locator = mdates.HourLocator(interval=2)
     ax.yaxis.set_major_locator(locator)
-    ax.set_ylabel(f"Time ({local_tz_obj})", fontsize=18)
+    ax.set_ylabel(f"Time ({local_tz_obj})")
 
     # 2. Secondary Y-axis (GMT/UTC)
     # ax_gmt = ax.twinx()
@@ -505,13 +518,11 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
                            time_hours[-1], time_hours[0]],
                    cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
 
-    ax.set_xlabel('Frequency (MHz)', fontsize=18)
-    ax.tick_params(axis='both', which='major', labelsize=16)
+    ax.set_xlabel('Frequency (MHz)')
 
-    ax.set_title(title, fontsize=20)
+    ax.set_title(title)
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Power (dBm)', fontsize=18)
-    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label('Power (dBm)')
 
     if output_path:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -704,10 +715,10 @@ def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mo
 
     # Visual Styling
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label('Power (dBm)', fontsize=14)
-    ax.set_title(f'Spectrometer Data - {timestamps[0].strftime("%b %d, %Y")}', fontsize=16)
-    ax.set_xlabel('Frequency (MHz)', fontsize=12)
-    ax.set_ylabel('Time (UTC)', fontsize=12)
+    cbar.set_label('Power (dBm)')
+    ax.set_title(f'Spectrometer Data - {timestamps[0].strftime("%b %d, %Y")}')
+    ax.set_xlabel('Frequency (MHz)')
+    ax.set_ylabel('Time (UTC)')
 
     # Connect the 'render_view' function to zoom/pan events
     ax.callbacks.connect('xlim_changed', render_view)

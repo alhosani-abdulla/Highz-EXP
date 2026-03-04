@@ -10,7 +10,6 @@ import numpy as np
 from astropy.io import fits
 from pathlib import Path
 
-
 class FilterbankData:
     """Container for filterbank spectral data"""
     
