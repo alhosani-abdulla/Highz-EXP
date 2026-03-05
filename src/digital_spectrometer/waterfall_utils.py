@@ -60,6 +60,7 @@ def plot_waterfall_heatmap_plotly(
     unit="dBm",
     vmin: int = -80,
     vmax: int = -20,
+    step: int = 5,
 ) -> None:
     """
     Creates an interactive waterfall plot using Plotly.
@@ -146,13 +147,13 @@ def plot_waterfall_heatmap_plotly(
     # Define slider steps for zmin (Floor)
     min_steps = [
         {"method": "restyle", "label": str(val), "args": [{"zmin": val}]}
-        for val in range(vmin - 10, vmax - 10, 5)
+        for val in range(vmin - 10, vmax - 10, step)
     ]
 
     # Define slider steps for zmax (Ceiling)
     max_steps = [
         {"method": "restyle", "label": str(val), "args": [{"zmax": val}]}
-        for val in range(vmin, vmax, 5)
+        for val in range(vmin, vmax, step)
     ]
 
     # Add sliders to layout

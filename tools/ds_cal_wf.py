@@ -33,7 +33,6 @@ PLOT_FREQUENCY_AXIS_STEP_MHZ = 50
 PLOT_TIME_AXIS_STEP_LST_HOUR = 1
 
 NO_SEGMENTS = 4
-SEG_INDX = 0
 
 NOISE_DIODE_TEMP_F1_K = 1976
 NOISE_DIODE_TEMP_F2_K = 2110
@@ -55,12 +54,13 @@ def parse_args():
             Examples:
               python tools/ds_cal_wf.py -i ~/Desktop/High-Z/Adak_2026_compressed/20260303 -o ~/Desktop/High-Z/Adak_2026_plots/0303
 
-              python tools/ds_cal_wf.py -i /data/20260303 -o /plots/20260303 --no-segments 4 --seg-indx 1
+                            python tools/ds_cal_wf.py -i /data/20260303 -o /plots/20260303 --no-segments 4
 
             Notes:
               - Input directory should be a single day folder named YYYYMMDD.
-              - Segmenting splits time folders into N chunks and loads only one chunk.
-              - seg_indx is zero-based (valid range: 0 to no_segments-1).
+                            - Segmenting splits time folders into N chunks.
+                            - This script processes all segment indices from 0 to no_segments-1.
+                            - Each segment output is saved under output-dir/seg_<index>/.
         """).strip(),
     )
     parser.add_argument(
@@ -81,16 +81,10 @@ def parse_args():
         default=NO_SEGMENTS,
         help="Number of equal segments used to partition day subfolders before loading.",
     )
-    parser.add_argument("-s",
-        "--seg-indx",
-        type=int,
-        default=SEG_INDX,
-        help="Zero-based segment index to load from the partitioned day folder.",
-    )
     return parser.parse_args()
 
 
-def build_config(input_dir, output_dir, no_segments, seg_indx):
+def build_config(input_dir, output_dir, no_segments):
     normalized_input_dir = os.path.normpath(input_dir)
     date = os.path.basename(normalized_input_dir)
     return {
@@ -104,7 +98,6 @@ def build_config(input_dir, output_dir, no_segments, seg_indx):
         "plot_frequency_axis_step_mhz": PLOT_FREQUENCY_AXIS_STEP_MHZ,
         "plot_time_axis_step_lst_hour": PLOT_TIME_AXIS_STEP_LST_HOUR,
         "no_segments": no_segments,
-        "seg_indx": seg_indx,
         "noise_diode_temp_f1_k": NOISE_DIODE_TEMP_F1_K,
         "noise_diode_temp_f2_k": NOISE_DIODE_TEMP_F2_K,
         "noise_diode_freq_f1_mhz": NOISE_DIODE_FREQ_F1_MHZ,
@@ -116,43 +109,10 @@ def build_config(input_dir, output_dir, no_segments, seg_indx):
     }
 
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-    )
-    logger = logging.getLogger("ds_cal_wf")
-
-    logger.info("Starting DS calibration workflow")
-    args = parse_args()
-    input_dir = os.path.expanduser(args.input_dir)
-    output_dir = os.path.expanduser(args.output_dir)
-    cfg = build_config(
-        input_dir=input_dir,
-        output_dir=output_dir,
-        no_segments=args.no_segments,
-        seg_indx=args.seg_indx,
-    )
-    logger.info("Input day directory: %s", cfg["data_folder"])
-    logger.info("Output directory: %s", cfg["output_dir"])
-    logger.info(
-        "Segment selection: no_segments=%d, seg_indx=%d",
-        cfg["no_segments"],
-        cfg["seg_indx"],
-    )
-    logger.info(
-        "Frequency setup: samples=%d, bin=%.6f MHz, range=[%.1f, %.1f] MHz",
-        cfg["num_frequency_samples"],
-        cfg["frequency_bin_size_mhz"],
-        cfg["min_f_mhz"],
-        cfg["max_f_mhz"],
-    )
-
-    if not os.path.isdir(cfg["data_folder"]):
-        raise FileNotFoundError(
-            f"Data folder does not exist: {cfg['data_folder']}")
-    os.makedirs(cfg["output_dir"], exist_ok=True)
-    logger.info("Verified input path and ensured output directory exists")
+def run_segment(cfg, seg_indx, logger):
+    segment_output_dir = os.path.join(cfg["output_dir"], f"seg_{seg_indx}")
+    os.makedirs(segment_output_dir, exist_ok=True)
+    logger.info("[seg %d] Output directory: %s", seg_indx, segment_output_dir)
 
     logger.info("Initializing system calibration processor")
     proc = SystemCalibrationProcessor(
@@ -171,14 +131,14 @@ def main():
         cfg["data_folder"],
         convert=False,
         no_segments=cfg["no_segments"],
-        seg_indx=cfg["seg_indx"],
+        seg_indx=seg_indx,
         states_to_load=states_to_load,
     )
     loaded_state_counts = {
         name: len(proc.raw_states[name]["timestamps"])
         for name in proc.raw_states
     }
-    logger.info("Loaded spectra counts by state: %s", loaded_state_counts)
+    logger.info("[seg %d] Loaded spectra counts by state: %s", seg_indx, loaded_state_counts)
 
     logger.info("Preparing frequency axis and time metadata")
     frequencies_mhz = proc.prepare_frequency_axis()
@@ -191,7 +151,7 @@ def main():
 
     logger.info("Loading resistor state (state 5) for system calibration")
     time_dirs = DSFileLoader.get_sorted_time_dirs(cfg["data_folder"])
-    resistor_time_dirs = np.array_split(time_dirs, cfg["no_segments"])[cfg["seg_indx"]]
+    resistor_time_dirs = np.array_split(time_dirs, cfg["no_segments"])[seg_indx]
     resistor_loaded = DSFileLoader.load_and_add_timestamp(
         cfg["date"],
         list(resistor_time_dirs),
@@ -276,12 +236,12 @@ def main():
     )
 
     plot_paths = {
-        "cal_median": os.path.join(cfg["output_dir"], f"{cfg['date']}_cal_median.png"),
-        "ant_median": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_median.png"),
-        "sys_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_temp.png"),
-        "sys_gain": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain.png"),
-        "sys_gain_db": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain_db.png"),
-        "ant_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_temp.png"),
+        "cal_median": os.path.join(segment_output_dir, f"{cfg['date']}_cal_median.png"),
+        "ant_median": os.path.join(segment_output_dir, f"{cfg['date']}_ant_median.png"),
+        "sys_temp": os.path.join(segment_output_dir, f"{cfg['date']}_sys_temp.png"),
+        "sys_gain": os.path.join(segment_output_dir, f"{cfg['date']}_sys_gain.png"),
+        "sys_gain_db": os.path.join(segment_output_dir, f"{cfg['date']}_sys_gain_db.png"),
+        "ant_temp": os.path.join(segment_output_dir, f"{cfg['date']}_ant_temp.png"),
     }
 
     plotter.plot_spectra(
@@ -403,7 +363,7 @@ def main():
         step_f=waterfall_frequency_step,
     )
 
-    plot_paths["ant_temp_waterfall"] = os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_cal_temp.html")
+    plot_paths["ant_temp_waterfall"] = os.path.join(segment_output_dir, f"{cfg['date']}_ant_cal_temp.html")
     plot_waterfall_heatmap_plotly(
         datetimes=list(downsampled_datetimes),
         spectra=downsampled_spectra,
@@ -413,6 +373,7 @@ def main():
         output_path=plot_paths["ant_temp_waterfall"],
         vmin=0,
         vmax=1000,
+        step=100,
     )
 
     logger.info("Saved waterfall plot: %s", plot_paths["ant_temp_waterfall"])
@@ -421,7 +382,49 @@ def main():
         antenna_temperature_waterfall.shape,
         downsampled_spectra.shape,
     )
-    logger.info("All plots saved to: %s", cfg["output_dir"])
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+    logger = logging.getLogger("ds_cal_wf")
+
+    logger.info("Starting DS calibration workflow")
+    args = parse_args()
+    input_dir = os.path.expanduser(args.input_dir)
+    output_dir = os.path.expanduser(args.output_dir)
+    cfg = build_config(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        no_segments=args.no_segments,
+    )
+    logger.info("Input day directory: %s", cfg["data_folder"])
+    logger.info("Output root directory: %s", cfg["output_dir"])
+    logger.info("Processing all segment indices in range [0, %d]", cfg["no_segments"] - 1)
+    logger.info(
+        "Frequency setup: samples=%d, bin=%.6f MHz, range=[%.1f, %.1f] MHz",
+        cfg["num_frequency_samples"],
+        cfg["frequency_bin_size_mhz"],
+        cfg["min_f_mhz"],
+        cfg["max_f_mhz"],
+    )
+
+    if cfg["no_segments"] <= 0:
+        raise ValueError("--no-segments must be a positive integer")
+    if not os.path.isdir(cfg["data_folder"]):
+        raise FileNotFoundError(
+            f"Data folder does not exist: {cfg['data_folder']}")
+    os.makedirs(cfg["output_dir"], exist_ok=True)
+    logger.info("Verified input path and ensured output directory exists")
+
+    for seg_indx in range(cfg["no_segments"]):
+        logger.info("Starting segment %d/%d", seg_indx + 1, cfg["no_segments"])
+        run_segment(cfg=cfg, seg_indx=seg_indx, logger=logger)
+        logger.info("Finished segment %d/%d", seg_indx + 1, cfg["no_segments"])
+
+    logger.info("All plots saved under segment subdirectories in: %s", cfg["output_dir"])
     logger.info("DS calibration workflow completed successfully")
 
 
