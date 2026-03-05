@@ -328,9 +328,13 @@ class S_Params:
         for label, ntwk in ntwk_dict.items():
             # Extract only S11 for Smith chart plotting
             if s_type == 's11':
-                s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 0, 0], z0=ntwk.z0)
+                s_data = ntwk.s[:, 0, 0][:, np.newaxis, np.newaxis]
+                z0_data = ntwk.z0[:, 0][:, np.newaxis]
+                s11_ntwk = rf.Network(f=ntwk.f, s=s_data, z0=z0_data)
             elif s_type == 's22':
-                s11_ntwk = rf.Network(f=ntwk.f, s=ntwk.s[:, 1, 1], z0=ntwk.z0)
+                s_data = ntwk.s[:, 1, 1][:, np.newaxis, np.newaxis]
+                z0_data = ntwk.z0[:, 1][:, np.newaxis]
+                s11_ntwk = rf.Network(f=ntwk.f, s=s_data, z0=z0_data)
             else:
                 raise ValueError(f"Unsupported s_type: {s_type}")
             s11_ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
@@ -355,11 +359,12 @@ class S_Params:
                     idx = (np.abs(ntwk.f - mfreq)).argmin()
                     if s_type == 's11':
                         s11_point = ntwk.s[idx, 0, 0]
+                        impedance = ntwk.z[idx, 0, 0]
                     elif s_type == 's22':
                         s11_point = ntwk.s[idx, 1, 1]
+                        impedance = ntwk.z[idx, 1, 1]
                     else:
                         raise ValueError(f"Unsupported s_type: {s_type}")
-                    impedance = ntwk.z[idx, 0, 0]
                     impedance = f'{impedance.real:.1f} + j{impedance.imag:.1f} Ω'
                     if len(ntwk_dict) > 1:
                         label = f'{label} @ {mfreq/1e6:.2f} MHz: {impedance}' 

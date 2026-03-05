@@ -1,3 +1,18 @@
+"""Digital spectrometer day-calibration workflow.
+
+This script calibrates one day of compressed digital spectrometer data and
+generates both per-segment and combined summary products.
+
+What it does:
+- Splits one `YYYYMMDD` input day into `N` time segments.
+- Loads antenna and noise-diode states for each segment.
+- Loads resistor state (state 5) for calibration reference.
+- Computes system gain and system temperature.
+- Produces calibrated antenna-temperature waterfall plots (HTML) per segment.
+- Produces combined summary PNG spectra plots across the first 3 segments.
+
+"""
+
 import argparse
 import logging
 import os
