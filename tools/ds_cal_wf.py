@@ -3,6 +3,7 @@ import logging
 import os
 import numpy as np
 from textwrap import dedent
+from zoneinfo import ZoneInfo
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.sys_cal import SystemCalibrationProcessor
@@ -10,6 +11,7 @@ from highz_exp.file_load import DSFileLoader
 from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
+from highz_exp.unit_convert import convert_utc_list_to_local
 from scipy.constants import Boltzmann as kB
 from scipy.constants import c, epsilon_0 as e0
 
@@ -380,9 +382,21 @@ def main():
         waterfall_frequency_step,
     )
 
-    antenna_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
+    antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
+    local_timezone = ZoneInfo("HST")
+    antenna_local_timestamps = convert_utc_list_to_local(
+        antenna_utc_timestamps,
+        local_timezone=local_timezone,
+    )
+    logger.info(
+        "Converted antenna timestamps to local timezone (%s): %s -> %s",
+        local_timezone,
+        antenna_local_timestamps[0],
+        antenna_local_timestamps[-1],
+    )
+
     downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
-        datetimes=antenna_timestamps,
+        datetimes=np.array(antenna_local_timestamps),
         faxis=np.array(frequencies_mhz),
         spectra=antenna_temperature_waterfall,
         step_t=waterfall_time_step,
@@ -395,7 +409,7 @@ def main():
         spectra=downsampled_spectra,
         faxis_mhz=downsampled_frequencies_mhz,
         title=f"Antenna Calibrated Temperature: {cfg['date']}",
-        cbar_title='Temperature (K)',
+		unit='K',
         output_path=plot_paths["ant_temp_waterfall"],
         vmin=0,
         vmax=1000,

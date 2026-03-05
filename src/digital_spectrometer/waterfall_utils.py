@@ -57,7 +57,7 @@ def plot_waterfall_heatmap_plotly(
     faxis_mhz: np.ndarray,
     title: str, 
     output_path: str,
-    cbar_title="Power (dBm)", 
+    unit="dBm",
     vmin: int = -80,
     vmax: int = -20,
 ) -> None:
@@ -72,8 +72,8 @@ def plot_waterfall_heatmap_plotly(
         spectra: 2D NumPy array of shape (N, M) containing power values in dBm.
         faxis_mhz: 1D NumPy array of frequency values in MHz for the x-axis.
         title: Title text for the plot.
-        cbar_title: Title for the colorbar indicating power units. Defaults to "Power (dBm)".
         output_path: File path where the HTML plot will be saved.
+        unit: Unit for the power values. Defaults to "dBm".
         vmin: Minimum power value (dBm) for the color scale. Defaults to -80.
         vmax: Maximum power value (dBm) for the color scale. Defaults to -20.
 
@@ -81,6 +81,8 @@ def plot_waterfall_heatmap_plotly(
         None. Writes the plot to an HTML file.
     """
     date = datetimes[0].date()
+    
+    cbar_title = f"Power ({unit})"
 
     datetimes, spectra = inject_gap_spacers(datetimes, spectra, threshold_seconds=30)
     
@@ -92,7 +94,7 @@ def plot_waterfall_heatmap_plotly(
         colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title=cbar_title), connectgaps=True, hoverongaps=False, zsmooth='fast',
         hovertemplate=("Time: %{y}<br>" +
-            "Freq: %{x:.2f} MHz<br>" + "Power: %{z:.2f} dBm<extra></extra>"
+            "Freq: %{x:.2f} MHz<br>" + f"Power: %{{z:.2f}} {unit}<extra></extra>"
         )
     ))
     
