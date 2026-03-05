@@ -12,11 +12,6 @@ from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
 from highz_exp.unit_convert import convert_utc_list_to_local
-from scipy.constants import Boltzmann as kB
-from scipy.constants import c, epsilon_0 as e0
-
-eta = 377
-RL = 50
 
 # ===== Editable macros =====
 NUM_FREQUENCY_SAMPLES = 16384
@@ -63,10 +58,8 @@ def parse_args():
                             - Each segment output is saved under output-dir/seg_<index>/.
         """).strip(),
     )
-    parser.add_argument(
-        "-i",
-        "--input-dir",
-        required=True,
+    parser.add_argument("-i",
+        "--input-dir", required=True,
         help="Path to one day folder (YYYYMMDD) containing compressed spectrometer files.",
     )
     parser.add_argument(
@@ -81,10 +74,15 @@ def parse_args():
         default=NO_SEGMENTS,
         help="Number of equal segments used to partition day subfolders before loading.",
     )
+    parser.add_argument("--vmax",
+        type=int,
+        default=1000,
+        help="Max value for waterfall color scale (in K). Adjust based on expected antenna temperature range."
+    )
     return parser.parse_args()
 
 
-def build_config(input_dir, output_dir, no_segments):
+def build_config(input_dir, output_dir, no_segments, vmax):
     normalized_input_dir = os.path.normpath(input_dir)
     date = os.path.basename(normalized_input_dir)
     return {
@@ -106,7 +104,21 @@ def build_config(input_dir, output_dir, no_segments):
         "date": date,
         "data_folder": normalized_input_dir,
         "output_dir": output_dir,
+        "vmax": vmax,
     }
+
+
+def build_segment_local_label(local_timestamps, seg_indx, timezone_name="HST"):
+    if len(local_timestamps) == 0:
+        return f"Seg {seg_indx}"
+    start_local = local_timestamps[0]
+    end_local = local_timestamps[-1]
+    start_str = start_local.strftime("%m-%d %H:%M")
+    if start_local.date() == end_local.date():
+        end_str = end_local.strftime("%H:%M")
+    else:
+        end_str = end_local.strftime("%m-%d %H:%M")
+    return f"Seg {seg_indx} {start_str}-{end_str} {timezone_name}"
 
 
 def run_segment(cfg, seg_indx, logger):
@@ -143,9 +155,6 @@ def run_segment(cfg, seg_indx, logger):
     logger.info("Preparing frequency axis and time metadata")
     frequencies_mhz = proc.prepare_frequency_axis()
     proc.slice_state_frequency_range()
-    proc.compute_sidereal_timestamps()
-    time_ticks = proc.compute_time_ticks_by_state(
-        step_hour=cfg["plot_time_axis_step_lst_hour"])
     proc.compute_state_medians()
     logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
 
@@ -177,153 +186,69 @@ def run_segment(cfg, seg_indx, logger):
         resistor_median=resistor_median,
     )
 
-    nd_temp = proc.nd_temp
     logger.info(
-        "Calibration outputs: system_gain=%s, system_temp=%s, nd_temp=%s",
+        "Calibration outputs: system_gain=%s, system_temp=%s",
         system_gain.shape,
         system_temp.shape,
-        nd_temp.shape,
     )
-
-    plot_frequency_tick_idx, plot_frequency_tick_labels = proc.frequency_ticks(
-        frequencies_mhz,
-        step_mhz=cfg["plot_frequency_axis_step_mhz"],
-    )
-    logger.info(
-        "Computed plot ticks every %.1f MHz (%d ticks)",
-        cfg["plot_frequency_axis_step_mhz"],
-        len(plot_frequency_tick_idx),
-    )
-
-    state_list = list(proc.raw_states.keys())
-    for name in state_list:
-        globals()[f"{name}_timestamps"] = proc.raw_states[name]["timestamps"]
-        globals()[f"{name}_spectra"] = proc.raw_states[name]["spectra"]
-        globals()[f"{name}_power"] = proc.state_power[name]
-        globals()[f"{name}_sidereal_ts"] = proc.sidereal_time[name]
-        globals()[f"{name}_spec_median"] = proc.state_medians[name]
-        globals()[f"{name}_plot_ts_tick_idx"] = time_ticks[name]["idx"]
-        globals()[f"{name}_plot_ts_tick_labels"] = time_ticks[name]["labels"]
 
     antenna_spec_median = proc.state_medians["antenna"]
     noise_diode_spec_median = proc.state_medians["noise_diode"]
 
+    antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
+    local_timezone = ZoneInfo("HST")
+    antenna_local_timestamps = convert_utc_list_to_local(
+        antenna_utc_timestamps,
+        local_timezone=local_timezone,
+    )
+    segment_local_label = build_segment_local_label(
+        antenna_local_timestamps,
+        seg_indx=seg_indx,
+        timezone_name="HST",
+    )
+    logger.info("Segment label for combined plots: %s", segment_local_label)
+
     antenna_median_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=antenna_spec_median,
-        name="Antenna Median",
+        name=f"{segment_local_label}",
     )
 
     resistor_median_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=resistor_median,
-        name="Resistor Median",
+        name=f"RS | {segment_local_label}",
     )
     noise_diode_median_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=noise_diode_spec_median,
-        name="Noise Diode Median",
+        name=f"ND | {segment_local_label}",
     )
     system_temp_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=system_temp,
-        name="System Temperature",
+        name=f"{segment_local_label}",
     )
     system_gain_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=system_gain,
-        name="System Gain",
+        name=f"{segment_local_label}",
     )
-
-    plot_paths = {
-        "cal_median": os.path.join(segment_output_dir, f"{cfg['date']}_cal_median.png"),
-        "ant_median": os.path.join(segment_output_dir, f"{cfg['date']}_ant_median.png"),
-        "sys_temp": os.path.join(segment_output_dir, f"{cfg['date']}_sys_temp.png"),
-        "sys_gain": os.path.join(segment_output_dir, f"{cfg['date']}_sys_gain.png"),
-        "sys_gain_db": os.path.join(segment_output_dir, f"{cfg['date']}_sys_gain_db.png"),
-        "ant_temp": os.path.join(segment_output_dir, f"{cfg['date']}_ant_temp.png"),
-    }
-
-    plotter.plot_spectra(
-        [resistor_median_spec, noise_diode_median_spec],
-        save_path=plot_paths["cal_median"],
-        show_plot=False,
-        ylabel="Raw Power (arb.)",
-        title="Median Spectra: Resistor vs Noise Diode",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-    )
-    logger.info("Saved plot: %s", plot_paths["cal_median"])
-
-    plotter.plot_spectra(
-        [antenna_median_spec],
-        save_path=plot_paths["ant_median"],
-        show_plot=False,
-        ylabel="Raw Power (arb.)",
-        title="Median Spectra: Antenna",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-    )
-    logger.info("Saved plot: %s", plot_paths["ant_median"])
-
-    plotter.plot_spectra(
-        [system_temp_spec],
-        save_path=plot_paths["sys_temp"],
-        show_plot=False,
-        y_range=(0, 350),
-        ylabel="Temperature (K)",
-        title=f"System Temperature: ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-    )
-    logger.info("Saved plot: %s", plot_paths["sys_temp"])
-
-    plotter.plot_spectra(
-        [system_gain_spec],
-        save_path=plot_paths["sys_gain"],
-        show_plot=False,
-        ylabel="Gain (arb.)",
-        title=f"System Gain: ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-    )
-    logger.info("Saved plot: %s", plot_paths["sys_gain"])
 
     sys_gain_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=np.log10(system_gain) * 10,
-        name='System Gain',
+        name=f"{segment_local_label}",
     )
-
-    plotter.plot_spectra(
-        [sys_gain_spec], y_range=(20, 60),
-        ylabel='Gain (arb dB)',
-        title=f"System Gain ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-        show_plot=False,
-        save_path=plot_paths["sys_gain_db"],
-    )
-    logger.info("Saved plot: %s", plot_paths["sys_gain_db"])
 
     ant_cal = proc.calibrated_temperature('antenna')
     ant_temp_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
         spectrum=ant_cal,
-        name='Antenna Temperature',
+        name=f"{segment_local_label}",
     )
 
-    plotter.plot_spectra(
-        [ant_temp_spec], y_range=(0, 1000),
-        ylabel='Temperature (K)',
-        title=f'Antenna: {cfg["date"]}',
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-        save_path=plot_paths["ant_temp"],
-        show_plot=False,
-    )
-    logger.info("Saved plot: %s", plot_paths["ant_temp"])
-
-    logger.info("Prepared states: %s", state_list)
-    logger.info("Frequency tick labels: %s", plot_frequency_tick_labels)
+    logger.info("Prepared states: %s", list(proc.raw_states.keys()))
 
     logger.info("Building calibrated antenna waterfall")
     antenna_temperature_waterfall = proc.calibrate_2d_state_power("antenna")
@@ -342,12 +267,6 @@ def run_segment(cfg, seg_indx, logger):
         waterfall_frequency_step,
     )
 
-    antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
-    local_timezone = ZoneInfo("HST")
-    antenna_local_timestamps = convert_utc_list_to_local(
-        antenna_utc_timestamps,
-        local_timezone=local_timezone,
-    )
     logger.info(
         "Converted antenna timestamps to local timezone (%s): %s -> %s",
         local_timezone,
@@ -363,25 +282,36 @@ def run_segment(cfg, seg_indx, logger):
         step_f=waterfall_frequency_step,
     )
 
-    plot_paths["ant_temp_waterfall"] = os.path.join(segment_output_dir, f"{cfg['date']}_ant_cal_temp.html")
+    ant_temp_waterfall_path = os.path.join(segment_output_dir, f"{cfg['date']}_ant_cal_temp.html")
     plot_waterfall_heatmap_plotly(
         datetimes=list(downsampled_datetimes),
         spectra=downsampled_spectra,
         faxis_mhz=downsampled_frequencies_mhz,
         title=f"Antenna Calibrated Temperature: {cfg['date']}",
-		unit='K',
-        output_path=plot_paths["ant_temp_waterfall"],
-        vmin=0,
-        vmax=1000,
-        step=100,
+        unit='K',
+        output_path=ant_temp_waterfall_path,
+        vmin=10,
+        vmax=cfg["vmax"],
+        step=50,
     )
 
-    logger.info("Saved waterfall plot: %s", plot_paths["ant_temp_waterfall"])
+    logger.info("Saved waterfall plot: %s", ant_temp_waterfall_path)
     logger.info(
         "Waterfall shape: original=%s, downsampled=%s",
         antenna_temperature_waterfall.shape,
         downsampled_spectra.shape,
     )
+
+    return {
+        "resistor_median_spec": resistor_median_spec,
+        "noise_diode_median_spec": noise_diode_median_spec,
+        "antenna_median_spec": antenna_median_spec,
+        "system_temp_spec": system_temp_spec,
+        "system_gain_spec": system_gain_spec,
+        "sys_gain_db_spec": sys_gain_spec,
+        "ant_temp_spec": ant_temp_spec,
+        "segment_label": segment_local_label,
+    }
 
 
 def main():
@@ -399,16 +329,15 @@ def main():
         input_dir=input_dir,
         output_dir=output_dir,
         no_segments=args.no_segments,
+        vmax=args.vmax,
     )
     logger.info("Input day directory: %s", cfg["data_folder"])
     logger.info("Output root directory: %s", cfg["output_dir"])
     logger.info("Processing all segment indices in range [0, %d]", cfg["no_segments"] - 1)
-    logger.info(
-        "Frequency setup: samples=%d, bin=%.6f MHz, range=[%.1f, %.1f] MHz",
+    logger.info("Frequency setup: samples=%d, bin=%.6f MHz, range=[%.1f, %.1f] MHz",
         cfg["num_frequency_samples"],
         cfg["frequency_bin_size_mhz"],
-        cfg["min_f_mhz"],
-        cfg["max_f_mhz"],
+        cfg["min_f_mhz"], cfg["max_f_mhz"],
     )
 
     if cfg["no_segments"] <= 0:
@@ -419,10 +348,105 @@ def main():
     os.makedirs(cfg["output_dir"], exist_ok=True)
     logger.info("Verified input path and ensured output directory exists")
 
+    segment_results = []
     for seg_indx in range(cfg["no_segments"]):
         logger.info("Starting segment %d/%d", seg_indx + 1, cfg["no_segments"])
-        run_segment(cfg=cfg, seg_indx=seg_indx, logger=logger)
+        segment_result = run_segment(cfg=cfg, seg_indx=seg_indx, logger=logger)
+        segment_results.append(segment_result)
         logger.info("Finished segment %d/%d", seg_indx + 1, cfg["no_segments"])
+
+    combined_segment_count = min(3, len(segment_results))
+    if combined_segment_count == 0:
+        raise RuntimeError("No segment results available for combined summary plotting")
+
+    if combined_segment_count < 3:
+        logger.warning(
+            "Requested combined summary from 3 segments, but only %d available",
+            combined_segment_count,
+        )
+
+    combined_segments = segment_results[:combined_segment_count]
+    logger.info(
+        "Creating combined summary spectra plots using first %d segment(s)",
+        combined_segment_count,
+    )
+
+    combined_plot_paths = {
+        "cal_median": os.path.join(cfg["output_dir"], f"{cfg['date']}_cal_median_combined.png"),
+        "ant_median": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_median_combined.png"),
+        "sys_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_temp_combined.png"),
+        "sys_gain": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain_combined.png"),
+        "sys_gain_db": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain_db_combined.png"),
+        "ant_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_temp_combined.png"),
+    }
+
+    plotter.plot_spectra(
+        [spec["resistor_median_spec"] for spec in combined_segments]
+        + [spec["noise_diode_median_spec"] for spec in combined_segments],
+        save_path=combined_plot_paths["cal_median"],
+        show_plot=False,
+        ylabel="Raw Power (arb.)",
+        title="Median Spectra: Resistor vs Noise Diode (Combined Segments)",
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["cal_median"])
+
+    plotter.plot_spectra(
+        [spec["antenna_median_spec"] for spec in combined_segments],
+        save_path=combined_plot_paths["ant_median"],
+        show_plot=False,
+        ylabel="Raw Power (arb.)",
+        title="Median Spectra: Antenna (Combined Segments)",
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["ant_median"])
+
+    plotter.plot_spectra(
+        [spec["system_temp_spec"] for spec in combined_segments],
+        save_path=combined_plot_paths["sys_temp"],
+        show_plot=False,
+        y_range=(0, 350),
+        ylabel="Temperature (K)",
+        title=f"System Temperature: ({cfg['date']})",
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+        marker_freqs=(50, 100, 200),
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["sys_temp"])
+
+    plotter.plot_spectra(
+        [spec["system_gain_spec"] for spec in combined_segments],
+        save_path=combined_plot_paths["sys_gain"],
+        show_plot=False,
+        ylabel="Gain (arb.)",
+        title=f"System Gain: ({cfg['date']})",
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+        marker_freqs=(50, 100, 200),
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["sys_gain"])
+
+    plotter.plot_spectra(
+        [spec["sys_gain_db_spec"] for spec in combined_segments],
+        y_range=(20, 60),
+        ylabel='Gain (arb dB)',
+        title=f"System Gain ({cfg['date']})",
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+        marker_freqs=(50, 100, 200),
+        show_plot=False,
+        save_path=combined_plot_paths["sys_gain_db"],
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["sys_gain_db"])
+
+    plotter.plot_spectra(
+        [spec["ant_temp_spec"] for spec in combined_segments],
+        y_range=(0, 1000),
+        ylabel='Temperature (K)',
+        title=f'Antenna: {cfg["date"]}',
+        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
+        marker_freqs=(50, 100, 200),
+        save_path=combined_plot_paths["ant_temp"],
+        show_plot=False,
+    )
+    logger.info("Saved combined plot: %s", combined_plot_paths["ant_temp"])
 
     logger.info("All plots saved under segment subdirectories in: %s", cfg["output_dir"])
     logger.info("DS calibration workflow completed successfully")
