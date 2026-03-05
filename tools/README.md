@@ -31,6 +31,12 @@ python tools/ds_wf_maker.py /path/to/day_dir 0 --output_dir /path/to/output --se
 python tools/fb_inspector.py /path/to/day_dir --state 0 --filter 10
 ```
 
+### 4) Run DS calibration + summary plots
+
+```bash
+python tools/ds_cal_wf.py --base-data-dir /path/to/base_dir --output-dir /path/to/output
+```
+
 ## Scripts
 
 ### `ds_zipper.py`
@@ -79,6 +85,51 @@ Outputs:
 
 - One or more files like:
 	- `waterfall_<state>_<YYYY-MM-DD>_<start_hour>_<end_hour>.html`
+
+---
+
+### `ds_cal_wf.py`
+
+Calibrates digital spectrometer data for a single observing day and saves summary spectra plots used in the notebook workflow.
+
+What it does:
+
+- Builds the day input path from:
+	- `--base-data-dir` + `DATE_YYYYMMDD` (configured in the script)
+- Loads only the `antenna` and `noise_diode` states for memory-efficient preprocessing.
+- Loads resistor state (`state 5`) separately and uses its median spectrum for system calibration.
+- Computes:
+	- System gain (`system_gain`)
+	- System temperature (`system_temp`)
+	- State median spectra (antenna and noise diode)
+- Produces and saves four PNG plots:
+	- Calibration medians (`resistor` vs `noise_diode`)
+	- Antenna median spectrum
+	- System temperature vs frequency
+	- System gain vs frequency
+
+Usage:
+
+```bash
+python tools/ds_cal_wf.py [--base-data-dir DIR] [--output-dir DIR]
+```
+
+Arguments:
+
+- `--base-data-dir`: Base directory containing day folders (for example `.../Adak_2026_compressed`).
+- `--output-dir`: Directory where calibration plot PNG files are saved.
+
+Outputs (current filenames):
+
+- `<DATE>_cal_median.png`
+- `<DATE>_ant_median.png`
+- `<DATE>_sys_temp.png`
+- `<DATE>_sys_gain.png`
+
+Notes:
+
+- Plot frequency bounds and calibration constants are configured via macros at the top of `ds_cal_wf.py`.
+- The script raises `FileNotFoundError` if the resolved day directory does not exist.
 
 ---
 

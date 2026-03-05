@@ -12,6 +12,8 @@ from highz_exp.spec_proc import downsample_waterfall, validate_spectra_dimension
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.params import *
 
+MAX_PLOT_FREQ_MHZ = 300
+
 class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
 
@@ -96,6 +98,15 @@ def main(date_dir, state_indx, step_f, step_t, segment, output_dir=None):
             
             # Metadata for plotting
             f_mhz = faxis  # Assumed global or defined elsewhere
+            freq_mask = f_mhz <= MAX_PLOT_FREQ_MHZ
+            if not np.any(freq_mask):
+                logging.warning(
+                    f"No frequency bins <= {MAX_PLOT_FREQ_MHZ} MHz for {day_date}; skipping segment."
+                )
+                continue
+            f_mhz = f_mhz[freq_mask]
+            day_spectra = day_spectra[:, freq_mask]
+
             title = f"Waterfall Plot Interactive: State {state_indx}: {day_ts[0].hour:02d} - {day_ts[-1].hour:02d})"
             output_fn = f"waterfall_{state_indx}_{day_date}_{day_ts[0].hour:02d}_{day_ts[-1].hour:02d}.html"
             

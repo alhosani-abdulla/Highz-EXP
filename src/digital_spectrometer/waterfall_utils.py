@@ -51,13 +51,35 @@ def inject_gap_spacers(datetimes: List[datetime],
 
     return new_ts, np.array(new_spectra_list)
 
-def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_path, vmin=-80, vmax=-20,
-                                  ):
+def plot_waterfall_heatmap_plotly(
+    datetimes: List[datetime],
+    spectra: np.ndarray,
+    faxis_mhz: np.ndarray,
+    title: str, 
+    output_path: str,
+    cbar_title="Power (dBm)", 
+    vmin: int = -80,
+    vmax: int = -20,
+) -> None:
     """
     Creates an interactive waterfall plot using Plotly.
-    Includes hover data, zooming, and a dynamic color-range slider.
-    """
+    
+    Generates a heatmap visualization of spectral data over time with interactive
+    features including hover data, zooming, gap visualization, and dynamic color-range sliders.
 
+    Args:
+        datetimes: List of datetime objects corresponding to each spectrum row.
+        spectra: 2D NumPy array of shape (N, M) containing power values in dBm.
+        faxis_mhz: 1D NumPy array of frequency values in MHz for the x-axis.
+        title: Title text for the plot.
+        cbar_title: Title for the colorbar indicating power units. Defaults to "Power (dBm)".
+        output_path: File path where the HTML plot will be saved.
+        vmin: Minimum power value (dBm) for the color scale. Defaults to -80.
+        vmax: Maximum power value (dBm) for the color scale. Defaults to -20.
+
+    Returns:
+        None. Writes the plot to an HTML file.
+    """
     date = datetimes[0].date()
 
     datetimes, spectra = inject_gap_spacers(datetimes, spectra, threshold_seconds=30)
@@ -66,9 +88,9 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
     # datetimes, spectra = align_spectra_to_grid(datetimes, spectra, bin_size_seconds=bin_size)
     
     # Create the heatmap
-    fig = go.Figure(data=go.Heatmap(z=np.round(spectra,2), x=faxis_mhz, y=datetimes,
+    fig = go.Figure(data=go.Heatmap(z=np.round(spectra, 2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
-        colorbar=dict(title="Power (dBm)"), connectgaps=True, hoverongaps=False, zsmooth='fast',
+        colorbar=dict(title=cbar_title), connectgaps=True, hoverongaps=False, zsmooth='fast',
         hovertemplate=("Time: %{y}<br>" +
             "Freq: %{x:.2f} MHz<br>" + "Power: %{z:.2f} dBm<extra></extra>"
         )
@@ -91,7 +113,7 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
                     dict(
                         args=[{"connectgaps": False}],
                         label="Show Gaps (Raw)",
-                        method="restyle" # Use restyle to update trace attributes
+                        method="restyle"
                     )
                 ]),
                 pad={"r": 10, "t": 10},
@@ -103,57 +125,38 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
             ),
         ])
 
-    # Robust logic:
-    if datetimes[0] < datetimes[-1]:
-        # Data is ascending (Start -> End), so reverse axis to put Start at top
-        y_axis_direction = "reversed"
-    else:
-        # Data is already descending (End -> Start), use normal
-        y_axis_direction = True
+    # Robust logic: reverse y-axis if data is ascending to put start at top
+    y_axis_direction = "reversed" if datetimes[0] < datetimes[-1] else True
 
     fig.update_layout(
         title=dict(text=f"{date}: {title}", font=dict(size=24)), 
         xaxis=dict(title=dict(text="Frequency (MHz)")),
-        yaxis=dict(title="Time",
-            autorange=y_axis_direction,
-        ),
+        yaxis=dict(title="Time", autorange=y_axis_direction),
         width=1400, height=800, template="plotly_dark",
         plot_bgcolor='black',
         margin=dict(t=150, b=150)
     )
     
-    # Update X-axis label font size
-    fig.update_xaxes(title_font={"size": 20})
+    # Update axis label and tick font sizes
+    fig.update_xaxes(title_font={"size": 20}, tickfont=dict(size=16))
+    fig.update_yaxes(title_font={"size": 20}, tickfont=dict(size=16))
 
-    # Update Y-axis label font size
-    fig.update_yaxes(title_font={"size": 20})
+    # Define slider steps for zmin (Floor)
+    min_steps = [
+        {"method": "restyle", "label": str(val), "args": [{"zmin": val}]}
+        for val in range(vmin - 10, vmax - 10, 5)
+    ]
 
-    fig.update_xaxes(tickfont=dict(size=16))
-    fig.update_yaxes(tickfont=dict(size=16))
+    # Define slider steps for zmax (Ceiling)
+    max_steps = [
+        {"method": "restyle", "label": str(val), "args": [{"zmax": val}]}
+        for val in range(vmin, vmax, 5)
+    ]
 
-    # 1. Define steps for zmin (Floor)
-    min_steps = []
-    for val in range(vmin-10, vmax-10, 5):
-        min_steps.append({
-            "method": "restyle",
-            "label": str(val),
-            "args": [{"zmin": val}]
-        })
-
-    # 2. Define steps for zmax (Ceiling)
-    max_steps = []
-    for val in range(vmin, vmax, 5):
-        max_steps.append({
-            "method": "restyle",
-            "label": str(val),
-            "args": [{"zmax": val}]
-        })
-
-    # 3. Add both to the layout
+    # Add sliders to layout
     fig.update_layout(
         margin=dict(b=150),
         sliders=[
-            # Slider for zmin
             {
                 "active": 0,
                 "currentvalue": {"prefix": "Min Power (Floor): "},
@@ -162,7 +165,6 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
                 "x": 0,
                 "steps": min_steps
             },
-            # Slider for zmax
             {
                 "active": 5,
                 "currentvalue": {"prefix": "Max Power (Ceiling): "},
@@ -174,7 +176,6 @@ def plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_p
         ]
     )
 
-    # OR call show specifically with the renderer
     fig.write_html(output_path, auto_open=False, include_plotlyjs=True)
 
     logging.info("=============================================================")

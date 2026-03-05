@@ -73,7 +73,8 @@ class SystemCalibrationProcessor:
 		self,
 		data_folder: str | Path,
 		convert: bool = False,
-		tail_fraction: float = 1.0,
+		no_segments: int = 1,
+		seg_indx: int = 0,
 		states_to_load: list[str] | None = None,
 	) -> dict[str, dict[str, Any]]:
 		"""Load all configured switch states using ``DSFileLoader``.
@@ -84,14 +85,17 @@ class SystemCalibrationProcessor:
 
 		Parameters
 		----------
-		tail_fraction : float, optional
-			Fraction of samples to keep from the end of each state's data.
-			Use ``1.0`` for full-day loading and ``0.25`` for the last quarter.
+		no_segments : int, optional
+			Number of segments to split the day folder into.
+		seg_indx : int, optional
+			Zero-based index of the segment to load.
 		states_to_load : list[str] | None, optional
 			Subset of state names to load. If None, loads all states in ``state_list``.
 		"""
-		if not (0 < tail_fraction <= 1.0):
-			raise ValueError("tail_fraction must be in the range (0, 1].")
+		if no_segments < 1:
+			raise ValueError("no_segments must be >= 1.")
+		if not (0 <= seg_indx < no_segments):
+			raise ValueError(f"seg_indx must satisfy 0 <= seg_indx < no_segments ({no_segments}).")
 		if states_to_load is not None:
 			unknown = sorted(set(states_to_load) - set(self.state_list))
 			if unknown:
@@ -100,16 +104,38 @@ class SystemCalibrationProcessor:
 		else:
 			state_filter = set(self.state_list)
 
-		loader = DSFileLoader(str(data_folder))
+		data_folder = Path(data_folder)
+		date = data_folder.name
+		if not date or not date.isdigit() or len(date) != 8:
+			raise ValueError(
+				f"Unable to infer date from input directory '{data_folder}'. "
+				"Expected a day folder named YYYYMMDD (e.g., /path/to/20260303)."
+			)
+
+		time_dirs = DSFileLoader.get_sorted_time_dirs(str(data_folder))
+		if len(time_dirs) == 0:
+			raise ValueError(f"No time folders found under: {data_folder}")
+
+		segmented_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
+		if len(segmented_time_dirs) == 0:
+			raise ValueError(
+				f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
+			)
+
 		loaded: dict[str, dict[str, Any]] = {}
 		for state_no, name in enumerate(self.state_list):
 			if name not in state_filter:
 				continue
-			timestamps, spectra = loader.load(state_no, convert)
-			if tail_fraction < 1.0 and len(timestamps) > 0:
-				start_idx = int((1.0 - tail_fraction) * len(timestamps))
-				timestamps = timestamps[start_idx:]
-				spectra = spectra[start_idx:]
+			state_loaded = DSFileLoader.load_and_add_timestamp(
+				date,
+				list(segmented_time_dirs),
+				state_no,
+			)
+			timestamps, spectra = DSFileLoader.read_loaded(
+				state_loaded,
+				sort="ascending",
+				convert=convert,
+			)
 			loaded[name] = {"timestamps": timestamps, "spectra": spectra}
 		self.raw_states = loaded
 		return loaded
@@ -151,7 +177,8 @@ class SystemCalibrationProcessor:
 
 	@staticmethod
 	def frequency_ticks(frequencies_mhz: np.ndarray, step_mhz: float = 50.0) -> tuple[np.ndarray, np.ndarray]:
-		"""Get x-axis tick indices/labels for a frequency axis."""
+		"""Get x-axis tick indices/labels for a frequency axis. 
+		This doesn't rebin the data, just identifies where to place ticks for plotting."""
 		idx = np.where(np.diff((frequencies_mhz // step_mhz) * step_mhz) != 0)[0] + 1
 		return idx, frequencies_mhz[idx]
 
