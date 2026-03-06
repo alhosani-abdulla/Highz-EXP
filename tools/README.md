@@ -1,11 +1,18 @@
 # Tools
 
-Small command-line utilities for Highz-EXP data handling and visualization.
+Command-line utilities for Highz-EXP data ingestion, calibration, and visualization.
+
+## Directory Overview
+
+- `ds_zipper.py`: Convert legacy DS files into packed DS format.
+- `ds_wf_maker.py`: Build interactive waterfall HTML plots for one DS state.
+- `ds_cal_wf.py`: Run DS day calibration and generate per-segment + combined summary plots.
+- `fb_inspector.py`: Interactive filter-bank cycle inspector.
 
 ## Prerequisites
 
-- Run commands from the repository root.
-- Install the package in editable mode so imports resolve correctly:
+- Run commands from repository root.
+- Install project in editable mode so module imports resolve:
 
 ```bash
 pip install -e .
@@ -22,26 +29,26 @@ python tools/ds_zipper.py /path/to/day_dir /path/to/output_root
 ### 2) Generate DS waterfall HTML plots
 
 ```bash
-python tools/ds_wf_maker.py /path/to/day_dir 0 --output_dir /path/to/output --segment 4 --step_f 4 --step_t 1
+python tools/ds_wf_maker.py /path/to/20260303 0 --output_dir /path/to/output --segment 4 --step_f 4 --step_t 1
 ```
 
-### 3) Open interactive cycle/state inspector for Filter Bank.
+### 3) Run DS calibration workflow
+
+```bash
+python tools/ds_cal_wf.py -i /path/to/20260303 -o /path/to/output --no-segments 4 --vmax 1000
+```
+
+### 4) Open interactive filter-bank inspector
 
 ```bash
 python tools/fb_inspector.py /path/to/day_dir --state 0 --filter 10
 ```
 
-### 4) Run DS calibration + summary plots
-
-```bash
-python tools/ds_cal_wf.py --base-data-dir /path/to/base_dir --output-dir /path/to/output
-```
-
-## Scripts
+## Script Reference
 
 ### `ds_zipper.py`
 
-Condenses legacy DS `.npy` files (loaded with `LegacyDSFileLoader`) into the newer packed format (readable by `DSFileLoader`) to reduce file clutter.
+Convert legacy DS `.npy` files (via `LegacyDSFileLoader`) into condensed DS files compatible with `DSFileLoader`.
 
 Usage:
 
@@ -51,20 +58,19 @@ python tools/ds_zipper.py INPUT_DIR OUTPUT_ROOT [--pickle]
 
 Arguments:
 
-- `INPUT_DIR`: Directory containing one day of legacy files.
-- `OUTPUT_ROOT`: Root output directory. The script creates `OUTPUT_ROOT/<date_folder>/...` automatically.
-- `--pickle`: Save with pickle format instead of NumPy format.
+- `INPUT_DIR`: Directory containing one day of legacy DS files.
+- `OUTPUT_ROOT`: Root output directory. The script writes to `OUTPUT_ROOT/<date_folder>/...`.
+- `--pickle`: Save compressed outputs using pickle format instead of NumPy format.
 
-Notes:
+Behavior:
 
-- The date folder is inferred from the basename of `INPUT_DIR`.
-- Processing is attempted per hour and per state (`0..7`), with errors logged per state.
-
----
+- Infers `date_folder` from `INPUT_DIR` basename.
+- Iterates through each hour folder and attempts condensation for DS states `0..7`.
+- Logs errors per state/hour without stopping the entire run.
 
 ### `ds_wf_maker.py`
 
-Loads digital spectrometer data for a state, optionally downsamples in time/frequency, splits processing into segments, and writes interactive waterfall HTML files.
+Load DS spectra for one state, split time folders into segments, optionally downsample, and render interactive waterfall HTML outputs.
 
 Usage:
 
@@ -74,88 +80,82 @@ python tools/ds_wf_maker.py INPUT_DIR STATE_INDEX [--output_dir DIR] [--segment 
 
 Arguments:
 
-- `INPUT_DIR`: Date directory containing time-sliced DS data.
-- `STATE_INDEX`: Operational state index to plot.
-- `--output_dir, -o`: Output directory for generated HTML files (default: input directory).
-- `--segment`: Number of segments used when splitting daily processing (default: `4`).
-- `--step_f`: Frequency downsampling step (default: `4`, equivalent to 0.1 MHz resolution in current workflow).
-- `--step_t`: Time downsampling step (default: `1`).
+- `INPUT_DIR`: Day directory named like `YYYYMMDD`.
+- `STATE_INDEX`: State number to visualize.
+- `--output_dir`, `-o`: Output directory for HTML files. Default is `INPUT_DIR`.
+- `--segment`: Number of segments for splitting daily time folders. Default `4`.
+- `--step_f`: Frequency downsample factor. Default `4`.
+- `--step_t`: Time downsample factor. Default `1`.
 
-Outputs:
+Output pattern:
 
-- One or more files like:
-	- `waterfall_<state>_<YYYY-MM-DD>_<start_hour>_<end_hour>.html`
-
----
+- `waterfall_<state>_<YYYY-MM-DD>_<start_hour>_<end_hour>.html`
 
 ### `ds_cal_wf.py`
 
-Calibrates digital spectrometer data for a single observing day and saves summary spectra plots used in the notebook workflow.
-
-What it does:
-
-- Builds the day input path from:
-	- `--base-data-dir` + `DATE_YYYYMMDD` (configured in the script)
-- Loads only the `antenna` and `noise_diode` states for memory-efficient preprocessing.
-- Loads resistor state (`state 5`) separately and uses its median spectrum for system calibration.
-- Computes:
-	- System gain (`system_gain`)
-	- System temperature (`system_temp`)
-	- State median spectra (antenna and noise diode)
-- Produces and saves four PNG plots:
-	- Calibration medians (`resistor` vs `noise_diode`)
-	- Antenna median spectrum
-	- System temperature vs frequency
-	- System gain vs frequency
+Calibrate one DS day folder and generate both per-segment and combined summary products.
 
 Usage:
 
 ```bash
-python tools/ds_cal_wf.py [--base-data-dir DIR] [--output-dir DIR]
+python tools/ds_cal_wf.py -i INPUT_DAY_DIR -o OUTPUT_DIR [--no-segments N] [--vmax K]
 ```
 
 Arguments:
 
-- `--base-data-dir`: Base directory containing day folders (for example `.../Adak_2026_compressed`).
-- `--output-dir`: Directory where calibration plot PNG files are saved.
+- `-i`, `--input-dir` (required): Day directory named `YYYYMMDD` containing compressed DS files.
+- `-o`, `--output-dir` (required): Root output directory.
+- `-n`, `--no-segments`: Number of equal time-directory segments. Default `4`.
+- `--vmax`: Upper colorbar limit (Kelvin) for antenna calibrated waterfall plots. Default `1000`.
 
-Outputs (current filenames):
+Pipeline summary:
 
-- `<DATE>_cal_median.png`
-- `<DATE>_ant_median.png`
-- `<DATE>_sys_temp.png`
-- `<DATE>_sys_gain.png`
+- Loads `antenna` and `noise_diode` states per segment.
+- Loads resistor `state 5` separately per segment for calibration reference.
+- Computes system gain and system temperature.
+- Saves one calibrated antenna-temperature waterfall HTML per segment.
+- Saves combined PNG summary spectra from the first 3 available segments.
 
-Notes:
+Outputs:
 
-- Plot frequency bounds and calibration constants are configured via macros at the top of `ds_cal_wf.py`.
-- The script raises `FileNotFoundError` if the resolved day directory does not exist.
+- Per segment:
+  - `OUTPUT_DIR/seg_<idx>/<DATE>_ant_cal_temp.html`
+- Combined plots in `OUTPUT_DIR`:
+  - `<DATE>_cal_median_combined.png`
+  - `<DATE>_ant_median_combined.png`
+  - `<DATE>_sys_temp_combined.png`
+  - `<DATE>_sys_gain_combined.png`
+  - `<DATE>_sys_gain_db_combined.png`
+  - `<DATE>_ant_temp_combined.png`
 
----
+Configuration:
 
-### `interactive_inspector.py`
+- Frequency bounds, site coordinates, and calibration constants are set in the editable macros at the top of `tools/ds_cal_wf.py`.
 
-Interactive viewer for state spectra across cycles using `SpectrumInspector`.
+### `fb_inspector.py`
+
+Interactive viewer for filter-bank spectra by cycle using `SpectrumInspector`.
 
 Usage:
 
 ```bash
-python tools/interactive_inspector.py DAY_DIR --state STATE [--filter N] [--reference-spectrum CYCLE:IDX]
+python tools/fb_inspector.py DAY_DIR --state STATE [--filter N] [--reference-spectrum CYCLE:IDX]
 ```
 
 Arguments:
 
-- `DAY_DIR`: Path to a day directory (example: `20251102`).
-- `--state`: Required state identifier.
-- `--filter`: Filter channel index (`0-20`, default: `10`).
-- `--reference-spectrum`: Optional reference in the format `cycle_name:index`.
+- `DAY_DIR`: Path to a day directory (for example `20251102`).
+- `--state` (required): State identifier to inspect.
+- `--filter`: Filter channel index (`0-20`), default `10`.
+- `--reference-spectrum`: Optional reference spectrum in `cycle_name:index` format.
 
 Navigation:
 
-- Use left/right arrow keys or UI buttons to move between cycles.
+- Use left/right arrows or UI buttons to change cycle.
 - Press `Q` to quit.
 
 ## Troubleshooting
 
-- If imports fail, confirm you are at repo root and ran `pip install -e .`.
-- If a path error occurs, verify the day directory exists and matches expected structure.
+- If imports fail, verify you ran `pip install -e .` from repo root.
+- If a day path fails, check the folder exists and follows expected `YYYYMMDD` naming.
+- If no calibration output appears, confirm input contains required states (`antenna`, `noise_diode`, resistor `state 5`).
