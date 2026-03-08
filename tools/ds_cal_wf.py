@@ -20,6 +20,15 @@ import numpy as np
 from textwrap import dedent
 from zoneinfo import ZoneInfo
 
+try:
+    from rich_argparse import (  # type: ignore[import-not-found]
+        ArgumentDefaultsRichHelpFormatter,
+        RawDescriptionRichHelpFormatter,
+    )
+except ImportError:
+    ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
+    RawDescriptionRichHelpFormatter = argparse.RawDescriptionHelpFormatter
+
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.sys_cal import SystemCalibrationProcessor
 from highz_exp.file_load import DSFileLoader
@@ -51,7 +60,7 @@ NOISE_DIODE_FREQ_F2_MHZ = 200
 RESISTOR_TEMP_K = 273
 
 def parse_args():
-    class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    class HelpFormatter(ArgumentDefaultsRichHelpFormatter, RawDescriptionRichHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -176,12 +185,12 @@ def run_segment(cfg, seg_indx, logger):
     logger.info("Loading resistor state (state 5) for system calibration")
     time_dirs = DSFileLoader.get_sorted_time_dirs(cfg["data_folder"])
     resistor_time_dirs = np.array_split(time_dirs, cfg["no_segments"])[seg_indx]
-    resistor_loaded = DSFileLoader.load_and_add_timestamp(
+    resistor_loaded = DSFileLoader.load_and_add_timestamps(
         cfg["date"],
         list(resistor_time_dirs),
         5,
     )
-    res_timestamps, res_spectra = DSFileLoader.read_loaded(
+    res_timestamps, res_spectra, _ = DSFileLoader.read_loaded(
         resistor_loaded,
         sort="ascending",
         convert=False,

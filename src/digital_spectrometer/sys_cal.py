@@ -85,6 +85,8 @@ class SystemCalibrationProcessor:
 
 		Parameters
 		----------
+		convert : bool, optional
+			Whether to convert raw spectra to power units during loading. If False, loads raw spectra.
 		no_segments : int, optional
 			Number of segments to split the day folder into.
 		seg_indx : int, optional
@@ -126,17 +128,17 @@ class SystemCalibrationProcessor:
 		for state_no, name in enumerate(self.state_list):
 			if name not in state_filter:
 				continue
-			state_loaded = DSFileLoader.load_and_add_timestamp(
+			state_loaded = DSFileLoader.load_and_add_timestamps(
 				date,
 				list(segmented_time_dirs),
 				state_no,
 			)
-			timestamps, spectra = DSFileLoader.read_loaded(
+			timestamps, spectra, cycles = DSFileLoader.read_loaded(
 				state_loaded,
 				sort="ascending",
 				convert=convert,
 			)
-			loaded[name] = {"timestamps": timestamps, "spectra": spectra}
+			loaded[name] = {"timestamps": timestamps, "spectra": spectra, "cycles": cycles}
 		self.raw_states = loaded
 		return loaded
 

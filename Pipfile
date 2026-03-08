@@ -18,9 +18,10 @@ tqdm = "*"
 highz-exp = {path = ".", editable = true}
 jupyter = "*"
 ipykernel = "*"
+rich-argparse = "*"
+highz-filterbank = {editable = true, git = "ssh://git@github.com/alhosani-abdulla/highz-filterbank.git"}
 
 [dev-packages]
 
 [requires]
 python_version = "3.11"
-python_full_version = "3.11.0"

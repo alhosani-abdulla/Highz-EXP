@@ -286,8 +286,8 @@ class DSFileLoader():
         date = pbase(self.dir)
         if time_range is not None:
             pass  # To be implemented: filter time_dirs based on time_range
-        loaded = self.load_and_add_timestamp(date, time_dirs, state_no)
-        timestamps, spectra = self.read_loaded(loaded, sort='ascending', convert=convert)
+        loaded = self.load_and_add_timestamps(date, time_dirs, state_no)
+        timestamps, spectra, _ = self.read_loaded(loaded, sort='ascending', convert=convert)
         return timestamps, spectra
 
     @staticmethod
@@ -331,93 +331,134 @@ class DSFileLoader():
         return time_dirs
         
     @staticmethod
-    def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
-        """Load all spectrum files for a given date and state index, with timestamp keys. 
-        By default, the timestamps would be in UTC timezone.
+    def load_and_add_timestamps(date_str, time_dirs, state_no) -> dict:
+        """Load one state and attach metadata, grouped by acquisition cycle.
 
         Parameters:
-        -----------
-        date_str : str
-                    Date string in 'YYYYMMDD' format representing the date of data collection.
-        time_dirs : str or list
-                    Path to a directory or list of directories containing spectrum .npy files.
-        state_no : int
-                    State number to filter spectrum files.
-        
+            date_str (str): Day folder date in ``YYYYMMDD`` format.
+            time_dirs (str | list[str]): One or more cycle directories under the day folder.
+            state_no (int): State index used in the filename filter ``*state{state_no}*``.
+
         Returns:
-        --------
-        loaded : dict
-                Dictionary with the following structure:
-                {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
+            dict: Nested mapping keyed by cycle number (directory name), then timestamp:
+                {
+                    "2300": {
+                        "000101": {
+                            "spectrum": np.ndarray,
+                            "full_timestamp": datetime(..., tzinfo=UTC),
+                            "cycle_no": "2300",
+                            ...
+                        },
+                        ...
+                    },
+                    ...
+                }
+
+        Notes:
+            - Timestamp rollover near midnight follows the previous behavior:
+              for cycles starting with ``23``, timestamps from ``00:00``-``01:59``
+              are assigned to the next UTC day.
+            - If duplicate timestamps are encountered within the same cycle,
+              later files overwrite earlier values and a warning is logged.
         """
-        # Handle both single directory and list of directories
         if isinstance(time_dirs, str):
             time_dirs = [time_dirs]
-        
-        loaded = {}
+
+        loaded_by_cycle = {}
         datestamp = datetime.strptime(date_str, '%Y%m%d').date()
-        
+        utc_tz = zoneinfo.ZoneInfo('UTC')
+
         for time_dir in time_dirs:
+            cycle_no = pbase(time_dir)
             all_specs = sorted(glob.glob(pjoin(time_dir, f"*state{state_no}*")))
+            cycle_loaded = loaded_by_cycle.setdefault(cycle_no, {})
+
             for spec_file in all_specs:
-                loaded.update(DSFileLoader.load_npy_dict(spec_file))
-            
-            time_dirname = pbase(time_dir)
-            
-            for timestamp_str in loaded.keys():
-                if 'full_timestamp' not in loaded[timestamp_str]:
+                spec_dict = DSFileLoader.load_npy_dict(spec_file)
+                for timestamp_str, info_dict in spec_dict.items():
+                    if timestamp_str in cycle_loaded:
+                        logging.warning(
+                            "Duplicate timestamp %s in cycle %s for state %s; overwriting prior value.",
+                            timestamp_str,
+                            cycle_no,
+                            state_no,
+                        )
+
                     timestamp = datetime.strptime(timestamp_str, '%H%M%S').time()
-                    if time_dirname.startswith("23"):
-                        if timestamp.hour <= 1:
-                            full_timestamp = datetime.combine(
-                                datestamp + timedelta(days=1), timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
-                        else:
-                            full_timestamp = datetime.combine(
-                                datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
+                    if cycle_no.startswith("23") and timestamp.hour <= 1:
+                        timestamp_date = datestamp + timedelta(days=1)
                     else:
-                        full_timestamp = datetime.combine(
-                            datestamp, timestamp, tzinfo=zoneinfo.ZoneInfo('UTC'))
-                    loaded[timestamp_str]['full_timestamp'] = full_timestamp
-        
-        return loaded
+                        timestamp_date = datestamp
+
+                    full_timestamp = datetime.combine(timestamp_date, timestamp, tzinfo=utc_tz)
+                    enriched_info = dict(info_dict)
+                    enriched_info['full_timestamp'] = full_timestamp
+                    enriched_info['cycle_no'] = cycle_no
+                    cycle_loaded[timestamp_str] = enriched_info
+
+        return loaded_by_cycle
 
     @staticmethod
-    def read_loaded(loaded, sort='ascending', convert=False) -> tuple[np.array, np.array]:
-        """Read timestamps and spectra from loaded data. Sort by timestamps and compile spectra into 2D array.
+    def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
+        """Backward-compatible wrapper for ``load_and_add_timestamps``."""
+        return DSFileLoader.load_and_add_timestamps(date_str, time_dirs, state_no)
+
+    @staticmethod
+    def read_loaded(loaded, sort='ascending', convert=False) -> tuple[np.array, np.array, np.array]:
+        """Flatten loaded cycle data into aligned timestamp/spectra/cycle arrays.
 
         Parameters:
-        -----------
-        loaded: dict. Structure {'timestamp_str': {'spectrum': np.ndarray, 'full_timestamp': datetime, ...}, ...}
-        convert: bool. If True, convert raw spectrum to dBm using rfsoc_spec_to_dbm.
-        
+            loaded (dict): Output of ``load_and_add_timestamps`` where the top-level
+                key is ``cycle_no`` and the second-level key is ``timestamp_str``.
+            sort (str): ``'ascending'`` or ``'descending'`` by ``full_timestamp``.
+            convert (bool): If True, convert spectra to dBm via ``rfsoc_spec_to_dbm``.
+
         Returns:
-        --------
-        timestamps: np.array of datetime objects, sorted.
-        spectra: 2D np.array of spectra, sorted according to timestamps."""
+            tuple[np.ndarray, np.ndarray, np.ndarray]:
+                - timestamps: datetime array
+                - spectra: 2D spectra array
+                - cycles: cycle number array
+        """
         timestamps = []
         spectra = []
-        for timestamp_str, info_dict in loaded.items():
-            timestamps.append(info_dict['full_timestamp'])
-            if convert:
-                spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
-            else:
-                spectrum = info_dict['spectrum']
-            if len(spectrum) != nfft//2:
-                logging.warning("Spectrum length %d does not match expected %d for timestamp %s", len(
-                    spectrum), nfft//2, timestamp_str)
-                continue
-            spectra.append(spectrum)
+        cycles = []
+        for cycle_no, cycle_data in loaded.items():
+            for timestamp_str, info_dict in cycle_data.items():
+                timestamps.append(info_dict['full_timestamp'])
+                cycles.append(cycle_no)
+                if convert:
+                    spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
+                else:
+                    spectrum = info_dict['spectrum']
+                if len(spectrum) != nfft//2:
+                    logging.warning(
+                        "Spectrum length %d does not match expected %d for timestamp %s (cycle %s)",
+                        len(spectrum),
+                        nfft//2,
+                        timestamp_str,
+                        cycle_no,
+                    )
+                    continue
+                spectra.append(spectrum)
 
         timestamps = np.array(timestamps)
         spectra = np.array(spectra)
+        cycles = np.array(cycles)
 
-        sort_idx = np.argsort(
-            timestamps) if sort == 'ascending' else np.argsort(timestamps)[::-1]
+        if len(timestamps) == 0:
+            return timestamps, spectra, cycles
+
+        if sort not in ('ascending', 'descending'):
+            raise ValueError("sort must be either 'ascending' or 'descending'")
+
+        sort_idx = np.argsort(timestamps)
         if sort == 'descending':
             sort_idx = sort_idx[::-1]
+        
+        logging.info("Loaded %d spectra. Returning sorted timestamps and spectra arrays.", len(spectra))
+        logging.info("Each spectra has shape %s. Timestamps range from %s to %s.", spectra[0].shape if len(spectra) > 0 else 'N/A', timestamps.min() if len(timestamps) > 0 else 'N/A', timestamps.max() if len(timestamps) > 0 else 'N/A')
 
-        return timestamps[sort_idx], spectra[sort_idx]
-
+        return timestamps[sort_idx], spectra[sort_idx], cycles[sort_idx]
 
 def states_to_ntwk(f, loaded_states):
     """Convert loaded spectrum states to a dictionary of rf.Network objects with frequency f."""
@@ -426,7 +467,7 @@ def states_to_ntwk(f, loaded_states):
         for state_name, state in loaded_states.items():
             spectrum = state['spectrum']
             ntwk_dict[state_name] = rf.Network(f=f, name=state_name, s=spectrum.reshape(-1, 1, 1))
-        print("Returning networks of (raw) recorded spectra.")
+        logging.info("Returning networks of (raw) recorded spectra.")
         return ntwk_dict
 
 

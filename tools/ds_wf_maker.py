@@ -67,8 +67,8 @@ def main(date_dir, state_indx, step_f, step_t, segment, output_dir=None):
             "Expected a day folder named YYYYMMDD (e.g., /path/to/20260303)."
         )
     for quartered_time_dirs in np.array_split(time_dirs, segment):
-        loaded = DSFileLoader.load_and_add_timestamp(date, quartered_time_dirs, state_indx)
-        timestamps, spectra = DSFileLoader.read_loaded(loaded, sort='ascending', convert=True)
+        loaded = DSFileLoader.load_and_add_timestamps(date, quartered_time_dirs, state_indx)
+        timestamps, spectra, _ = DSFileLoader.read_loaded(loaded, sort='ascending', convert=True)
         
         logging.info(f"Total spectra loaded: {len(spectra)}")
         logging.info(f"Original Timezone: {timestamps[0].tzinfo}")
