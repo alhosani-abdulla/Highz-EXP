@@ -15,7 +15,7 @@ healpy = "*"
 h5py = "*"
 xarray = "*"
 tqdm = "*"
-highz-exp = {file = ".", editable = true}
+highz-exp = {path = ".", editable = true}
 jupyter = "*"
 ipykernel = "*"
 
