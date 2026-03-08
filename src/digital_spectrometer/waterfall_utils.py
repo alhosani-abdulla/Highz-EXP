@@ -81,8 +81,6 @@ def plot_waterfall_heatmap_plotly(
     Returns:
         None. Writes the plot to an HTML file.
     """
-    date = datetimes[0].date()
-    
     cbar_title = f"Power ({unit})"
 
     datetimes, spectra = inject_gap_spacers(datetimes, spectra, threshold_seconds=30)
@@ -94,7 +92,7 @@ def plot_waterfall_heatmap_plotly(
     fig = go.Figure(data=go.Heatmap(z=np.round(spectra, 2), x=faxis_mhz, y=datetimes,
         colorscale='Viridis', zmin=vmin, zmax=vmax,
         colorbar=dict(title=cbar_title), connectgaps=True, hoverongaps=False, zsmooth='fast',
-        hovertemplate=("Time: %{y}<br>" +
+        hovertemplate=("Time: %{y|%Y-%m-%d %H:%M:%S %Z (%z)}<br>" +
             "Freq: %{x:.2f} MHz<br>" + f"Power: %{{z:.2f}} {unit}<extra></extra>"
         )
     ))
@@ -132,7 +130,7 @@ def plot_waterfall_heatmap_plotly(
     y_axis_direction = "reversed" if datetimes[0] < datetimes[-1] else True
 
     fig.update_layout(
-        title=dict(text=f"{date}: {title}", font=dict(size=24)), 
+        title=dict(text=f"{title}", font=dict(size=24)), 
         xaxis=dict(title=dict(text="Frequency (MHz)")),
         yaxis=dict(title="Time", autorange=y_axis_direction),
         width=1400, height=800, template="plotly_dark",

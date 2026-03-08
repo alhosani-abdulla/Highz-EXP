@@ -302,7 +302,7 @@ def run_segment(cfg, seg_indx, logger):
         datetimes=list(downsampled_datetimes),
         spectra=downsampled_spectra,
         faxis_mhz=downsampled_frequencies_mhz,
-        title=f"Antenna Calibrated Temperature: {cfg['date']}",
+        title=f"Antenna Calibrated Temperature: {cfg['date']} (UTC)",
         unit='K',
         output_path=ant_temp_waterfall_path,
         vmin=10,
