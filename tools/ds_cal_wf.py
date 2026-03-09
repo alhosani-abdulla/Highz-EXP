@@ -19,6 +19,7 @@ import os
 import numpy as np
 from textwrap import dedent
 from zoneinfo import ZoneInfo
+from tqdm.auto import tqdm
 
 try:
     from rich_argparse import (  # type: ignore[import-not-found]
@@ -31,7 +32,6 @@ except ImportError:
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.sys_cal import SystemCalibrationProcessor
-from highz_exp.file_load import DSFileLoader
 from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
@@ -103,6 +103,12 @@ def parse_args():
         default=1000,
         help="Max value for waterfall color scale (in K). Adjust based on expected antenna temperature range."
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging (INFO level). Default logging level is WARNING.",
+    )
     return parser.parse_args()
 
 
@@ -132,25 +138,12 @@ def build_config(input_dir, output_dir, no_segments, vmax):
     }
 
 
-def build_segment_local_label(local_timestamps, seg_indx, timezone_name="HST"):
-    if len(local_timestamps) == 0:
-        return f"Seg {seg_indx}"
-    start_local = local_timestamps[0]
-    end_local = local_timestamps[-1]
-    start_str = start_local.strftime("%m-%d %H:%M")
-    if start_local.date() == end_local.date():
-        end_str = end_local.strftime("%H:%M")
-    else:
-        end_str = end_local.strftime("%m-%d %H:%M")
-    return f"Seg {seg_indx} {start_str}-{end_str} {timezone_name}"
-
-
 def run_segment(cfg, seg_indx, logger):
     segment_output_dir = os.path.join(cfg["output_dir"], f"seg_{seg_indx}")
     os.makedirs(segment_output_dir, exist_ok=True)
-    logger.info("[seg %d] Output directory: %s", seg_indx, segment_output_dir)
+    logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
 
-    logger.info("Initializing system calibration processor")
+    logger.info("[seg %d] initializing calibration processor", seg_indx)
     proc = SystemCalibrationProcessor(
         num_frequency_samples=cfg["num_frequency_samples"],
         frequency_bin_size_mhz=cfg["frequency_bin_size_mhz"],
@@ -161,14 +154,11 @@ def run_segment(cfg, seg_indx, logger):
         site_elevation_m=cfg["test_site_elevation_meters"],
     )
 
-    states_to_load = ["antenna", "noise_diode"]
-    logger.info("Loading states: %s", states_to_load)
+    states_to_load = ["antenna", "noise_diode", "resistor"]
+    logger.info("[seg %d] loading states=%s", seg_indx, states_to_load)
     proc.load_states(
-        cfg["data_folder"],
-        convert=False,
-        no_segments=cfg["no_segments"],
-        seg_indx=seg_indx,
-        states_to_load=states_to_load,
+        cfg["data_folder"], convert=False,
+        no_segments=cfg["no_segments"], seg_indx=seg_indx, states_to_load=states_to_load
     )
     loaded_state_counts = {
         name: len(proc.raw_states[name]["timestamps"])
@@ -176,39 +166,22 @@ def run_segment(cfg, seg_indx, logger):
     }
     logger.info("[seg %d] Loaded spectra counts by state: %s", seg_indx, loaded_state_counts)
 
-    logger.info("Preparing frequency axis and time metadata")
-    frequencies_mhz = proc.prepare_frequency_axis()
-    proc.slice_state_frequency_range()
-    proc.compute_state_medians()
+    logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
+    frequencies_mhz = proc.prepare_state_medians()
     logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
 
-    logger.info("Loading resistor state (state 5) for system calibration")
-    time_dirs = DSFileLoader.get_sorted_time_dirs(cfg["data_folder"])
-    resistor_time_dirs = np.array_split(time_dirs, cfg["no_segments"])[seg_indx]
-    resistor_loaded = DSFileLoader.load_and_add_timestamps(
-        cfg["date"],
-        list(resistor_time_dirs),
-        5,
-    )
-    res_timestamps, res_spectra, _ = DSFileLoader.read_loaded(
-        resistor_loaded,
-        sort="ascending",
-        convert=False,
-    )
-    logger.info("Loaded resistor spectra in selected segment: %d", len(res_timestamps))
-    resistor_median = np.median(
-        res_spectra[:, proc.frequency_idx_range], axis=0)
-
-    logger.info(
-        "Computing system gain and system temperature from state medians")
-    system_gain, system_temp = proc.calibrate_system_from_medians(
+    logger.info("[seg %d] computing system gain/temp from cycles", seg_indx)
+    proc.calibrate_system_from_cycles(
         noise_diode_temp_f1_k=cfg["noise_diode_temp_f1_k"],
         noise_diode_temp_f2_k=cfg["noise_diode_temp_f2_k"],
         noise_diode_freq_f1_mhz=cfg["noise_diode_freq_f1_mhz"],
         noise_diode_freq_f2_mhz=cfg["noise_diode_freq_f2_mhz"],
         resistor_temp_k=cfg["resistor_temp_k"],
-        resistor_median=resistor_median,
     )
+    if proc.system_gain is None or proc.system_temp is None:
+        raise RuntimeError("Cycle calibration did not produce system gain/temperature.")
+    system_gain = proc.system_gain
+    system_temp = proc.system_temp
 
     logger.info(
         "Calibration outputs: system_gain=%s, system_temp=%s",
@@ -217,6 +190,7 @@ def run_segment(cfg, seg_indx, logger):
     )
 
     antenna_spec_median = proc.state_medians["antenna"]
+    resistor_median = proc.state_medians["resistor"]
     noise_diode_spec_median = proc.state_medians["noise_diode"]
 
     antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
@@ -225,12 +199,12 @@ def run_segment(cfg, seg_indx, logger):
         antenna_utc_timestamps,
         local_timezone=local_timezone,
     )
-    segment_local_label = build_segment_local_label(
+    segment_local_label = proc.build_segment_local_label(
         antenna_local_timestamps,
         seg_indx=seg_indx,
         timezone_name="HST",
     )
-    logger.info("Segment label for combined plots: %s", segment_local_label)
+    logger.info("[seg %d] label=%s", seg_indx, segment_local_label)
 
     antenna_median_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
@@ -272,31 +246,23 @@ def run_segment(cfg, seg_indx, logger):
         name=f"{segment_local_label}",
     )
 
-    logger.info("Prepared states: %s", list(proc.raw_states.keys()))
-
-    logger.info("Building calibrated antenna waterfall")
+    logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
     antenna_temperature_waterfall = proc.calibrate_2d_state_power("antenna")
     waterfall_time_step = 2
     requested_frequency_step = 2
 
     _, frequency_bin_count = antenna_temperature_waterfall.shape
-    valid_frequency_steps = [
-        divisor for divisor in range(1, requested_frequency_step + 1)
-        if frequency_bin_count % divisor == 0
-    ]
-    waterfall_frequency_step = max(valid_frequency_steps) if valid_frequency_steps else 1
+    waterfall_frequency_step = proc.choose_frequency_downsample_step(
+        frequency_bin_count=frequency_bin_count,
+        requested_step=requested_frequency_step,
+    )
     logger.info(
         "Waterfall downsample factors selected: step_t=%d, step_f=%d",
         waterfall_time_step,
         waterfall_frequency_step,
     )
 
-    logger.info(
-        "Converted antenna timestamps to local timezone (%s): %s -> %s",
-        local_timezone,
-        antenna_local_timestamps[0],
-        antenna_local_timestamps[-1],
-    )
+    logger.info("[seg %d] local time span: %s -> %s", seg_indx, antenna_local_timestamps[0], antenna_local_timestamps[-1])
 
     downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
         datetimes=np.array(antenna_local_timestamps),
@@ -319,7 +285,7 @@ def run_segment(cfg, seg_indx, logger):
         step=50,
     )
 
-    logger.info("Saved waterfall plot: %s", ant_temp_waterfall_path)
+    logger.info("[seg %d] saved waterfall=%s", seg_indx, ant_temp_waterfall_path)
     logger.info(
         "Waterfall shape: original=%s, downsampled=%s",
         antenna_temperature_waterfall.shape,
@@ -339,14 +305,15 @@ def run_segment(cfg, seg_indx, logger):
 
 
 def main():
+    args = parse_args()
+    log_level = logging.INFO if args.verbose else logging.WARNING
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
     logger = logging.getLogger("ds_cal_wf")
 
     logger.info("Starting DS calibration workflow")
-    args = parse_args()
     input_dir = os.path.expanduser(args.input_dir)
     output_dir = os.path.expanduser(args.output_dir)
     cfg = build_config(
@@ -355,9 +322,9 @@ def main():
         no_segments=args.no_segments,
         vmax=args.vmax,
     )
-    logger.info("Input day directory: %s", cfg["data_folder"])
-    logger.info("Output root directory: %s", cfg["output_dir"])
-    logger.info("Processing all segment indices in range [0, %d]", cfg["no_segments"] - 1)
+    logger.info("Input=%s", cfg["data_folder"])
+    logger.info("Output=%s", cfg["output_dir"])
+    logger.info("Segments=%d", cfg["no_segments"])
     logger.info("Frequency setup: samples=%d, bin=%.6f MHz, range=[%.1f, %.1f] MHz",
         cfg["num_frequency_samples"],
         cfg["frequency_bin_size_mhz"],
@@ -373,11 +340,17 @@ def main():
     logger.info("Verified input path and ensured output directory exists")
 
     segment_results = []
-    for seg_indx in range(cfg["no_segments"]):
-        logger.info("Starting segment %d/%d", seg_indx + 1, cfg["no_segments"])
+    segment_indices = tqdm(
+        range(cfg["no_segments"]),
+        desc="Calibrating segments",
+        unit="seg",
+        dynamic_ncols=True,
+    )
+    for seg_indx in segment_indices:
+        segment_indices.set_postfix_str(f"seg_{seg_indx}")
         segment_result = run_segment(cfg=cfg, seg_indx=seg_indx, logger=logger)
         segment_results.append(segment_result)
-        logger.info("Finished segment %d/%d", seg_indx + 1, cfg["no_segments"])
+    logger.info("Completed %d segment(s)", len(segment_results))
 
     combined_segment_count = min(3, len(segment_results))
     if combined_segment_count == 0:
@@ -390,10 +363,7 @@ def main():
         )
 
     combined_segments = segment_results[:combined_segment_count]
-    logger.info(
-        "Creating combined summary spectra plots using first %d segment(s)",
-        combined_segment_count,
-    )
+    logger.info("Creating combined summary plots from first %d segment(s)", combined_segment_count)
 
     combined_plot_paths = {
         "cal_median": os.path.join(cfg["output_dir"], f"{cfg['date']}_cal_median_combined.png"),
@@ -404,75 +374,82 @@ def main():
         "ant_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_temp_combined.png"),
     }
 
-    plotter.plot_spectra(
-        [spec["resistor_median_spec"] for spec in combined_segments]
-        + [spec["noise_diode_median_spec"] for spec in combined_segments],
-        save_path=combined_plot_paths["cal_median"],
-        show_plot=False,
-        ylabel="Raw Power (arb.)",
-        title="Median Spectra: Resistor vs Noise Diode (Combined Segments)",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["cal_median"])
+    plot_jobs = [
+        {
+            "name": "cal_median",
+            "spectra": [spec["resistor_median_spec"] for spec in combined_segments]
+            + [spec["noise_diode_median_spec"] for spec in combined_segments],
+            "kwargs": {
+                "ylabel": "Raw Power (arb.)",
+                "title": "Median Spectra: Resistor vs Noise Diode (Combined Segments)",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+            },
+        },
+        {
+            "name": "ant_median",
+            "spectra": [spec["antenna_median_spec"] for spec in combined_segments],
+            "kwargs": {
+                "ylabel": "Raw Power (arb.)",
+                "title": "Median Spectra: Antenna (Combined Segments)",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+            },
+        },
+        {
+            "name": "sys_temp",
+            "spectra": [spec["system_temp_spec"] for spec in combined_segments],
+            "kwargs": {
+                "y_range": (0, 350),
+                "ylabel": "Temperature (K)",
+                "title": f"System Temperature: ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+        {
+            "name": "sys_gain",
+            "spectra": [spec["system_gain_spec"] for spec in combined_segments],
+            "kwargs": {
+                "ylabel": "Gain (arb.)",
+                "title": f"System Gain: ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+        {
+            "name": "sys_gain_db",
+            "spectra": [spec["sys_gain_db_spec"] for spec in combined_segments],
+            "kwargs": {
+                "y_range": (20, 60),
+                "ylabel": "Gain (arb dB)",
+                "title": f"System Gain ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+        {
+            "name": "ant_temp",
+            "spectra": [spec["ant_temp_spec"] for spec in combined_segments],
+            "kwargs": {
+                "y_range": (0, 1000),
+                "ylabel": "Temperature (K)",
+                "title": f"Antenna: {cfg['date']}",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+    ]
 
-    plotter.plot_spectra(
-        [spec["antenna_median_spec"] for spec in combined_segments],
-        save_path=combined_plot_paths["ant_median"],
-        show_plot=False,
-        ylabel="Raw Power (arb.)",
-        title="Median Spectra: Antenna (Combined Segments)",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["ant_median"])
+    for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
+        save_path = combined_plot_paths[job["name"]]
+        plotter.plot_spectra(
+            job["spectra"],
+            save_path=save_path,
+            show_plot=False,
+            **job["kwargs"],
+        )
+        logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
 
-    plotter.plot_spectra(
-        [spec["system_temp_spec"] for spec in combined_segments],
-        save_path=combined_plot_paths["sys_temp"],
-        show_plot=False,
-        y_range=(0, 350),
-        ylabel="Temperature (K)",
-        title=f"System Temperature: ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["sys_temp"])
-
-    plotter.plot_spectra(
-        [spec["system_gain_spec"] for spec in combined_segments],
-        save_path=combined_plot_paths["sys_gain"],
-        show_plot=False,
-        ylabel="Gain (arb.)",
-        title=f"System Gain: ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["sys_gain"])
-
-    plotter.plot_spectra(
-        [spec["sys_gain_db_spec"] for spec in combined_segments],
-        y_range=(20, 60),
-        ylabel='Gain (arb dB)',
-        title=f"System Gain ({cfg['date']})",
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-        show_plot=False,
-        save_path=combined_plot_paths["sys_gain_db"],
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["sys_gain_db"])
-
-    plotter.plot_spectra(
-        [spec["ant_temp_spec"] for spec in combined_segments],
-        y_range=(0, 1000),
-        ylabel='Temperature (K)',
-        title=f'Antenna: {cfg["date"]}',
-        freq_range=(cfg["min_f_mhz"], cfg["max_f_mhz"]),
-        marker_freqs=(50, 100, 200),
-        save_path=combined_plot_paths["ant_temp"],
-        show_plot=False,
-    )
-    logger.info("Saved combined plot: %s", combined_plot_paths["ant_temp"])
-
-    logger.info("All plots saved under segment subdirectories in: %s", cfg["output_dir"])
+    logger.info("All outputs saved under: %s", cfg["output_dir"])
     logger.info("DS calibration workflow completed successfully")
 
 
