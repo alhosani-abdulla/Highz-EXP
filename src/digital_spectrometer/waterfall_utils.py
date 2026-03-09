@@ -126,13 +126,37 @@ def plot_waterfall_heatmap_plotly(
             ),
         ])
 
+    # Build y-axis title with timezone context when available.
+    yaxis_title = "Time"
+    if datetimes:
+        dt0 = datetimes[0]
+        tz_name = dt0.tzname() or ""
+        tz_offset = dt0.utcoffset()
+        offset_str = ""
+        if tz_offset is not None:
+            total_seconds = int(tz_offset.total_seconds())
+            sign = "+" if total_seconds >= 0 else "-"
+            total_seconds = abs(total_seconds)
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes = remainder // 60
+            offset_str = f"UTC{sign}{hours:02d}:{minutes:02d}"
+
+        if tz_name and offset_str:
+            yaxis_title = f"Time ({tz_name}, {offset_str})"
+        elif tz_name:
+            yaxis_title = f"Time ({tz_name})"
+        elif offset_str:
+            yaxis_title = f"Time ({offset_str})"
+
     # Robust logic: reverse y-axis if data is ascending to put start at top
     y_axis_direction = "reversed" if datetimes[0] < datetimes[-1] else True
+
+    title = f"{title}: {datetimes[0].strftime('%Y-%m-%d %H:%M')} to {datetimes[-1].strftime('%Y-%m-%d %H:%M')}"
 
     fig.update_layout(
         title=dict(text=f"{title}", font=dict(size=24)), 
         xaxis=dict(title=dict(text="Frequency (MHz)")),
-        yaxis=dict(title="Time", autorange=y_axis_direction),
+        yaxis=dict(title=yaxis_title, autorange=y_axis_direction),
         width=1400, height=800, template="plotly_dark",
         plot_bgcolor='black',
         margin=dict(t=150, b=150)
