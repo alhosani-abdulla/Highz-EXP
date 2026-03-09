@@ -198,7 +198,7 @@ class SystemCalibrationProcessor:
 		return output
 
 	def compute_state_medians(self) -> dict[str, np.ndarray]:
-		"""Compute median spectrum for each loaded state for all samples."""
+		"""Compute median spectrum for each loaded state for all samples, erase cycle resolution."""
 		medians: dict[str, np.ndarray] = {}
 		for name, data in self.state_power.items():
 			medians[name] = np.median(data, axis=0)
@@ -291,10 +291,10 @@ class SystemCalibrationProcessor:
 		else:
 			resistor = np.asarray(resistor_median)
 
-		self.system_gain = (noise_diode - resistor) / (self.nd_temp - resistor_temp_k)
-		self.system_temp = resistor / self.system_gain - resistor_temp_k
-		return self.system_gain, self.system_temp
-	
+		self.system_gain_med = (noise_diode - resistor) / (self.nd_temp - resistor_temp_k)
+		self.system_temp_med = resistor / self.system_gain_med - resistor_temp_k
+		return self.system_gain_med, self.system_temp_med
+
 	def calibrate_system_from_cycles(
 		self,
 		noise_diode_temp_f1_k: float = 2086.0,
@@ -376,27 +376,12 @@ class SystemCalibrationProcessor:
 		self.calibration_cycle_ids = np.asarray(paired_cycle_ids)
 		self.nd_temp = nd_temp_profile
 
-		# Median of all cycles
-		self.system_gain_med = np.median(self.system_gain, axis=0)
-		self.system_temp_med = np.median(self.system_temp, axis=0)
-
 		return cycle_calibrations
 
 	def calibrated_temperature(self, state_name: str) -> np.ndarray:
-		"""Convert a state's median spectrum into calibrated temperature."""
-		if self.system_gain is None or self.system_temp is None:
-			self.calibrate_system_from_medians()
-		if not self.state_medians:
-			self.compute_state_medians()
-
-		gain = self.system_gain
-		temp = self.system_temp
-		if gain.ndim == 2:
-			gain = self.system_gain_med if self.system_gain_med is not None else np.median(gain, axis=0)
-		if temp.ndim == 2:
-			temp = self.system_temp_med if self.system_temp_med is not None else np.median(temp, axis=0)
-
-		return self.state_medians[state_name] / gain - temp
+		"""Return median calibrated temperature from per-sample calibrated 2D state power."""
+		calibrated_2d = self.calibrate_2d_state_power(state_name)
+		return np.median(calibrated_2d, axis=0)
 
 	def calibrate_2d_state_power(self, state_name: str) -> np.ndarray:
 		"""Convert a state's 2D power array into calibrated temperature."""

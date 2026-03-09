@@ -20,6 +20,7 @@ import numpy as np
 from textwrap import dedent
 from zoneinfo import ZoneInfo
 from tqdm.auto import tqdm
+import sys
 
 try:
     from rich_argparse import (  # type: ignore[import-not-found]
@@ -29,6 +30,11 @@ try:
 except ImportError:
     ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
     RawDescriptionRichHelpFormatter = argparse.RawDescriptionHelpFormatter
+
+try:
+    from rich.logging import RichHandler  # type: ignore[import-not-found]
+except ImportError:
+    RichHandler = None
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from highz_exp.sys_cal import DSCalibrationProcessor
@@ -183,6 +189,9 @@ def run_segment(cfg, seg_indx, logger):
     system_gain = proc.system_gain
     system_temp = proc.system_temp
 
+    system_temp_med = np.median(system_temp, axis=0)
+    system_gain_med = np.median(system_gain, axis=0)
+
     logger.info(
         "Calibration outputs: system_gain=%s, system_temp=%s",
         system_gain.shape,
@@ -224,26 +233,19 @@ def run_segment(cfg, seg_indx, logger):
     )
     system_temp_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
-        spectrum=system_temp,
+        spectrum=system_temp_med,
         name=f"{segment_local_label}",
     )
     system_gain_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
-        spectrum=system_gain,
+        spectrum=system_gain_med,
         name=f"{segment_local_label}",
     )
 
     sys_gain_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
-        spectrum=np.log10(system_gain) * 10,
-        name=f"{segment_local_label}",
-    )
-
-    ant_cal = proc.calibrated_temperature('antenna')
-    ant_temp_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=ant_cal,
-        name=f"{segment_local_label}",
+        spectrum=np.log10(system_gain_med) * 10,
+        name=f"{segment_local_label} (dB)",
     )
 
     logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
@@ -299,7 +301,6 @@ def run_segment(cfg, seg_indx, logger):
         "system_temp_spec": system_temp_spec,
         "system_gain_spec": system_gain_spec,
         "sys_gain_db_spec": sys_gain_spec,
-        "ant_temp_spec": ant_temp_spec,
         "segment_label": segment_local_label,
     }
 
@@ -307,10 +308,19 @@ def run_segment(cfg, seg_indx, logger):
 def main():
     args = parse_args()
     log_level = logging.INFO if args.verbose else logging.WARNING
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-    )
+    if RichHandler is not None:
+        logging.basicConfig(
+            level=log_level,
+            format="%(message)s",
+            datefmt="[%X]",
+            handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+        )
+    else:
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s | %(levelname)s | %(message)s",
+            handlers=[logging.StreamHandler(sys.stdout)],
+        )
     logger = logging.getLogger("ds_cal_wf")
 
     logger.info("Starting DS calibration workflow")
@@ -371,7 +381,6 @@ def main():
         "sys_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_temp_combined.png"),
         "sys_gain": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain_combined.png"),
         "sys_gain_db": os.path.join(cfg["output_dir"], f"{cfg['date']}_sys_gain_db_combined.png"),
-        "ant_temp": os.path.join(cfg["output_dir"], f"{cfg['date']}_ant_temp_combined.png"),
     }
 
     plot_jobs = [
@@ -422,17 +431,6 @@ def main():
                 "y_range": (20, 60),
                 "ylabel": "Gain (arb dB)",
                 "title": f"System Gain ({cfg['date']})",
-                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
-                "marker_freqs": (50, 100, 200),
-            },
-        },
-        {
-            "name": "ant_temp",
-            "spectra": [spec["ant_temp_spec"] for spec in combined_segments],
-            "kwargs": {
-                "y_range": (0, 1000),
-                "ylabel": "Temperature (K)",
-                "title": f"Antenna: {cfg['date']}",
                 "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
                 "marker_freqs": (50, 100, 200),
             },
