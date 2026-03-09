@@ -5,6 +5,7 @@ import os, logging
 import numpy as np
 from zoneinfo import ZoneInfo
 
+from highz_exp.argparse_utils import RichHelpFormatter
 from highz_exp.unit_convert import convert_utc_list_to_local
 from highz_exp.file_load import DSFileLoader
 from digital_spectrometer.io_utils import setup_logging
@@ -14,16 +15,13 @@ from digital_spectrometer.params import *
 
 MAX_PLOT_FREQ_MHZ = 300
 
-class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
-    pass
-
 def main_cli():
     parser = argparse.ArgumentParser(
         description="Waterfall Plotter for Digital Spectrometer Data",
-        formatter_class=HelpFormatter,
+                formatter_class=RichHelpFormatter,
         epilog=dedent("""
             Example Usage:
-              python ds_wf_maker.py /data/20251102/ 0 --output_dir /data/20251102/waterfalls/ --segment 4 --step_f 4
+                            python tools/ds_wf_maker.py /data/20251102/ 0 --output_dir /data/20251102/waterfalls/ --segment 4 --step_f 4
 
             This processes state index 0 for date 20251102, saves waterfall plots to the
             specified output directory, splits the day into 4 segments, downsamples frequency

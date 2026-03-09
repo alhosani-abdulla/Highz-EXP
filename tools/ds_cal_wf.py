@@ -22,14 +22,7 @@ from zoneinfo import ZoneInfo
 from tqdm.auto import tqdm
 import sys
 
-try:
-    from rich_argparse import (  # type: ignore[import-not-found]
-        ArgumentDefaultsRichHelpFormatter,
-        RawDescriptionRichHelpFormatter,
-    )
-except ImportError:
-    ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
-    RawDescriptionRichHelpFormatter = argparse.RawDescriptionHelpFormatter
+from highz_exp.argparse_utils import RichHelpFormatter
 
 try:
     from rich.logging import RichHandler  # type: ignore[import-not-found]
@@ -66,15 +59,12 @@ NOISE_DIODE_FREQ_F2_MHZ = 200
 RESISTOR_TEMP_K = 273
 
 def parse_args():
-    class HelpFormatter(ArgumentDefaultsRichHelpFormatter, RawDescriptionRichHelpFormatter):
-        pass
-
     parser = argparse.ArgumentParser(
         description=(
             "Calibrate one day of digital spectrometer data and generate summary outputs "
             "(median spectra, system temperature/gain, and antenna temperature waterfall)."
         ),
-        formatter_class=HelpFormatter,
+        formatter_class=RichHelpFormatter,
         epilog=dedent("""
             Examples:
               python tools/ds_cal_wf.py -i ~/Desktop/High-Z/Adak_2026_compressed/20260303 -o ~/Desktop/High-Z/Adak_2026_plots/0303
@@ -110,6 +100,18 @@ def parse_args():
         help="Max value for waterfall color scale (in K). Adjust based on expected antenna temperature range."
     )
     parser.add_argument(
+        "--fmin",
+        type=float,
+        default=MIN_FREQUENCY_MHZ,
+        help="Minimum frequency bound in MHz for calibration and plotting.",
+    )
+    parser.add_argument(
+        "--fmax",
+        type=float,
+        default=MAX_FREQUENCY_MHZ,
+        help="Maximum frequency bound in MHz for calibration and plotting.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -118,7 +120,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_config(input_dir, output_dir, no_segments, vmax):
+def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
     normalized_input_dir = os.path.normpath(input_dir)
     date = os.path.basename(normalized_input_dir)
     return {
@@ -127,8 +129,8 @@ def build_config(input_dir, output_dir, no_segments, vmax):
         "test_site_latitude": TEST_SITE_LATITUDE_DEG,
         "test_site_longitude": TEST_SITE_LONGITUDE_DEG,
         "test_site_elevation_meters": TEST_SITE_ELEVATION_METERS,
-        "min_f_mhz": MIN_FREQUENCY_MHZ,
-        "max_f_mhz": MAX_FREQUENCY_MHZ,
+        "min_f_mhz": fmin_mhz,
+        "max_f_mhz": fmax_mhz,
         "plot_frequency_axis_step_mhz": PLOT_FREQUENCY_AXIS_STEP_MHZ,
         "plot_time_axis_step_lst_hour": PLOT_TIME_AXIS_STEP_LST_HOUR,
         "no_segments": no_segments,
@@ -251,7 +253,7 @@ def run_segment(cfg, seg_indx, logger):
     logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
     antenna_temperature_waterfall = proc.calibrate_2d_state_power("antenna")
     waterfall_time_step = 2
-    requested_frequency_step = 2
+    requested_frequency_step = 4
 
     _, frequency_bin_count = antenna_temperature_waterfall.shape
     waterfall_frequency_step = proc.choose_frequency_downsample_step(
@@ -331,6 +333,8 @@ def main():
         output_dir=output_dir,
         no_segments=args.no_segments,
         vmax=args.vmax,
+        fmin_mhz=args.fmin,
+        fmax_mhz=args.fmax,
     )
     logger.info("Input=%s", cfg["data_folder"])
     logger.info("Output=%s", cfg["output_dir"])
@@ -343,6 +347,8 @@ def main():
 
     if cfg["no_segments"] <= 0:
         raise ValueError("--no-segments must be a positive integer")
+    if cfg["min_f_mhz"] >= cfg["max_f_mhz"]:
+        raise ValueError("--fmin must be smaller than --fmax")
     if not os.path.isdir(cfg["data_folder"]):
         raise FileNotFoundError(
             f"Data folder does not exist: {cfg['data_folder']}")
