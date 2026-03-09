@@ -19,9 +19,10 @@ highz-exp = {path = ".", editable = true}
 jupyter = "*"
 ipykernel = "*"
 rich-argparse = "*"
+pygdsm = "*"
 highz-filterbank = {editable = true, git = "ssh://git@github.com/alhosani-abdulla/highz-filterbank.git"}
 "pyproject.toml" = "*"
-pygdsm = "*"
+plotly = "*"
 
 [dev-packages]
 

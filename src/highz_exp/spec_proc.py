@@ -387,6 +387,20 @@ def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, s
         tuple: (downsampled_datetimes, downsampled_faxis, downsampled_spectra)
     """
     h_orig, w_orig = spectra.shape
+    faxis = np.asarray(faxis)
+
+    # Keep frequency axis and spectra width aligned before any reshape.
+    if faxis.size != w_orig:
+        common_w = min(w_orig, faxis.size)
+        logging.warning(
+            "Spectra width (%d) and faxis length (%d) differ; trimming both to %d.",
+            w_orig,
+            faxis.size,
+            common_w,
+        )
+        spectra = spectra[:, :common_w]
+        faxis = faxis[:common_w]
+        w_orig = common_w
     
     # Determine steps: Use manual override if provided, else auto-calculate
     st = step_t if step_t is not None else max(1, h_orig // max_pts)
@@ -407,12 +421,21 @@ def downsample_waterfall(datetimes, faxis, spectra, max_pts=2000, step_t=None, s
         datetimes = datetimes[::st][:new_h]
 
     # Process Frequency Axis (Cols)
-    h_curr, _ = spectra.shape
+    h_curr, w_curr = spectra.shape
     if sf > 1:
-        new_w = w_orig // sf
+        new_w = w_curr // sf
+        trimmed_w = new_w * sf
+        if trimmed_w == 0:
+            logging.warning(
+                "Frequency downsampling step (%d) is larger than available bins (%d); skipping frequency downsampling.",
+                sf,
+                w_curr,
+            )
+            return datetimes, faxis, spectra
+
         spectra = spectra[:, :new_w * sf]
         spectra = spectra.reshape(h_curr, new_w, sf).max(axis=2)
-        faxis = faxis.reshape(-1, sf).mean(axis=1)
+        faxis = faxis[:trimmed_w].reshape(new_w, sf).mean(axis=1)
 
     h_f, w_f = spectra.shape
     reduction = (1 - (spectra.size / (h_orig * w_orig))) * 100
