@@ -17,7 +17,6 @@ import logging
 
 from highz_exp.file_load import DSFileLoader
 
-
 @dataclass
 class SystemCalibrationProcessor:
 	"""Processing pipeline for digital spectrometer system calibration.
@@ -70,85 +69,16 @@ class SystemCalibrationProcessor:
 			height=self.site_elevation_m * u.m,
 		)
 
-	def load_states(
-		self,
-		data_folder: str | Path,
-		convert: bool = False,
-		no_segments: int = 1,
-		seg_indx: int = 0,
-		states_to_load: list[str] | None = None,
-	) -> dict[str, dict[str, Any]]:
-		"""Load all configured switch states using ``DSFileLoader``.
-
-		Returns a dictionary keyed by state name with:
-		- ``timestamps``: np.ndarray of UTC datetimes
-		- ``spectra``: np.ndarray of raw/converted spectra
-
-		Parameters
-		----------
-		convert : bool, optional
-			Whether to convert raw spectra to power units during loading. If False, loads raw spectra.
-		no_segments : int, optional
-			Number of segments to split the day folder into.
-		seg_indx : int, optional
-			Zero-based index of the segment to load.
-		states_to_load : list[str] | None, optional
-			Subset of state names to load. If None, loads all states in ``state_list``.
-		"""
-		if no_segments < 1:
-			raise ValueError("no_segments must be >= 1.")
-		if not (0 <= seg_indx < no_segments):
-			raise ValueError(f"seg_indx must satisfy 0 <= seg_indx < no_segments ({no_segments}).")
-		if states_to_load is not None:
-			unknown = sorted(set(states_to_load) - set(self.state_list))
-			if unknown:
-				raise ValueError(f"Unknown states requested: {unknown}")
-			state_filter = set(states_to_load)
-		else:
-			state_filter = set(self.state_list)
-
-		data_folder = Path(data_folder)
-		date = data_folder.name
-		if not date or not date.isdigit() or len(date) != 8:
-			raise ValueError(
-				f"Unable to infer date from input directory '{data_folder}'. "
-				"Expected a day folder named YYYYMMDD (e.g., /path/to/20260303)."
-			)
-
-		time_dirs = DSFileLoader.get_sorted_time_dirs(str(data_folder))
-		if len(time_dirs) == 0:
-			raise ValueError(f"No time folders found under: {data_folder}")
-
-		segmented_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
-		if len(segmented_time_dirs) == 0:
-			raise ValueError(
-				f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
-			)
-
-		loaded: dict[str, dict[str, Any]] = {}
-		for state_no, name in enumerate(self.state_list):
-			if name not in state_filter:
-				continue
-			state_loaded = DSFileLoader.load_and_add_timestamps(
-				date,
-				list(segmented_time_dirs),
-				state_no,
-			)
-			timestamps, spectra, cycles = DSFileLoader.read_loaded(
-				state_loaded,
-				sort="ascending",
-				convert=convert,
-			)
-			loaded[name] = {"timestamps": timestamps, "spectra": spectra, "cycles": cycles}
-		self.raw_states = loaded
-		return loaded
-
 	def prepare_state_medians(self) -> np.ndarray:
 		"""Prepare frequency axis, slice states, and compute per-state medians."""
 		frequencies_mhz = self.prepare_frequency_axis()
 		self.slice_state_frequency_range()
 		self.compute_state_medians()
 		return frequencies_mhz
+
+	def load_states() -> dict[str, dict[str, Any]]:
+		"""Placeholder for state loading logic. To be implemented in subclass."""
+		raise NotImplementedError("load_states() must be implemented in a subclass.")
 
 	def load_resistor_median_for_segment(
 		self,
@@ -585,3 +515,81 @@ class SystemCalibrationProcessor:
 
 		return simulated
 
+@dataclass
+class DSCalibrationProcessor(
+	SystemCalibrationProcessor
+):
+	"""Extended processor for digital spectrometer calibration with DS-specific loading."""
+
+	def load_states(
+		self,
+		data_folder: str | Path,
+		convert: bool = False,
+		no_segments: int = 1,
+		seg_indx: int = 0,
+		states_to_load: list[str] | None = None,
+	) -> dict[str, dict[str, Any]]:
+		"""Load all configured switch states using ``DSFileLoader``.
+
+		Returns a dictionary keyed by state name with:
+		- ``timestamps``: np.ndarray of UTC datetimes
+		- ``spectra``: np.ndarray of raw/converted spectra
+
+		Parameters
+		----------
+		convert : bool, optional
+			Whether to convert raw spectra to power units during loading. If False, loads raw spectra.
+		no_segments : int, optional
+			Number of segments to split the day folder into.
+		seg_indx : int, optional
+			Zero-based index of the segment to load.
+		states_to_load : list[str] | None, optional
+			Subset of state names to load. If None, loads all states in ``state_list``.
+		"""
+		if no_segments < 1:
+			raise ValueError("no_segments must be >= 1.")
+		if not (0 <= seg_indx < no_segments):
+			raise ValueError(f"seg_indx must satisfy 0 <= seg_indx < no_segments ({no_segments}).")
+		if states_to_load is not None:
+			unknown = sorted(set(states_to_load) - set(self.state_list))
+			if unknown:
+				raise ValueError(f"Unknown states requested: {unknown}")
+			state_filter = set(states_to_load)
+		else:
+			state_filter = set(self.state_list)
+
+		data_folder = Path(data_folder)
+		date = data_folder.name
+		if not date or not date.isdigit() or len(date) != 8:
+			raise ValueError(
+				f"Unable to infer date from input directory '{data_folder}'. "
+				"Expected a day folder named YYYYMMDD (e.g., /path/to/20260303)."
+			)
+
+		time_dirs = DSFileLoader.get_sorted_time_dirs(str(data_folder))
+		if len(time_dirs) == 0:
+			raise ValueError(f"No time folders found under: {data_folder}")
+
+		segmented_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
+		if len(segmented_time_dirs) == 0:
+			raise ValueError(
+				f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
+			)
+
+		loaded: dict[str, dict[str, Any]] = {}
+		for state_no, name in enumerate(self.state_list):
+			if name not in state_filter:
+				continue
+			state_loaded = DSFileLoader.load_and_add_timestamps(
+				date,
+				list(segmented_time_dirs),
+				state_no,
+			)
+			timestamps, spectra, cycles = DSFileLoader.read_loaded(
+				state_loaded,
+				sort="ascending",
+				convert=convert,
+			)
+			loaded[name] = {"timestamps": timestamps, "spectra": spectra, "cycles": cycles}
+		self.raw_states = loaded
+		return loaded

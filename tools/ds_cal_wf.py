@@ -31,7 +31,7 @@ except ImportError:
     RawDescriptionRichHelpFormatter = argparse.RawDescriptionHelpFormatter
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
-from digital_spectrometer.sys_cal import SystemCalibrationProcessor
+from highz_exp.sys_cal import DSCalibrationProcessor
 from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
@@ -144,7 +144,7 @@ def run_segment(cfg, seg_indx, logger):
     logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
 
     logger.info("[seg %d] initializing calibration processor", seg_indx)
-    proc = SystemCalibrationProcessor(
+    proc = DSCalibrationProcessor(
         num_frequency_samples=cfg["num_frequency_samples"],
         frequency_bin_size_mhz=cfg["frequency_bin_size_mhz"],
         min_frequency_mhz=cfg["min_f_mhz"],
