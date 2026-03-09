@@ -20,6 +20,8 @@ jupyter = "*"
 ipykernel = "*"
 rich-argparse = "*"
 highz-filterbank = {editable = true, git = "ssh://git@github.com/alhosani-abdulla/highz-filterbank.git"}
+"pyproject.toml" = "*"
+pygdsm = "*"
 
 [dev-packages]
 
