@@ -136,10 +136,32 @@ class SystemCalibrationProcessor:
 	def prepare_frequency_axis(self) -> np.ndarray:
 		"""Create full frequency axis and selected analysis range."""
 		self.total_frequencies_mhz = np.arange(self.num_frequency_samples) * self.frequency_bin_size_mhz
-		self.frequency_idx_range = np.where(
+		frequency_idx_range = np.where(
 			(self.total_frequencies_mhz >= self.min_frequency_mhz)
 			& (self.total_frequencies_mhz <= self.max_frequency_mhz)
 		)[0]
+
+		if len(frequency_idx_range) == 0:
+			raise ValueError(
+				"No frequency bins found in selected range "
+				f"[{self.min_frequency_mhz}, {self.max_frequency_mhz}] MHz."
+			)
+
+		# Ensure an even number of points for downstream processing assumptions.
+		if len(frequency_idx_range) % 2 != 0:
+			if len(frequency_idx_range) == 1:
+				raise ValueError(
+					"Selected frequency range contains only one bin; cannot enforce an even bin count."
+				)
+			dropped_idx = frequency_idx_range[-1]
+			logging.info(
+				"Selected frequency bin count is odd (%d). Dropping highest bin %.6f MHz to make it even.",
+				len(frequency_idx_range),
+				self.total_frequencies_mhz[dropped_idx],
+			)
+			frequency_idx_range = frequency_idx_range[:-1]
+
+		self.frequency_idx_range = frequency_idx_range
 		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
 		return self.frequencies_mhz
 
