@@ -35,6 +35,7 @@ from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
 from highz_exp.unit_convert import convert_utc_list_to_local
+from CAL_VARS import nd01_temperature_k, nd02_temperature_k
 
 # ===== Editable macros =====
 NUM_FREQUENCY_SAMPLES = 16384
@@ -134,10 +135,7 @@ def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
         "plot_frequency_axis_step_mhz": PLOT_FREQUENCY_AXIS_STEP_MHZ,
         "plot_time_axis_step_lst_hour": PLOT_TIME_AXIS_STEP_LST_HOUR,
         "no_segments": no_segments,
-        "noise_diode_temp_f1_k": NOISE_DIODE_TEMP_F1_K,
-        "noise_diode_temp_f2_k": NOISE_DIODE_TEMP_F2_K,
-        "noise_diode_freq_f1_mhz": NOISE_DIODE_FREQ_F1_MHZ,
-        "noise_diode_freq_f2_mhz": NOISE_DIODE_FREQ_F2_MHZ,
+        "noise_diode_temp_func": nd01_temperature_k,
         "resistor_temp_k": RESISTOR_TEMP_K,
         "date": date,
         "data_folder": normalized_input_dir,
@@ -145,46 +143,15 @@ def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
         "vmax": vmax,
     }
 
-
-def run_segment(cfg, seg_indx, logger):
-    segment_output_dir = os.path.join(cfg["output_dir"], f"seg_{seg_indx}")
-    os.makedirs(segment_output_dir, exist_ok=True)
-    logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
-
-    logger.info("[seg %d] initializing calibration processor", seg_indx)
-    proc = DSCalibrationProcessor(
-        num_frequency_samples=cfg["num_frequency_samples"],
-        frequency_bin_size_mhz=cfg["frequency_bin_size_mhz"],
-        min_frequency_mhz=cfg["min_f_mhz"],
-        max_frequency_mhz=cfg["max_f_mhz"],
-        site_latitude_deg=cfg["test_site_latitude"],
-        site_longitude_deg=cfg["test_site_longitude"],
-        site_elevation_m=cfg["test_site_elevation_meters"],
-    )
-
-    states_to_load = ["antenna", "noise_diode", "resistor"]
-    logger.info("[seg %d] loading states=%s", seg_indx, states_to_load)
-    proc.load_states(
-        cfg["data_folder"], convert=False,
-        no_segments=cfg["no_segments"], seg_indx=seg_indx, states_to_load=states_to_load
-    )
-    loaded_state_counts = {
-        name: len(proc.raw_states[name]["timestamps"])
-        for name in proc.raw_states
-    }
-    logger.info("[seg %d] Loaded spectra counts by state: %s", seg_indx, loaded_state_counts)
-
+def calibrate_and_plot_loaded(cfg, seg_indx, logger, proc, segment_output_dir):
+    """Run calibration and generate all per-segment plots using a preloaded processor."""
     logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
     frequencies_mhz = proc.prepare_state_medians()
     logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
 
     logger.info("[seg %d] computing system gain/temp from cycles", seg_indx)
-    proc.calibrate_system_from_cycles(
-        noise_diode_temp_f1_k=cfg["noise_diode_temp_f1_k"],
-        noise_diode_temp_f2_k=cfg["noise_diode_temp_f2_k"],
-        noise_diode_freq_f1_mhz=cfg["noise_diode_freq_f1_mhz"],
-        noise_diode_freq_f2_mhz=cfg["noise_diode_freq_f2_mhz"],
-        resistor_temp_k=cfg["resistor_temp_k"],
+    proc.calibrate_system_from_cycles(resistor_temp_k=cfg["resistor_temp_k"],
+        noise_diode_temp_func=cfg['noise_diode_temp_func'],
     )
     if proc.system_gain is None or proc.system_temp is None:
         raise RuntimeError("Cycle calibration did not produce system gain/temperature.")
@@ -277,16 +244,12 @@ def run_segment(cfg, seg_indx, logger):
     )
 
     ant_temp_waterfall_path = os.path.join(segment_output_dir, f"{cfg['date']}_ant_cal_temp.html")
-    plot_waterfall_heatmap_plotly(
-        datetimes=list(downsampled_datetimes),
+    plot_waterfall_heatmap_plotly(datetimes=list(downsampled_datetimes),
         spectra=downsampled_spectra,
         faxis_mhz=downsampled_frequencies_mhz,
         title=f"Antenna Calibrated Temperature",
-        unit='K',
-        output_path=ant_temp_waterfall_path,
-        vmin=10,
-        vmax=cfg["vmax"],
-        step=50,
+        unit='K', output_path=ant_temp_waterfall_path,
+        vmin=10, vmax=cfg["vmax"], step=50
     )
 
     logger.info("[seg %d] saved waterfall=%s", seg_indx, ant_temp_waterfall_path)
@@ -305,6 +268,46 @@ def run_segment(cfg, seg_indx, logger):
         "sys_gain_db_spec": sys_gain_spec,
         "segment_label": segment_local_label,
     }
+
+
+def run_segment(cfg, seg_indx, logger):
+    segment_output_dir = os.path.join(cfg["output_dir"], f"seg_{seg_indx}")
+    os.makedirs(segment_output_dir, exist_ok=True)
+    logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
+
+    logger.info("[seg %d] initializing calibration processor", seg_indx)
+    proc = DSCalibrationProcessor(
+        num_frequency_samples=cfg["num_frequency_samples"],
+        frequency_bin_size_mhz=cfg["frequency_bin_size_mhz"],
+        min_frequency_mhz=cfg["min_f_mhz"],
+        max_frequency_mhz=cfg["max_f_mhz"],
+        site_latitude_deg=cfg["test_site_latitude"],
+        site_longitude_deg=cfg["test_site_longitude"],
+        site_elevation_m=cfg["test_site_elevation_meters"],
+    )
+
+    states_to_load = ["antenna", "noise_diode", "resistor"]
+    logger.info("[seg %d] loading states=%s", seg_indx, states_to_load)
+    proc.load_states(
+        cfg["data_folder"],
+        convert=False,
+        no_segments=cfg["no_segments"],
+        seg_indx=seg_indx,
+        states_to_load=states_to_load,
+    )
+    loaded_state_counts = {
+        name: len(proc.raw_states[name]["timestamps"])
+        for name in proc.raw_states
+    }
+    logger.info("[seg %d] Loaded spectra counts by state: %s", seg_indx, loaded_state_counts)
+
+    return calibrate_and_plot_loaded(
+        cfg=cfg,
+        seg_indx=seg_indx,
+        logger=logger,
+        proc=proc,
+        segment_output_dir=segment_output_dir,
+    )
 
 
 def main():

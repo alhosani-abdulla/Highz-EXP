@@ -15,11 +15,18 @@ from astropy.io import fits
 from highz_exp.sys_cal import SystemCalibrationProcessor
 from highz_filterbank import io_utils
 from highz_exp.argparse_utils import RichHelpFormatter
+from highz_exp import plotter
+from CAL_VARS import nd01_temperature_k
+from ds_cal_wf import calibrate_and_plot_loaded
 
 try:
     from rich.logging import RichHandler  # type: ignore[import-not-found]
 except ImportError:
     RichHandler = None
+
+
+RESISTOR_TEMP_K = 273
+
 
 class FBCalibrationProcessor(SystemCalibrationProcessor):
     """Filterbank calibration loader for consolidated cycle/state FITS data.
@@ -85,67 +92,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
                 ]
 
             return timestamps, len(table)
-
-    def _iter_prepared_state_rows(
-            self,
-            cycle_dirs: np.ndarray,
-            state_filter: set[str],
-            filter_exclusions_str: str | None,
-        ):
-        """Yield prepared spectrum rows from cycle/state FITS files.
-
-        This intermediate handles directory traversal, state-file discovery,
-        prepared-data loading/unpacking, and timestamp assignment.
-        """
-        for state_no, state_name in enumerate(self.state_list):
-            if state_name not in state_filter:
-                continue
-
-            for cycle_dir_obj in cycle_dirs:
-                cycle_dir = Path(cycle_dir_obj)
-                state_path: Path | None = None
-
-                for candidate in self._state_name_to_file_candidates(state_name, state_no):
-                    candidate_path = cycle_dir / candidate
-                    if candidate_path.exists():
-                        state_path = candidate_path
-                        break
-
-                if state_path is None:
-                    continue
-
-                timestamps, n_spectra = self._state_file_timestamps_and_count(state_path)
-                if n_spectra == 0:
-                    continue
-
-                for spectrum_idx in range(n_spectra):
-                    prepared = io_utils.load_prepared_spectrum_data(
-                        state_file=str(state_path),
-                        spectrum_idx=spectrum_idx,
-                        cycle_dir=str(cycle_dir),
-                        filter_exclusions_str=filter_exclusions_str,
-                    )
-
-                    frequencies = np.asarray(prepared["frequencies"], dtype=float)
-                    powers = np.asarray(prepared["powers"], dtype=float).ravel()
-                    time_display = prepared["time_display"]
-
-                    if self.total_frequencies_mhz is None:
-                        self.total_frequencies_mhz = frequencies
-
-                    if spectrum_idx < len(timestamps):
-                        timestamp = timestamps[spectrum_idx]
-                    else:
-                        timestamp = self._parse_timestamp(time_display)
-
-                    yield {
-                        "state_name": state_name,
-                        "timestamp": timestamp,
-                        "frequencies": frequencies,
-                        "spectrum": powers,
-                        "cycle": cycle_dir.name,
-                    }
-
+        
     def prepare_frequency_axis(self) -> np.ndarray:
         """Create filterbank frequency axis from loaded/prepared frequencies."""
         if self.total_frequencies_mhz is None:
@@ -165,33 +112,15 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
                 f"[{self.min_frequency_mhz}, {self.max_frequency_mhz}] MHz."
             )
 
-        # Keep bin count even to match downstream assumptions used in calibration/plotting.
-        if len(frequency_idx_range) % 2 != 0:
-            if len(frequency_idx_range) == 1:
-                raise ValueError(
-                    "Selected frequency range contains only one bin; "
-                    "cannot enforce an even bin count."
-                )
-            dropped_idx = frequency_idx_range[-1]
-            logging.info(
-                "Selected frequency bin count is odd (%d). Dropping highest bin %.6f MHz to make it even.",
-                len(frequency_idx_range),
-                self.total_frequencies_mhz[dropped_idx],
-            )
-            frequency_idx_range = frequency_idx_range[:-1]
-
         self.frequency_idx_range = frequency_idx_range
         self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
         return self.frequencies_mhz
 
     def load_states(
-            self,
-            data_folder: str | Path,
-            no_segments: int = 1,
-            seg_indx: int = 0,
-            states_to_load: list[str] | None = None,
-            filter_exclusions_str: str | None = None,
-        ) -> dict[str, dict[str, Any]]:
+        self,
+        data_folder: str | Path,
+        states_to_load: list[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Load filterbank raw states from cycle/state FITS files and apply calibrations.
 
         Returns a dictionary keyed by state name with:
@@ -199,11 +128,16 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
         - ``spectra``: np.ndarray[float] with shape ``(n_spectra, n_bins)``
         - ``cycles``: np.ndarray[str] cycle folder labels
         """
-        if no_segments < 1:
-            raise ValueError("no_segments must be >= 1.")
-        if not (0 <= seg_indx < no_segments):
+        data_folder = Path(data_folder)
+        date = data_folder.name
+        if not date or not date.isdigit() or len(date) != 8:
             raise ValueError(
-                f"seg_indx must satisfy 0 <= seg_indx < no_segments ({no_segments}).")
+                f"Unable to infer date from input directory '{data_folder}'. "
+                "Expected a day folder named MMDDYYYY (e.g., /path/to/03082026)."
+            )
+        if not data_folder.exists():
+            raise FileNotFoundError(
+                f"Data folder does not exist: {data_folder}")
 
         if states_to_load is not None:
             unknown = sorted(set(states_to_load) - set(self.state_list))
@@ -213,104 +147,21 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
         else:
             state_filter = set(self.state_list)
 
-        data_folder = Path(data_folder)
-        if not data_folder.exists():
-            raise FileNotFoundError(
-                f"Data folder does not exist: {data_folder}")
-
-        # Accept both legacy "cycle_*" and current "Cycle_*" naming.
-        cycle_dirs = sorted(
-            [
-                d
-                for d in data_folder.iterdir()
-                if d.is_dir() and d.name.lower().startswith("cycle_")
-            ]
-        )
-
-        if len(cycle_dirs) == 0:
-            raise ValueError(
-                f"No cycle directories found under: {data_folder}")
-
-        segmented_cycle_dirs = np.array_split(
-            np.array(cycle_dirs, dtype=object), no_segments)[seg_indx]
-        if len(segmented_cycle_dirs) == 0:
-            raise ValueError(
-                f"Selected segment {seg_indx} is empty for no_segments={no_segments}.")
-
-        grouped_rows: dict[str, dict[str, list[Any]]] = {
-            state_name: {"timestamps": [], "spectra": [], "cycles": []}
-            for state_name in state_filter
-        }
-        frequency_rows: list[np.ndarray] = []
-
-        # Avoid stale frequency-axis state when load_states() is called repeatedly.
-        self.total_frequencies_mhz = None
-        self.total_frequencies_2d_mhz: np.ndarray | None = None
-
-        for row in self._iter_prepared_state_rows(
-            cycle_dirs=segmented_cycle_dirs,
-            state_filter=state_filter,
-            filter_exclusions_str=filter_exclusions_str,
-        ):
-            state_name = row["state_name"]
-            grouped_rows[state_name]["timestamps"].append(row["timestamp"])
-            grouped_rows[state_name]["spectra"].append(row["spectrum"])
-            grouped_rows[state_name]["cycles"].append(row["cycle"])
-            frequency_rows.append(np.asarray(row["frequencies"], dtype=float).ravel())
-
-        if len(frequency_rows) > 0:
-            first_bin_count = frequency_rows[0].shape[0]
-            for row_idx, freq_row in enumerate(frequency_rows[1:], start=1):
-                if freq_row.shape[0] != first_bin_count:
-                    raise ValueError(
-                        "Inconsistent frequency-axis length detected across prepared spectra: "
-                        f"row 0 has {first_bin_count} bins but row {row_idx} has {freq_row.shape[0]} bins."
-                    )
-
-            frequency_2d = np.vstack(frequency_rows)
-            self.total_frequencies_2d_mhz = frequency_2d
-            self.total_frequencies_mhz = frequency_2d[0]
-
-            if not np.allclose(frequency_2d, self.total_frequencies_mhz[None, :], rtol=1e-10, atol=1e-12):
-                mismatch_idx = np.argwhere(
-                    ~np.isclose(
-                        frequency_2d,
-                        self.total_frequencies_mhz[None, :],
-                        rtol=1e-10,
-                        atol=1e-12,
-                    )
-                )[0]
-                bad_row = int(mismatch_idx[0])
-                bad_col = int(mismatch_idx[1])
-                raise ValueError(
-                    "Prepared spectra do not share an identical frequency axis. "
-                    f"First mismatch at row {bad_row}, bin {bad_col}: "
-                    f"{frequency_2d[bad_row, bad_col]:.9f} MHz != "
-                    f"{self.total_frequencies_mhz[bad_col]:.9f} MHz."
-                )
-
+        loaded = {}
         loaded: dict[str, dict[str, Any]] = {}
-        for state_name in self.state_list:
-            if state_name not in grouped_rows:
+        
+        fl = io_utils.FBFileLoader(data_folder)
+        for state_no, name in enumerate(self.state_list):
+            if name not in state_filter:
                 continue
+            timestamps, frequency, spectra, cycles = fl.load(state_no=state_no)
 
-            state_rows = grouped_rows[state_name]
-            if len(state_rows["timestamps"]) == 0:
-                continue
-
-            timestamps_arr = np.array(state_rows["timestamps"], dtype=object)
-            spectra_arr = np.asarray(state_rows["spectra"])
-            cycles_arr = np.array(state_rows["cycles"])
-
-            sort_idx = np.argsort(timestamps_arr)
-            loaded[state_name] = {
-                "timestamps": timestamps_arr[sort_idx],
-                "spectra": spectra_arr[sort_idx],
-                "cycles": cycles_arr[sort_idx],
-            }
-
+            loaded[name] = {"timestamps": timestamps, "frequencies": frequency,
+                            "spectra": spectra, "cycles": cycles}
         self.raw_states = loaded
+        self.total_frequencies_mhz = frequency
         return loaded
+
 
 def _parse_cli_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -321,7 +172,7 @@ def _parse_cli_args() -> argparse.Namespace:
         formatter_class=RichHelpFormatter,
         epilog=dedent("""
             Example:
-              python tools/fb_cal_wf.py -i /data/filterbank/20260303_cycle
+                            python tools/fb_cal_wf.py -i /data/filterbank/20260303_cycle -o /plots/20260303
 
             Notes:
               - Input directory should contain cycle folders (cycle_* or Cycle_*).
@@ -333,26 +184,21 @@ def _parse_cli_args() -> argparse.Namespace:
         help="Path to the consolidated filterbank folder containing cycle_* directories.",
     )
     parser.add_argument(
-        "-n", "--no-segments", type=int, default=1, 
-        help="Number of equal cycle segments to split before loading.",
+        "-o", "--output-dir", required=True,
+        help="Output directory for generated plots.",
     )
-    parser.add_argument("--seg-indx",
-        type=int, default=0, help="Zero-based segment index to load.",
-    )
-    parser.add_argument("--states",
-        default=None, help="Optional comma-separated subset of states (e.g., antenna,resistor,noise_diode).",
+
+    parser.add_argument(
+        "--fmin",type=float,
+        default=25.0, help="Minimum analysis frequency in MHz.",
+    ) 
+    parser.add_argument(
+        "--fmax", type=float,
+        default=170.0,help="Maximum analysis frequency in MHz.",
     )
     parser.add_argument(
-        "--fmin",
-        type=float,
-        default=25.0,
-        help="Minimum analysis frequency in MHz.",
-    )
-    parser.add_argument(
-        "--fmax",
-        type=float,
-        default=170.0,
-        help="Maximum analysis frequency in MHz.",
+        "--vmax", type=float,
+        default=1000.0, help="Maximum value for waterfall color scale in Kelvin.",
     )
     parser.add_argument(
         "-v",
@@ -361,6 +207,27 @@ def _parse_cli_args() -> argparse.Namespace:
         help="Enable verbose logging (INFO).",
     )
     return parser.parse_args()
+
+
+def build_config(
+    input_dir: str,
+    output_dir: str,
+    fmin_mhz: float,
+    fmax_mhz: float,
+    vmax: float,
+):
+    normalized_input_dir = os.path.normpath(input_dir)
+    date = os.path.basename(normalized_input_dir)
+    return {
+        "min_f_mhz": fmin_mhz,
+        "max_f_mhz": fmax_mhz,
+        "date": date,
+        "data_folder": normalized_input_dir,
+        "output_dir": output_dir,
+        "vmax": vmax,
+        "noise_diode_temp_func": nd01_temperature_k,
+        "resistor_temp_k": RESISTOR_TEMP_K,
+    }
 
 
 def main_cli() -> None:
@@ -383,50 +250,94 @@ def main_cli() -> None:
     logger = logging.getLogger("fb_cal_wf")
 
     input_dir = os.path.expanduser(args.input_dir)
+    output_dir = os.path.expanduser(args.output_dir)
     if not os.path.isdir(input_dir):
         raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
-    if args.no_segments < 1:
-        raise ValueError("--no-segments must be >= 1")
-    if not (0 <= args.seg_indx < args.no_segments):
-        raise ValueError("--seg-indx must satisfy 0 <= seg-indx < no-segments")
     if args.fmin >= args.fmax:
         raise ValueError("--fmin must be smaller than --fmax")
+    if args.vmax <= 0:
+        raise ValueError("--vmax must be positive")
 
+    os.makedirs(output_dir, exist_ok=True)
 
-    states_to_load = None
-    if args.states:
-        states_to_load = [s.strip() for s in args.states.split(",") if s.strip()]
-
-    proc = FBCalibrationProcessor(
-        min_frequency_mhz=args.fmin,
-        max_frequency_mhz=args.fmax,
+    cfg = build_config(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        fmin_mhz=args.fmin,
+        fmax_mhz=args.fmax,
+        vmax=args.vmax,
     )
+
+    states_to_load = ["antenna", "noise_diode", "resistor"]
+
+    proc = FBCalibrationProcessor(min_frequency_mhz=args.fmin, max_frequency_mhz=args.fmax)
 
     logger.info("Loading states from: %s", input_dir)
     proc.load_states(
         data_folder=input_dir,
-        no_segments=args.no_segments,
-        seg_indx=args.seg_indx,
         states_to_load=states_to_load,
     )
-    selected_freqs = proc.prepare_frequency_axis()
 
-    print(f"Loaded {len(proc.raw_states)} state(s) from {input_dir}")
-    for state_name in proc.state_list:
-        state_data = proc.raw_states.get(state_name)
-        if state_data is None:
-            continue
-        print(
-            f"- {state_name}: n_spectra={len(state_data['timestamps'])}, "
-            f"spectra_shape={state_data['spectra'].shape}"
-        )
-
-    if proc.total_frequencies_2d_mhz is not None:
-        print(f"Frequencies 2D shape: {proc.total_frequencies_2d_mhz.shape}")
-    print(
-        f"Selected frequency bins: {len(selected_freqs)} "
-        f"(range {selected_freqs[0]:.3f}-{selected_freqs[-1]:.3f} MHz)"
+    segment_result = calibrate_and_plot_loaded(
+        cfg=cfg,
+        seg_indx=0,
+        logger=logger,
+        proc=proc,
+        segment_output_dir=output_dir,
     )
+
+    # Plot selected spectra returned from calibration helper.
+    spectra_plot_paths = {
+        "cal_median": os.path.join(output_dir, f"{cfg['date']}_fb_cal_median.png"),
+        "sys_temp": os.path.join(output_dir, f"{cfg['date']}_fb_sys_temp.png"),
+        "sys_gain": os.path.join(output_dir, f"{cfg['date']}_fb_sys_gain.png"),
+    }
+    plot_jobs = [
+        {
+            "name": "cal_median",
+            "spectra": [
+                segment_result["resistor_median_spec"],
+                segment_result["noise_diode_median_spec"],
+                segment_result["antenna_median_spec"],
+            ],
+            "kwargs": {
+                "ylabel": "Raw Power (arb.)",
+                "title": f"Median Spectra ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+            },
+        },
+        {
+            "name": "sys_temp",
+            "spectra": [segment_result["system_temp_spec"]],
+            "kwargs": {
+                "ylabel": "Temperature (K)",
+                "title": f"System Temperature ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+        {
+            "name": "sys_gain",
+            "spectra": [segment_result["system_gain_spec"], segment_result["sys_gain_db_spec"]],
+            "kwargs": {
+                "ylabel": "Gain (arb. / dB)",
+                "title": f"System Gain ({cfg['date']})",
+                "freq_range": (cfg["min_f_mhz"], cfg["max_f_mhz"]),
+                "marker_freqs": (50, 100, 200),
+            },
+        },
+    ]
+
+    for job in plot_jobs:
+        save_path = spectra_plot_paths[job["name"]]
+        plotter.plot_spectra(
+            job["spectra"],
+            save_path=save_path,
+            show_plot=False,
+            **job["kwargs"],
+        )
+        logger.info("Saved FB spectra plot [%s]: %s", job["name"], save_path)
+ 
 
 if __name__ == "__main__":
     main_cli()

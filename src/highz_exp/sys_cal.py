@@ -220,21 +220,14 @@ class SystemCalibrationProcessor:
 
 	def _noise_diode_temperature_profile(
 		self,
-		noise_diode_temp_f1_k: float,
-		noise_diode_temp_f2_k: float,
-		noise_diode_freq_f1_mhz: float,
-		noise_diode_freq_f2_mhz: float,
+		temp_func,
 	) -> np.ndarray:
-		"""Return linear noise-diode temperature profile over current frequencies."""
+		"""Set noise diode temperature profile"""
 		if self.frequencies_mhz is None:
 			self.prepare_frequency_axis()
-		if noise_diode_freq_f1_mhz == noise_diode_freq_f2_mhz:
-			raise ValueError("noise_diode_freq_f1_mhz and noise_diode_freq_f2_mhz must be different.")
-
-		return noise_diode_temp_f1_k + (
-			(noise_diode_temp_f2_k - noise_diode_temp_f1_k)
-			/ (noise_diode_freq_f2_mhz - noise_diode_freq_f1_mhz)
-		) * (self.frequencies_mhz - noise_diode_freq_f1_mhz)
+		
+		self.nd_temp = temp_func(self.frequencies_mhz)
+		return self.nd_temp
 
 	def compute_state_medians_by_cycle(self) -> dict[str, list[np.ndarray]]:
 		"""Compute median spectrum for each state separately for each cycle."""
@@ -288,12 +281,7 @@ class SystemCalibrationProcessor:
 		self.system_temp_med = resistor / self.system_gain_med - resistor_temp_k
 		return self.system_gain_med, self.system_temp_med
 
-	def calibrate_system_from_cycles(
-		self,
-		noise_diode_temp_f1_k: float = 2086.0,
-		noise_diode_temp_f2_k: float = 2002.0,
-		noise_diode_freq_f1_mhz: float = 50.0,
-		noise_diode_freq_f2_mhz: float = 200.0,
+	def calibrate_system_from_cycles(self, noise_diode_temp_func,
 		resistor_temp_k: float = 275.0,
 	) -> dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]]:
 		"""Compute per-cycle calibration tuples and aggregate gain/temperature.
@@ -303,17 +291,14 @@ class SystemCalibrationProcessor:
 		noise-diode and resistor cycles and stores them as 2D arrays with shape
 		``(n_cycle, n_frequency)`` into ``self.system_gain`` and
 		``self.system_temp``.
+		 - noise_diode_temp_func: A function that takes frequencies_mhz and returns the noise diode temperature profile in Kelvin.
+		 - resistor_temp_k: The physical temperature of the resistor load in Kelvin.
 		"""
 		if self.frequencies_mhz is None:
 			self.prepare_frequency_axis()
 		if not self.state_power:
 			self.slice_state_frequency_range()
-		nd_temp_profile = self._noise_diode_temperature_profile(
-			noise_diode_temp_f1_k=noise_diode_temp_f1_k,
-			noise_diode_temp_f2_k=noise_diode_temp_f2_k,
-			noise_diode_freq_f1_mhz=noise_diode_freq_f1_mhz,
-			noise_diode_freq_f2_mhz=noise_diode_freq_f2_mhz,
-		)
+		nd_temp_profile = self._noise_diode_temperature_profile(noise_diode_temp_func)
 
 		cycle_calibrations: dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]] = {}
 		for name, _, cycle_median in self._iter_state_cycle_medians():
