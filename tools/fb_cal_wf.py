@@ -194,11 +194,11 @@ def _parse_cli_args() -> argparse.Namespace:
     ) 
     parser.add_argument(
         "--fmax", type=float,
-        default=170.0,help="Maximum analysis frequency in MHz.",
+        default=170, help="Maximum analysis frequency in MHz.",
     )
     parser.add_argument(
-        "--vmax", type=float,
-        default=1000.0, help="Maximum value for waterfall color scale in Kelvin.",
+        "--vmax", type=int,
+        default=1000, help="Maximum value for waterfall color scale in Kelvin.",
     )
     parser.add_argument(
         "-v",
@@ -279,11 +279,10 @@ def main_cli() -> None:
     )
 
     segment_result = calibrate_and_plot_loaded(
-        cfg=cfg,
-        seg_indx=0,
-        logger=logger,
-        proc=proc,
+        cfg=cfg, seg_indx=0,
+        logger=logger, proc=proc,
         segment_output_dir=output_dir,
+        t_downsample=1, f_downsample=1
     )
 
     # Plot selected spectra returned from calibration helper.
