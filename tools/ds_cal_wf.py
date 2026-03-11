@@ -143,7 +143,8 @@ def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
         "vmax": vmax,
     }
 
-def calibrate_and_plot_loaded(cfg, seg_indx, logger, proc, segment_output_dir):
+def calibrate_and_plot_loaded(cfg, seg_indx, logger, 
+    proc, segment_output_dir, t_downsample=2, f_downsample=4):
     """Run calibration and generate all per-segment plots using a preloaded processor."""
     logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
     frequencies_mhz = proc.prepare_state_medians()
@@ -219,29 +220,30 @@ def calibrate_and_plot_loaded(cfg, seg_indx, logger, proc, segment_output_dir):
 
     logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
     antenna_temperature_waterfall = proc.calibrate_2d_state_power("antenna")
-    waterfall_time_step = 2
-    requested_frequency_step = 4
+    
+    if t_downsample != 1 and f_downsample != 1:
+        _, frequency_bin_count = antenna_temperature_waterfall.shape
+        waterfall_frequency_step = proc.choose_frequency_downsample_step(
+            frequency_bin_count=frequency_bin_count,
+            requested_step=f_downsample,
+        )
+        logger.info(
+            "Waterfall downsample factors selected: step_t=%d, step_f=%d",
+            t_downsample, f_downsample)
 
-    _, frequency_bin_count = antenna_temperature_waterfall.shape
-    waterfall_frequency_step = proc.choose_frequency_downsample_step(
-        frequency_bin_count=frequency_bin_count,
-        requested_step=requested_frequency_step,
-    )
-    logger.info(
-        "Waterfall downsample factors selected: step_t=%d, step_f=%d",
-        waterfall_time_step,
-        waterfall_frequency_step,
-    )
+        logger.info("[seg %d] local time span: %s -> %s", seg_indx, antenna_local_timestamps[0], antenna_local_timestamps[-1])
 
-    logger.info("[seg %d] local time span: %s -> %s", seg_indx, antenna_local_timestamps[0], antenna_local_timestamps[-1])
-
-    downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
-        datetimes=np.array(antenna_local_timestamps),
-        faxis=np.array(frequencies_mhz),
-        spectra=antenna_temperature_waterfall,
-        step_t=waterfall_time_step,
-        step_f=waterfall_frequency_step,
-    )
+        downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
+            datetimes=np.array(antenna_local_timestamps),
+            faxis=np.array(frequencies_mhz),
+            spectra=antenna_temperature_waterfall,
+            step_t=t_downsample, step_f=waterfall_frequency_step,
+        )
+    else:
+        logger.info("[seg %d] skipping waterfall downsampling", seg_indx)
+        downsampled_datetimes = np.array(antenna_local_timestamps)
+        downsampled_frequencies_mhz = np.array(frequencies_mhz)
+        downsampled_spectra = antenna_temperature_waterfall
 
     ant_temp_waterfall_path = os.path.join(segment_output_dir, f"{cfg['date']}_ant_cal_temp.html")
     plot_waterfall_heatmap_plotly(datetimes=list(downsampled_datetimes),
