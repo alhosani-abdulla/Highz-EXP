@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import datetime as dt
+import pickle
 
 import numpy as np
 from astropy.coordinates import EarthLocation
@@ -70,6 +71,50 @@ class SystemCalibrationProcessor:
 			lon=self.site_longitude_deg * u.deg,
 			height=self.site_elevation_m * u.m,
 		)
+
+	def save_pickle(
+		self,
+		file_path: str | Path,
+		protocol: int = pickle.HIGHEST_PROTOCOL,
+	) -> Path:
+		"""Serialize this processor instance to a pickle file.
+
+		Notes
+		-----
+		Pickle files are not secure against untrusted input. Only load files
+		you created yourself or trust from a reliable source.
+		"""
+		path = Path(file_path).expanduser()
+		path.parent.mkdir(parents=True, exist_ok=True)
+
+		with path.open("wb") as fh:
+			pickle.dump(self, fh, protocol=protocol)
+
+		return path
+
+	@classmethod
+	def load_pickle(cls, file_path: str | Path):
+		"""Load a previously pickled processor instance from disk."""
+		path = Path(file_path).expanduser()
+		if not path.exists():
+			raise FileNotFoundError(f"Pickle file does not exist: {path}")
+
+		with path.open("rb") as fh:
+			obj = pickle.load(fh)
+
+		if not isinstance(obj, cls):
+			raise TypeError(
+				f"Pickle at {path} contains {type(obj).__name__}, expected {cls.__name__}."
+			)
+
+		# Rebuild derived site location for older pickles if needed.
+		if not hasattr(obj, "site_location"):
+			obj.__post_init__()
+
+		if not hasattr(obj, "raw_states"):
+			logging.warning("Object from %s has not loaded any data.", path)
+
+		return obj
 
 	def prepare_state_medians(self) -> np.ndarray:
 		"""Prepare frequency axis, slice states, and compute per-state medians."""
