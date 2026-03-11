@@ -21,9 +21,6 @@ try:
 except ImportError:
     RichHandler = None
 
-DEFAULT_ALIGN_FREQ_MIN = 50  # MHz
-DEFAULT_ALIGN_FREQ_MAX = 80  # MHz
-
 class FBCalibrationProcessor(SystemCalibrationProcessor):
     """Filterbank calibration loader for consolidated cycle/state FITS data.
 
@@ -93,11 +90,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
             self,
             cycle_dirs: np.ndarray,
             state_filter: set[str],
-            s21_dir: str,
-            calib_toggles: dict[str, Any] | None,
             filter_exclusions_str: str | None,
-            align_freq_min: float = DEFAULT_ALIGN_FREQ_MIN,
-            align_freq_max: float = DEFAULT_ALIGN_FREQ_MAX,
         ):
         """Yield prepared spectrum rows from cycle/state FITS files.
 
@@ -130,11 +123,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
                         state_file=str(state_path),
                         spectrum_idx=spectrum_idx,
                         cycle_dir=str(cycle_dir),
-                        s21_dir=s21_dir,
-                        calib_toggles=calib_toggles,
                         filter_exclusions_str=filter_exclusions_str,
-                        align_freq_min=align_freq_min,
-                        align_freq_max=align_freq_max,
                     )
 
                     frequencies = np.asarray(prepared["frequencies"], dtype=float)
@@ -201,11 +190,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
             no_segments: int = 1,
             seg_indx: int = 0,
             states_to_load: list[str] | None = None,
-            s21_dir: str = io_utils.get_default_s21_dir(),
-            calib_toggles: dict[str, Any] | None = None,
             filter_exclusions_str: str | None = None,
-            align_freq_min = DEFAULT_ALIGN_FREQ_MIN,
-            align_freq_max: float | None = None,
         ) -> dict[str, dict[str, Any]]:
         """Load filterbank raw states from cycle/state FITS files and apply calibrations.
 
@@ -265,11 +250,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
         for row in self._iter_prepared_state_rows(
             cycle_dirs=segmented_cycle_dirs,
             state_filter=state_filter,
-            s21_dir=s21_dir,
-            calib_toggles=calib_toggles,
             filter_exclusions_str=filter_exclusions_str,
-            align_freq_min=align_freq_min,
-            align_freq_max=align_freq_max,
         ):
             state_name = row["state_name"]
             grouped_rows[state_name]["timestamps"].append(row["timestamp"])
@@ -374,23 +355,6 @@ def _parse_cli_args() -> argparse.Namespace:
         help="Maximum analysis frequency in MHz.",
     )
     parser.add_argument(
-        "--align-freq-min",
-        type=float,
-        default=DEFAULT_ALIGN_FREQ_MIN,
-        help="Minimum alignment frequency in MHz passed to prepared-data loader.",
-    )
-    parser.add_argument(
-        "--align-freq-max",
-        type=float,
-        default=DEFAULT_ALIGN_FREQ_MAX,
-        help="Maximum alignment frequency in MHz passed to prepared-data loader.",
-    )
-    parser.add_argument(
-        "--s21-dir",
-        default=io_utils.get_default_s21_dir(),
-        help="Directory containing S21 calibration files.",
-    )
-    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -427,8 +391,7 @@ def main_cli() -> None:
         raise ValueError("--seg-indx must satisfy 0 <= seg-indx < no-segments")
     if args.fmin >= args.fmax:
         raise ValueError("--fmin must be smaller than --fmax")
-    if args.align_freq_min >= args.align_freq_max:
-        raise ValueError("--align-freq-min must be smaller than --align-freq-max")
+
 
     states_to_load = None
     if args.states:
@@ -445,9 +408,6 @@ def main_cli() -> None:
         no_segments=args.no_segments,
         seg_indx=args.seg_indx,
         states_to_load=states_to_load,
-        s21_dir=args.s21_dir,
-        align_freq_min=args.align_freq_min,
-        align_freq_max=args.align_freq_max,
     )
     selected_freqs = proc.prepare_frequency_axis()
 

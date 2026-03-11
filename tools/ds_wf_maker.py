@@ -42,9 +42,9 @@ def main_cli():
         help="Directory to save output plots (default: None, to input_dir)"
     )
 
-    parser.add_argument("--segment", type=int, default=4, help="Number of segments to split the day into for processing. Default = 4.")
-    parser.add_argument("--step_f", type=int, default=4, help="Frequency downsampling step size. Default = 4, allows 0.1 MHz resolution.")
-    parser.add_argument("--step_t", type=int, default=1, help="Time downsampling step size. Default = 1.")
+    parser.add_argument("--segment", "-s", type=int, default=4, help="Number of segments to split the day into for processing. Default = 4.")
+    parser.add_argument("--step_f", "-f", type=int, default=4, help="Frequency downsampling step size. Default = 4, allows 0.1 MHz resolution.")
+    parser.add_argument("--step_t", "-t", type=int, default=1, help="Time downsampling step size. Default = 1.")
 
     # Parse the arguments
     args = parser.parse_args()
