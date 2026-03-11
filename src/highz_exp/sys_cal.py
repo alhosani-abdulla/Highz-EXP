@@ -19,14 +19,13 @@ from highz_exp.file_load import DSFileLoader
 
 @dataclass
 class SystemCalibrationProcessor:
-	"""Processing pipeline for digital spectrometer system calibration.
+	"""Shared calibration processing pipeline.
 
-	This class consolidates notebook-style processing steps into reusable methods,
-	excluding plotting utilities by design.
+	This base class provides state handling and calibration helpers that are
+	common across instruments. Instrument-specific subclasses must implement
+	state loading and frequency-axis construction.
 	"""
 
-	num_frequency_samples: int = 16384
-	frequency_bin_size_mhz: float = 0.025
 	min_frequency_mhz: float = 25.0
 	max_frequency_mhz: float = 220.0
 	site_latitude_deg: float = 51.8
@@ -79,9 +78,13 @@ class SystemCalibrationProcessor:
 		self.compute_state_medians()
 		return frequencies_mhz
 
-	def load_states() -> dict[str, dict[str, Any]]:
+	def load_states(self, *args, **kwargs) -> dict[str, dict[str, Any]]:
 		"""Placeholder for state loading logic. To be implemented in subclass."""
 		raise NotImplementedError("load_states() must be implemented in a subclass.")
+
+	def prepare_frequency_axis(self) -> np.ndarray:
+		"""Build instrument-specific frequency axis and selected range."""
+		raise NotImplementedError("prepare_frequency_axis() must be implemented in a subclass.")
 
 	def load_resistor_median_for_segment(
 		self,
@@ -132,38 +135,6 @@ class SystemCalibrationProcessor:
 			if frequency_bin_count % divisor == 0
 		]
 		return max(valid_steps) if valid_steps else 1
-
-	def prepare_frequency_axis(self) -> np.ndarray:
-		"""Create full frequency axis and selected analysis range."""
-		self.total_frequencies_mhz = np.arange(self.num_frequency_samples) * self.frequency_bin_size_mhz
-		frequency_idx_range = np.where(
-			(self.total_frequencies_mhz >= self.min_frequency_mhz)
-			& (self.total_frequencies_mhz <= self.max_frequency_mhz)
-		)[0]
-
-		if len(frequency_idx_range) == 0:
-			raise ValueError(
-				"No frequency bins found in selected range "
-				f"[{self.min_frequency_mhz}, {self.max_frequency_mhz}] MHz."
-			)
-
-		# Ensure an even number of points for downstream processing assumptions.
-		if len(frequency_idx_range) % 2 != 0:
-			if len(frequency_idx_range) == 1:
-				raise ValueError(
-					"Selected frequency range contains only one bin; cannot enforce an even bin count."
-				)
-			dropped_idx = frequency_idx_range[-1]
-			logging.info(
-				"Selected frequency bin count is odd (%d). Dropping highest bin %.6f MHz to make it even.",
-				len(frequency_idx_range),
-				self.total_frequencies_mhz[dropped_idx],
-			)
-			frequency_idx_range = frequency_idx_range[:-1]
-
-		self.frequency_idx_range = frequency_idx_range
-		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
-		return self.frequencies_mhz
 
 	def slice_state_frequency_range(self) -> dict[str, np.ndarray]:
 		"""Slice each state spectra to the configured frequency range."""
@@ -585,6 +556,41 @@ class DSCalibrationProcessor(
 	SystemCalibrationProcessor
 ):
 	"""Extended processor for digital spectrometer calibration with DS-specific loading."""
+
+	num_frequency_samples: int = 16384
+	frequency_bin_size_mhz: float = 0.025
+
+	def prepare_frequency_axis(self) -> np.ndarray:
+		"""Create DS frequency axis and selected analysis range."""
+		self.total_frequencies_mhz = np.arange(self.num_frequency_samples) * self.frequency_bin_size_mhz
+		frequency_idx_range = np.where(
+			(self.total_frequencies_mhz >= self.min_frequency_mhz)
+			& (self.total_frequencies_mhz <= self.max_frequency_mhz)
+		)[0]
+
+		if len(frequency_idx_range) == 0:
+			raise ValueError(
+				"No frequency bins found in selected range "
+				f"[{self.min_frequency_mhz}, {self.max_frequency_mhz}] MHz."
+			)
+
+		# Ensure an even number of points for downstream processing assumptions.
+		if len(frequency_idx_range) % 2 != 0:
+			if len(frequency_idx_range) == 1:
+				raise ValueError(
+					"Selected frequency range contains only one bin; cannot enforce an even bin count."
+				)
+			dropped_idx = frequency_idx_range[-1]
+			logging.info(
+				"Selected frequency bin count is odd (%d). Dropping highest bin %.6f MHz to make it even.",
+				len(frequency_idx_range),
+				self.total_frequencies_mhz[dropped_idx],
+			)
+			frequency_idx_range = frequency_idx_range[:-1]
+
+		self.frequency_idx_range = frequency_idx_range
+		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
+		return self.frequencies_mhz
 
 	def load_states(
 		self,
