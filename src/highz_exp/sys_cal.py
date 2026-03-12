@@ -131,13 +131,8 @@ class SystemCalibrationProcessor:
 		"""Build instrument-specific frequency axis and selected range."""
 		raise NotImplementedError("prepare_frequency_axis() must be implemented in a subclass.")
 
-	def load_resistor_median_for_segment(
-		self,
-		data_folder: str | Path,
-		date: str,
-		no_segments: int,
-		seg_indx: int,
-		resistor_state_no: int = 5,
+	def load_resistor_median_for_segment(self, data_folder: str | Path,
+		date: str, no_segments: int, seg_indx: int, resistor_state_no: int = 5,
 	) -> tuple[np.ndarray, np.ndarray]:
 		"""Load one segment of resistor-state spectra and return timestamps + median."""
 		if self.frequency_idx_range is None:

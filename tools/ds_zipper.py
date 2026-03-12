@@ -10,6 +10,7 @@ import sys, os, logging, argparse
 
 from highz_exp.file_load import LegacyDSFileLoader
 from digital_spectrometer.io_utils import setup_logging
+from highz_exp.argparse_utils import RichHelpFormatter
 
 pbase = os.path.basename
 pjoin = os.path.join
@@ -22,7 +23,7 @@ def main():
     # 2. Setup Argparse
     parser = argparse.ArgumentParser(
         description="Condense multiple .npy files from observation cycles into a single file.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=RichHelpFormatter,
         epilog="""Usage Example:
             python file_compressor.py /data/20251105/ /data/compressed/
 

@@ -14,20 +14,13 @@ What it does:
 """
 
 import argparse
-import logging
 import os
 import numpy as np
 from textwrap import dedent
 from zoneinfo import ZoneInfo
 from tqdm.auto import tqdm
-import sys
 
-from highz_exp.argparse_utils import RichHelpFormatter
-
-try:
-    from rich.logging import RichHandler  # type: ignore[import-not-found]
-except ImportError:
-    RichHandler = None
+from highz_exp.argparse_utils import RichHelpFormatter, setup_cli_logging
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from highz_exp.sys_cal import DSCalibrationProcessor
@@ -314,21 +307,7 @@ def run_segment(cfg, seg_indx, logger):
 
 def main():
     args = parse_args()
-    log_level = logging.INFO if args.verbose else logging.WARNING
-    if RichHandler is not None:
-        logging.basicConfig(
-            level=log_level,
-            format="%(message)s",
-            datefmt="[%X]",
-            handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-        )
-    else:
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s | %(levelname)s | %(message)s",
-            handlers=[logging.StreamHandler(sys.stdout)],
-        )
-    logger = logging.getLogger("ds_cal_wf")
+    logger = setup_cli_logging(verbose=args.verbose, logger_name="ds_cal_wf")
 
     logger.info("Starting DS calibration workflow")
     input_dir = os.path.expanduser(args.input_dir)

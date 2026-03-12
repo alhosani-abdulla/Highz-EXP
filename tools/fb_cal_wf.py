@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import logging
 import os
 from pathlib import Path
-import sys
 from textwrap import dedent
 from typing import Any
 
@@ -14,15 +12,10 @@ from astropy.io import fits
 
 from highz_exp.sys_cal import SystemCalibrationProcessor
 from highz_filterbank import io_utils
-from highz_exp.argparse_utils import RichHelpFormatter
+from highz_exp.argparse_utils import RichHelpFormatter, setup_cli_logging
 from highz_exp import plotter
 from CAL_VARS import nd01_temperature_k
 from ds_cal_wf import calibrate_and_plot_loaded
-
-try:
-    from rich.logging import RichHandler  # type: ignore[import-not-found]
-except ImportError:
-    RichHandler = None
 
 
 RESISTOR_TEMP_K = 273
@@ -120,6 +113,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
         self,
         data_folder: str | Path,
         states_to_load: list[str] | None = None,
+        convert=True
     ) -> dict[str, dict[str, Any]]:
         """Load filterbank raw states from cycle/state FITS files and apply calibrations.
 
@@ -127,6 +121,7 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
         - ``timestamps``: np.ndarray[datetime]
         - ``spectra``: np.ndarray[float] with shape ``(n_spectra, n_bins)``
         - ``cycles``: np.ndarray[str] cycle folder labels
+        - ``convert``: bool whether spectra were converted from log to linear units
         """
         data_folder = Path(data_folder)
         date = data_folder.name
@@ -155,13 +150,15 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
             if name not in state_filter:
                 continue
             timestamps, frequency, spectra, cycles = fl.load(state_no=state_no)
+            if convert:
+                spectra = 10 ** (spectra / 10)  # Convert from dB to linear units if needed.
 
             loaded[name] = {"timestamps": timestamps, "frequencies": frequency,
-                            "spectra": spectra, "cycles": cycles}
+                            "spectra": spectra, "cycles": cycles, "convert": convert}
+
         self.raw_states = loaded
         self.total_frequencies_mhz = frequency
         return loaded
-
 
 def _parse_cli_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -187,6 +184,9 @@ def _parse_cli_args() -> argparse.Namespace:
         "-o", "--output-dir", required=True,
         help="Output directory for generated plots.",
     )
+    
+    parser.add_argument("-l", "--load-states", action="store_true",
+                        help="Load states from pickle file if available, instead of re-processing FITS files.")
 
     parser.add_argument(
         "--fmin",type=float,
@@ -233,21 +233,7 @@ def build_config(
 def main_cli() -> None:
     args = _parse_cli_args()
 
-    log_level = logging.INFO if args.verbose else logging.WARNING
-    if RichHandler is not None:
-        logging.basicConfig(
-            level=log_level,
-            format="%(message)s",
-            datefmt="[%X]",
-            handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-        )
-    else:
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s | %(levelname)s | %(message)s",
-            handlers=[logging.StreamHandler(sys.stdout)],
-        )
-    logger = logging.getLogger("fb_cal_wf")
+    logger = setup_cli_logging(verbose=args.verbose, logger_name="fb_cal_wf")
 
     input_dir = os.path.expanduser(args.input_dir)
     output_dir = os.path.expanduser(args.output_dir)
@@ -260,23 +246,33 @@ def main_cli() -> None:
 
     os.makedirs(output_dir, exist_ok=True)
 
-    cfg = build_config(
-        input_dir=input_dir,
-        output_dir=output_dir,
-        fmin_mhz=args.fmin,
-        fmax_mhz=args.fmax,
-        vmax=args.vmax,
-    )
+    pickle_path = os.path.join(output_dir, f"{os.path.basename(input_dir)}_fb_calibration.pkl")
+    if args.load_states and os.path.isfile(pickle_path):
+        logger.info("Loading states from pickle file: %s", pickle_path)
+        proc = FBCalibrationProcessor.load_pickle(pickle_path)
+    else:
+        logger.warning("No pickle file found at %s. Loading states from FITS files instead.", pickle_path)
+        
+        cfg = build_config(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            fmin_mhz=args.fmin,
+            fmax_mhz=args.fmax,
+            vmax=args.vmax,
+        )
 
-    states_to_load = ["antenna", "noise_diode", "resistor"]
+        states_to_load = ["antenna", "noise_diode", "resistor"]
 
-    proc = FBCalibrationProcessor(min_frequency_mhz=args.fmin, max_frequency_mhz=args.fmax)
+        proc = FBCalibrationProcessor(min_frequency_mhz=args.fmin, max_frequency_mhz=args.fmax)
 
-    logger.info("Loading states from: %s", input_dir)
-    proc.load_states(
-        data_folder=input_dir,
-        states_to_load=states_to_load,
-    )
+        logger.info("Loading states from: %s", input_dir)
+        proc.load_states(
+            data_folder=input_dir,
+            states_to_load=states_to_load,
+        )
+        
+        proc.save_pickle(pickle_path)
+        logger.info("Saved loaded states to pickle file: %s", pickle_path)
 
     segment_result = calibrate_and_plot_loaded(
         cfg=cfg, seg_indx=0,

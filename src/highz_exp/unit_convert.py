@@ -43,6 +43,15 @@ def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
     """
     Converts a list of naive UTC datetime objects to local timezone-aware objects.
     """
+    if not isinstance(utc_timestamps, (list, np.ndarray)):
+        raise TypeError("utc_timestamps must be a list or numpy array")
+    
+    if len(utc_timestamps) == 0:
+        raise ValueError("utc_timestamps cannot be empty")
+    
+    if not all(isinstance(ts, datetime) for ts in utc_timestamps):
+        raise TypeError("All elements in utc_timestamps must be datetime objects")
+    
     if local_timezone is None:
         local_timezone = datetime.now().astimezone().tzinfo 
         logging.info("No local timezone provided; using system's local timezone.")
@@ -50,10 +59,7 @@ def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
     local_timestamps = []
 
     for utc_dt in utc_timestamps:
-        # 1. Make the UTC datetime object timezone-aware (explicitly UTC)
-        # 2. Convert to the local system's timezone
         local_aware_dt = utc_dt.astimezone(local_timezone)
-        
         local_timestamps.append(local_aware_dt)
         
     return local_timestamps

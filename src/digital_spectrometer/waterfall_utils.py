@@ -77,6 +77,7 @@ def plot_waterfall_heatmap_plotly(
         unit: Unit for the power values. Defaults to "dBm".
         vmin: Minimum power value (dBm) for the color scale. Defaults to -80.
         vmax: Maximum power value (dBm) for the color scale. Defaults to -20.
+        step: Step size for the zmin and zmax sliders. Defaults to 5.
 
     Returns:
         None. Writes the plot to an HTML file.
