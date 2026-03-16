@@ -111,10 +111,13 @@ def parse_args():
         action="store_true",
         help="Enable verbose logging (INFO level). Default logging level is WARNING.",
     )
+    parser.add_argument(
+        "--nd_index", default=1, type=int, choices=[1, 2], help="Noise diode index to use for calibration (1 or 2). Default is 1.",
+    )
     return parser.parse_args()
 
 
-def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
+def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz, nd_index):
     normalized_input_dir = os.path.normpath(input_dir)
     date = os.path.basename(normalized_input_dir)
     return {
@@ -128,7 +131,7 @@ def build_config(input_dir, output_dir, no_segments, vmax, fmin_mhz, fmax_mhz):
         "plot_frequency_axis_step_mhz": PLOT_FREQUENCY_AXIS_STEP_MHZ,
         "plot_time_axis_step_lst_hour": PLOT_TIME_AXIS_STEP_LST_HOUR,
         "no_segments": no_segments,
-        "noise_diode_temp_func": nd01_temperature_k,
+        "noise_diode_temp_func": nd01_temperature_k if nd_index == 1 else nd02_temperature_k,
         "resistor_temp_k": RESISTOR_TEMP_K,
         "date": date,
         "data_folder": normalized_input_dir,
@@ -319,6 +322,7 @@ def main():
         vmax=args.vmax,
         fmin_mhz=args.fmin,
         fmax_mhz=args.fmax,
+        nd_index=args.nd_index,
     )
     logger.info("Input=%s", cfg["data_folder"])
     logger.info("Output=%s", cfg["output_dir"])

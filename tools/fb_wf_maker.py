@@ -143,7 +143,7 @@ def main_cli():
     fb_fileloader = io_utils.FBFileLoader(args.input_dir)
     output_path = os.path.join(args.output_dir if args.output_dir else args.input_dir, f"fb_calibrated_state_{args.state}.npz")
     if args.save:
-        ts, freq, powers, cycle_ids = fb_fileloader.save(output_path=output_path, state_no=args.state, overwrite=True)
+        ts, freq, powers, _, antenna_ids = fb_fileloader.save(output_path=output_path, state_no=args.state, overwrite=True)
     else:
         if os.path.exists(output_path):
             user_input = input(f"Calibrated data file {output_path} already exists. Do you want to load it instead of recalibrating? (y/n): ").strip().lower()
