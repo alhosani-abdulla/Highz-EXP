@@ -129,7 +129,7 @@ class S_Params:
         return s_params_data
     
     def plot_impedance(self, title='Impedance Measurement', y_range=(None, None), 
-                       s_type='s11', plot_imaginary=True,
+                       s_type='s11', plot_imaginary=True, freq_range=(None, None),
                        save_path=None) -> None:
         """
         Plot multiple impedances from S parameter Network objects on the same axes.
@@ -138,12 +138,13 @@ class S_Params:
         - title (str): Title of the plot.
         - y_range (tuple): (ymin, ymax) tuple for y-axis limits.
         - s_type (str): S-parameter type to plot ('s11' or 's22').
+        - freq_range (tuple): (fmin, fmax) tuple for frequency limits. In MHz.
         - save_path (str): filepath to save the combined plot
 
         Returns:
         - dict: the same ntwk_dict passed in
         """
-        ntwk_dict = self.ntwk_dict
+        ntwk_dict = self._filter_ntwk_dict(freq_range)
         ymin, ymax = y_range
         
         if not ntwk_dict:
@@ -208,7 +209,7 @@ class S_Params:
         plt.show()
 
     def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
-            s_type='s11', show_phase=False, attenuation=0, save_path=None):
+            s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -216,12 +217,13 @@ class S_Params:
         - db (bool): If True, plot reflection in dB
         - show_phase (bool): If True, also plot phase in degrees (dashed lines)
         - attenuation (float): Attenuation added to the magnitude (dB)
+        - freq_range (tuple): (fmin, fmax) in MHz for frequency axis limits. Default (None, None).
         - save_path (str): filepath to save the combined plot
 
         Returns:
         - dict: the same ntwk_dict passed in
         """
-        ntwk_dict = self.ntwk_dict
+        ntwk_dict = self._filter_ntwk_dict(freq_range)
         if not ntwk_dict:
             print("No networks provided.")
             return ntwk_dict
@@ -295,29 +297,15 @@ class S_Params:
         plt.show()
     
     def plot_smith_chart(self, save_path=None, title='Smith Chart',
-            s_type='s11', freq_range=None, marker_freqs=None, autoscale=False):
+            s_type='s11', freq_range=(None, None), marker_freqs=None, autoscale=False):
         """Plot Smith chart from one or more scikit-rf Network objects.
         Parameters:
             - suffix (str): Used for output filename if saving.
-            - freq_range (tuple): (min_freq, max_freq) in Hz to restrict plotting range. 
-                                If None, plots all frequencies.
+            - freq_range (tuple): (min_freq, max_freq) in MHz to restrict plotting range.
+                                Default (None, None) plots all frequencies.
             - marker_freqs (list): List of frequencies in Hz to mark on the Smith chart.
         """
-        ntwk_dict = self.ntwk_dict.copy()
-        # Filter networks by frequency range if specified
-        if freq_range is not None:
-            min_freq, max_freq = freq_range
-            filtered_ntwk_dict = {}
-            for label, ntwk in ntwk_dict.items():
-                # Create frequency mask
-                freq_mask = (ntwk.f >= min_freq) & (ntwk.f <= max_freq)
-                if np.any(freq_mask):
-                    # Create new network with filtered frequencies
-                    filtered_ntwk = rf.Network(f=ntwk.f[freq_mask], s=ntwk.s[freq_mask], z0=ntwk.z0[freq_mask])
-                    filtered_ntwk_dict[label] = filtered_ntwk
-                else:
-                    print(f"Warning: No frequencies in range for {label}")
-            ntwk_dict = filtered_ntwk_dict
+        ntwk_dict = self._filter_ntwk_dict(freq_range)
         
         if not ntwk_dict:
             print("No networks to plot after frequency filtering")
@@ -382,7 +370,7 @@ class S_Params:
     
     def plot_gain(self, attenuation=0, title='Gain Measurement', y_range=(None, None),
                   type='s21', marker_freqs=None, save_path=None, plot_kwargs={},
-                  smoothing=False, smoothing_kwargs=None):
+                  smoothing=False, smoothing_kwargs=None, freq_range=(None, None)):
         """
         Plot gain from multiple .s2p Network objects on the same axes.
 
@@ -395,19 +383,28 @@ class S_Params:
         - marker_freqs (list): List of frequencies in MHz to mark on the gain plot.
         - smoothing (bool): Whether to apply smoothing to the gain curves.
         - smoothing_kwargs (dict): Additional keyword arguments for smoothing function.
+        - freq_range (tuple): (fmin, fmax) in MHz for frequency axis limits. Default (None, None).
 
         Returns:
         - dict: the same ntwk_dict passed in
         """
-        freq = self.get_freq(MHz=True)
-        
-        # Get gain values based on specified type 
-        if type == 's21':
-            gain = self.get_s21(db=True)
-        elif type == 's12':
-            gain = self.get_s12(db=True)
-        else:
-            raise ValueError(f"Invalid type: {type}")
+        ntwk_dict = self._filter_ntwk_dict(freq_range)
+        if not ntwk_dict:
+            return
+
+        first_ntwk = next(iter(ntwk_dict.values()))
+        freq = first_ntwk.f / 1e6  # MHz
+
+        # Get gain values based on specified type
+        gain = {}
+        for label, network in ntwk_dict.items():
+            if type == 's21':
+                s = network.s[:, 1, 0]
+            elif type == 's12':
+                s = network.s[:, 0, 1]
+            else:
+                raise ValueError(f"Invalid type: {type}")
+            gain[label] = 20 * np.log10(np.abs(s))
 
         # Apply smoothing if requested
         if smoothing:
@@ -417,7 +414,7 @@ class S_Params:
             for label in gain:
                 gain_smoothed[label] = smooth_spectrum(gain[label], **smoothing_kwargs)
                 # Plot both raw and smoothed
-                ordered_labels = list(self.ntwk_dict.keys())
+                ordered_labels = list(ntwk_dict.keys())
                 ordered_gains = [gain[label] + attenuation for label in ordered_labels]
                 ordered_gains_smoothed = [gain_smoothed[label] + attenuation for label in ordered_labels]
                 ordered_labels_combined = [f'{label} (raw)' for label in ordered_labels] + [f'{label} (smoothed)' for label in ordered_labels]
@@ -425,7 +422,7 @@ class S_Params:
                 plot_gain(freq, ordered_gains_combined, label=ordered_labels_combined, title=title, y_range=y_range, 
                         save_path=save_path, marker_freqs=marker_freqs, **plot_kwargs)
         else:
-            ordered_labels = list(self.ntwk_dict.keys())
+            ordered_labels = list(ntwk_dict.keys())
             ordered_gains = [gain[label] + attenuation for label in ordered_labels]
             plot_gain(freq, ordered_gains, label=ordered_labels, title=title, y_range=y_range, 
                     save_path=save_path, marker_freqs=marker_freqs, **plot_kwargs)
@@ -477,6 +474,63 @@ class S_Params:
         if inplace:
             self.ntwk_dict = new_ntwk_dict
         return new_ntwk_dict
+
+    def _filter_ntwk_dict(self, freq_range):
+        """Return a filtered ntwk_dict keeping only frequencies within freq_range (MHz).
+        If both bounds are None, returns the original ntwk_dict unmodified.
+
+        Parameters:
+        - freq_range (tuple): (fmin, fmax) in MHz. Use None for unbounded.
+
+        Returns:
+        - dict: Filtered {label: rf.Network} dictionary.
+        """
+        fmin, fmax = freq_range
+        if fmin is None and fmax is None:
+            return self.ntwk_dict
+        filtered = {}
+        for label, ntwk in self.ntwk_dict.items():
+            mask = np.ones(len(ntwk.f), dtype=bool)
+            if fmin is not None:
+                mask &= ntwk.f >= fmin * 1e6
+            if fmax is not None:
+                mask &= ntwk.f <= fmax * 1e6
+            indices = np.where(mask)[0]
+            if len(indices) > 0:
+                filtered[label] = ntwk[indices]
+            else:
+                print(f"Warning: No frequencies in range for {label}")
+        return filtered
+
+    def filter_by_freq_range(self, freq_range=(None, None), inplace=False):
+        """Filter all networks to frequencies within freq_range.
+
+        Parameters:
+        - freq_range (tuple): (fmin, fmax) in MHz. Use None for no lower/upper bound.
+        - inplace (bool): If True, modify ntwk_dict in place and return self.
+                          If False, return a new S_Params with filtered networks.
+
+        Returns:
+        - S_Params: New S_Params with filtered networks (inplace=False), or self (inplace=True).
+        """
+        fmin, fmax = freq_range
+        new_ntwk_dict = {}
+        for label, ntwk in self.ntwk_dict.items():
+            ntwk_copy = copy.deepcopy(ntwk)
+            mask = np.ones(len(ntwk_copy.f), dtype=bool)
+            if fmin is not None:
+                mask &= ntwk_copy.f >= fmin * 1e6
+            if fmax is not None:
+                mask &= ntwk_copy.f <= fmax * 1e6
+            indices = np.where(mask)[0]
+            if len(indices) > 0:
+                new_ntwk_dict[label] = ntwk_copy[indices]
+            else:
+                print(f"Warning: No frequencies in range for {label}")
+        if inplace:
+            self.ntwk_dict = new_ntwk_dict
+            return self
+        return S_Params(ntwk_dict=new_ntwk_dict)
 
     
     @staticmethod
