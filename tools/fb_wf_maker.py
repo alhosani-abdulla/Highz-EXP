@@ -177,7 +177,7 @@ def main_cli():
     for i, (ts_chunk, freq_chunk, powers_chunk, antenna_id_chunk) in enumerate(zip(ts_chunks, freq_chunks, powers_chunks, antenna_id_chunks)):
         logger.info(f"Chunk {i}: Antenna ID {antenna_id_chunk[0]}, Time range {ts_chunk[0]} to {ts_chunk[-1]}, Freq range {freq_chunk[0]} to {freq_chunk[-1]} MHz")
         # --- Generate Waterfall Plot ---
-        output_path = os.path.join(args.output_dir if args.output_dir else args.input_dir, f"fbwf_state_{args.state}.html")
+        output_path = os.path.join(args.output_dir if args.output_dir else args.input_dir, f"fbwf_state_{args.state}_{antenna_id_chunk[0]}.html")
         plot_waterfall_heatmap_plotly(ts_chunk, powers_chunk, freq_chunk,
             title=f"Filterbank Waterfall - State {args.state} - Antenna {antenna_id_chunk[0]}", output_path=output_path, vmin=-70, vmax=-10)
 
