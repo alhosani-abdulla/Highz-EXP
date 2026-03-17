@@ -239,25 +239,6 @@ class SystemCalibrationProcessor:
 		self.state_medians = medians
 		return medians
 
-	def _iter_state_cycle_medians(self):
-		"""Yield per-state cycle medians as (state_name, cycle_no, cycle_median)."""
-		for name, data in self.raw_states.items():
-			cycles = data.get("cycles")
-			spectra = self.state_power.get(name)
-			if spectra is None:
-				logging.warning("No sliced spectra found for state '%s'; skipping.", name)
-				continue
-			if cycles is None:
-				logging.warning("No cycle array found for state '%s'; skipping.", name)
-				continue
-
-			for cycle in np.unique(cycles):
-				cycle_mask = cycles == cycle
-				if not np.any(cycle_mask):
-					logging.warning("No samples found for state '%s' cycle %s; skipping.", name, cycle)
-					continue
-				yield name, cycle, np.median(spectra[cycle_mask], axis=0)
-
 	def _noise_diode_temperature_profile(
 		self,
 		temp_func,
@@ -269,22 +250,8 @@ class SystemCalibrationProcessor:
 		self.nd_temp = temp_func(self.frequencies_mhz)
 		return self.nd_temp
 
-	def compute_state_medians_by_cycle(self) -> dict[str, list[np.ndarray]]:
-		"""Compute median spectrum for each state separately for each cycle."""
-		cycle_medians: dict[str, list[np.ndarray]] = {}
-		for name, _, cycle_median in self._iter_state_cycle_medians():
-			cycle_medians.setdefault(name, []).append(cycle_median)
-
-		for name, medians in cycle_medians.items():
-			logging.info("Computed %d cycle medians for state '%s'.", len(medians), name)
-		return cycle_medians
-
 	def calibrate_system_from_medians(
-		self,
-		noise_diode_temp_f1_k: float = 2086.0,
-		noise_diode_temp_f2_k: float = 2002.0,
-		noise_diode_freq_f1_mhz: float = 50.0,
-		noise_diode_freq_f2_mhz: float = 200.0,
+		self, noide_diode_func,
 		resistor_temp_k: float = 275.0,
 		resistor_median: np.ndarray | None = None,
 	) -> tuple[np.ndarray, np.ndarray]:
@@ -299,13 +266,8 @@ class SystemCalibrationProcessor:
 			self.prepare_frequency_axis()
 		if not self.state_medians:
 			self.compute_state_medians()
-		if noise_diode_freq_f1_mhz == noise_diode_freq_f2_mhz:
-			raise ValueError("noise_diode_freq_f1_mhz and noise_diode_freq_f2_mhz must be different.")
-
-		self.nd_temp = noise_diode_temp_f1_k + (
-			(noise_diode_temp_f2_k - noise_diode_temp_f1_k)
-			/ (noise_diode_freq_f2_mhz - noise_diode_freq_f1_mhz)
-		) * (self.frequencies_mhz - noise_diode_freq_f1_mhz)
+		
+		self.nd_temp = self._noise_diode_temperature_profile(noide_diode_func)
 
 		if "noise_diode" not in self.state_medians:
 			raise ValueError("'noise_diode' median is required for calibration.")
@@ -321,8 +283,7 @@ class SystemCalibrationProcessor:
 		self.system_temp_med = resistor / self.system_gain_med - resistor_temp_k
 		return self.system_gain_med, self.system_temp_med
 
-	def calibrate_system_from_cycles(self, noise_diode_temp_func,
-		resistor_temp_k: float = 275.0,
+	def calibrate_system_from_cycles(self, noise_diode_temp_func, resistor_temp_k: float = 275.0,
 	) -> dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]]:
 		"""Compute per-cycle calibration tuples and aggregate gain/temperature.
 
@@ -341,25 +302,46 @@ class SystemCalibrationProcessor:
 		nd_temp_profile = self._noise_diode_temperature_profile(noise_diode_temp_func)
 
 		cycle_calibrations: dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]] = {}
-		for name, _, cycle_median in self._iter_state_cycle_medians():
+		cycle_medians_by_state: dict[str, dict[int, np.ndarray]] = {}
+		for name, data in self.raw_states.items():
+			cycles = data.get("cycles")
+			spectra = self.state_power.get(name)
+			if spectra is None:
+				logging.warning("No sliced spectra found for state '%s'; skipping.", name)
+				continue
+			if cycles is None:
+				logging.warning("No cycle array found for state '%s'; skipping.", name)
+				continue
+
+			cycles = np.asarray(cycles)
+			state_cycle_medians: dict[int, np.ndarray] = {}
+			for cycle in np.unique(cycles):
+				cycle_mask = cycles == cycle
+				if not np.any(cycle_mask):
+					logging.warning("No samples found for state '%s' cycle %s; skipping.", name, cycle)
+					continue
+				state_cycle_medians[int(cycle)] = np.median(spectra[cycle_mask], axis=0)
+
+			cycle_medians_by_state[name] = state_cycle_medians
+
 			if name == "noise_diode":
 				cal_value: np.ndarray | float | None = nd_temp_profile
 			elif name == "resistor":
 				cal_value = resistor_temp_k
 			else:
 				cal_value = None
-			cycle_calibrations.setdefault(name, []).append((cycle_median, cal_value))
+			cycle_calibrations[name] = [(median, cal_value) for _, median in sorted(state_cycle_medians.items())]
 
 		for name, values in cycle_calibrations.items():
 			logging.info("Computed cycle calibrations for state '%s' with %d cycles.", name, len(values))
 
-		noise_diode_cycles = cycle_calibrations.get("noise_diode", [])
-		resistor_cycles = cycle_calibrations.get("resistor", [])
-		if not noise_diode_cycles or not resistor_cycles:
+		noise_diode_medians = cycle_medians_by_state.get("noise_diode", {})
+		resistor_medians = cycle_medians_by_state.get("resistor", {})
+		if not noise_diode_medians or not resistor_medians:
 			raise ValueError("Cycle calibration requires both 'noise_diode' and 'resistor' states.")
 
-		noise_diode_cycle_ids = np.unique(self.raw_states["noise_diode"]["cycles"])
-		resistor_cycle_ids = np.unique(self.raw_states["resistor"]["cycles"])
+		noise_diode_cycle_ids = np.array(sorted(noise_diode_medians.keys()), dtype=int)
+		resistor_cycle_ids = np.array(sorted(resistor_medians.keys()), dtype=int)
 		paired_cycle_ids = np.intersect1d(noise_diode_cycle_ids, resistor_cycle_ids)
 		pair_count = len(paired_cycle_ids)
 		if pair_count == 0:
@@ -375,14 +357,10 @@ class SystemCalibrationProcessor:
 
 		cycle_gains = []
 		cycle_temps = []
-		noise_diode_power = self.state_power["noise_diode"]
-		resistor_power = self.state_power["resistor"]
-		noise_diode_cycle_labels = self.raw_states["noise_diode"]["cycles"]
-		resistor_cycle_labels = self.raw_states["resistor"]["cycles"]
 
 		for cycle_id in paired_cycle_ids:
-			noise_diode_median = np.median(noise_diode_power[noise_diode_cycle_labels == cycle_id], axis=0)
-			resistor_median = np.median(resistor_power[resistor_cycle_labels == cycle_id], axis=0)
+			noise_diode_median = noise_diode_medians[int(cycle_id)]
+			resistor_median = resistor_medians[int(cycle_id)]
 			gain = (noise_diode_median - resistor_median) / (nd_temp_profile - resistor_temp_k)
 			temp = resistor_median / gain - resistor_temp_k
 			cycle_gains.append(gain)
@@ -431,9 +409,23 @@ class SystemCalibrationProcessor:
 		row_idx = np.array([cycle_to_row.get(cycle, -1) for cycle in cycles], dtype=int)
 		if np.any(row_idx < 0):
 			missing = np.unique(cycles[row_idx < 0])
-			raise ValueError(
-				f"State '{state_name}' contains cycle IDs not present in calibration: {missing.tolist()}"
+			logging.warning(
+				"State '%s' contains cycle IDs not present in calibration: %s. "
+				"Skipping %d unmatched sample(s).",
+				state_name,
+				missing.tolist(),
+				int(np.sum(row_idx < 0)),
 			)
+			valid_mask = row_idx >= 0
+			state_power = state_power[valid_mask]
+			row_idx = row_idx[valid_mask]
+
+		if len(row_idx) == 0:
+			logging.warning(
+				"No samples remain for state '%s' after skipping unmatched cycle IDs.",
+				state_name,
+			)
+			return np.empty((0, gain.shape[-1]))
 
 		return state_power / gain[row_idx, :] - temp[row_idx, :]
 
@@ -617,9 +609,7 @@ class DSCalibrationProcessor(
 		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
 		return self.frequencies_mhz
 
-	def load_states(
-		self,
-		data_folder: str | Path,
+	def load_states(self, data_folder: str | Path,
 		convert: bool = False,
 		no_segments: int = 1,
 		seg_indx: int = 0,

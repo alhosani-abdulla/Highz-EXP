@@ -147,7 +147,7 @@ def calibrate_and_plot_loaded(cfg, seg_indx, logger,
     logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
 
     logger.info("[seg %d] computing system gain/temp from cycles", seg_indx)
-    proc.calibrate_system_from_cycles(resistor_temp_k=cfg["resistor_temp_k"],
+    _ = proc.calibrate_system_from_cycles(resistor_temp_k=cfg["resistor_temp_k"],
         noise_diode_temp_func=cfg['noise_diode_temp_func'],
     )
     if proc.system_gain is None or proc.system_temp is None:
