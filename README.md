@@ -11,6 +11,7 @@ Python toolkit for HighZ-EXP data loading, calibration, spectrum processing, and
   - [Installation](#installation)
     - [Option 1: Install from GitHub (Colab or local)](#option-1-install-from-github-colab-or-local)
     - [Option 2: Editable install for development](#option-2-editable-install-for-development)
+		- [Option 3: Use Pipenv with the existing Pipfile](#option-3-use-pipenv-with-the-existing-pipfile)
   - [Quick start](#quick-start)
   - [Core modules](#core-modules)
   - [Notebooks and tools](#notebooks-and-tools)
@@ -53,6 +54,27 @@ Use this for transient environments (for example, Colab) where editable installs
 git clone https://github.com/alhosani-abdulla/Highz-EXP.git
 cd Highz-EXP
 pip install -e .
+```
+
+### Option 3: Use Pipenv with the existing Pipfile
+
+From the repository root, create the virtual environment and install dependencies from the existing [Pipfile](Pipfile):
+
+```bash
+pipenv install
+```
+
+Start the Pipenv shell:
+
+```bash
+pipenv shell
+```
+
+Then run Python, notebooks, or scripts inside that shell. You can also run one-off commands without entering a shell:
+
+```bash
+pipenv run python -m pip list
+pipenv run jupyter lab
 ```
 
 ## Quick start
