@@ -175,10 +175,10 @@ def fit_polynomial_metric(frequency, metric, order=4, metric_name='metric',
 class CALModel:
     """Class for fitting calibrator metrics with polynomial models."""
     @staticmethod
-    def model_eval(f, a0, a1):
-        """Evaluate linear noise diode temperature model: T(f) = a0 + a1*f."""
-        f = np.asarray(f, dtype=float)
-        return a0 + a1 * f
+    def model_eval(f, *coeffs):
+        """Evaluate linear noise diode temperature model: T(f) = polyval(coeffs, f)."""
+        coeffs = np.asarray(coeffs, dtype=float)
+        return np.polynomial.polynomial.polyval(f, coeffs)
     
     @staticmethod
     def fit_temperature(f, T, order=1, initial_guess=None):
@@ -199,8 +199,7 @@ class CALModel:
             - 'coefficients' (np.ndarray: [a0, a1, ..., aN])
             - 'order', 'fitted', 'residuals', 'r2', 'covariance', 'valid_mask'
             Also includes convenience keys 'a0', 'a1', ..., 'aN'."""
-        return fit_polynomial_metric(
-            f, T, order=order, metric_name='Calibrator Temperature',
+        return fit_polynomial_metric(f, T, order=order, metric_name='Calibrator Temperature',
             method='numpy', initial_guess=initial_guess, include_inv_f=False
         )
     
