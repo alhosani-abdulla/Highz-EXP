@@ -330,10 +330,10 @@ class Y_Factor_Thermometer:
         return inferred_spectrum
     
     def infer_temperature(self, spectrum: Spectrum, freq_range=(None, None),
-                        marker_freqs=None,
-                        smoothing='savgol', window_size=31, 
-                        y_range=(None, None), title=None, show_plot=True,
-                        save_path=None):
+                    marker_freqs=None,
+                    smoothing='savgol', window_size=31, 
+                    y_range=(None, None), title=None, show_plot=True,
+                    save_path=None):
         """
         Plot temperature inference of a noise source with optional smoothing.
         This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
