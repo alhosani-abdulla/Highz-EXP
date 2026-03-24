@@ -25,6 +25,7 @@ highz-filterbank = {editable = true, git = "ssh://git@github.com/alhosani-abdull
 plotly = "*"
 
 [dev-packages]
+ipykernel = "*"
 
 [requires]
 python_version = "3.11"
