@@ -5,7 +5,8 @@ import skrf as rf
 from .unit_convert import *
 from .reflection_proc import impedance_from_s11
 from scipy.constants import Boltzmann as k_B
-
+from highz_exp.spec_class import Spectrum
+from matplotlib import pyplot as plt
 
 # ==============================================================================
 # Generic Polynomial Fitting (kept as standalone)
@@ -175,6 +176,32 @@ def fit_polynomial_metric(frequency, metric, order=4, metric_name='metric',
 class CALModel:
     """Class for fitting calibrator metrics with polynomial models."""
     @staticmethod
+    def fit_and_plot(f, T, order=1, initial_guess=None):
+        """Fit calibrator temperature with a polynomial model and plot the results.
+        
+        Return: 
+        dict with keys 'coefficients', 'order', 'fitted', 'residuals', 'r2', 'covariance', 'valid_mask'"""
+        fitted = CALModel.fit_temperature(f, T, order, initial_guess)
+
+        valid = fitted['valid_mask']
+        f_valid_hz = f[valid]
+        t_valid = T[valid]
+        t_model = fitted['fitted']
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(f_valid_hz / 1e6, t_valid, 'o', ms=4, alpha=0.8, label='Measured')
+        plt.plot(f_valid_hz / 1e6, t_model, '-', lw=2, label=f'fit')
+        plt.xlabel('Frequency (MHz)')
+        plt.ylabel('Temperature (K)')
+        plt.title('Calibrator Temperature Fit')
+        plt.grid(alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        
+        return fitted
+    
+    @staticmethod
     def model_eval(f, *coeffs):
         """Evaluate linear noise diode temperature model: T(f) = polyval(coeffs, f)."""
         coeffs = np.asarray(coeffs, dtype=float)
@@ -278,8 +305,9 @@ class LNAModel:
         min_samples = 5
         if f.size < min_samples:
             raise ValueError(
-                f'Need at least {min_samples} valid non-zero samples for '
-                'LNA temperature fit (a0/f^2 + a1/(f+b) + a2 + a3*f).'
+                f'Frequency points less than {min_samples} after filtering for finite and non-zero values. '
+                f'Need at least {min_samples} valid non-zero data points for '
+                f'LNA temperature fit.'
             )
 
         method = method.lower() if method else 'scipy'

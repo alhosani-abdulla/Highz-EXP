@@ -239,17 +239,6 @@ class SystemCalibrationProcessor:
 		self.state_medians = medians
 		return medians
 
-	def _noise_diode_temperature_profile(
-		self,
-		temp_func,
-	) -> np.ndarray:
-		"""Set noise diode temperature profile"""
-		if self.frequencies_mhz is None:
-			self.prepare_frequency_axis()
-		
-		self.nd_temp = temp_func(self.frequencies_mhz)
-		return self.nd_temp
-
 	def calibrate_system_from_medians(
 		self, noide_diode_func,
 		resistor_temp_k: float = 275.0,
@@ -283,8 +272,8 @@ class SystemCalibrationProcessor:
 		self.system_temp_med = resistor / self.system_gain_med - resistor_temp_k
 		return self.system_gain_med, self.system_temp_med
 
-	def calibrate_system_from_cycles(self, noise_diode_temp_func, resistor_temp_k: float = 275.0,
-	) -> dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]]:
+	def calibrate_system_from_cycles(self, nd_k, resistor_temp_k: float = 275.0,
+		) -> dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]]:
 		"""Compute per-cycle calibration tuples and aggregate gain/temperature.
 
 		The returned dictionary preserves per-cycle median products for each state.
@@ -292,14 +281,19 @@ class SystemCalibrationProcessor:
 		noise-diode and resistor cycles and stores them as 2D arrays with shape
 		``(n_cycle, n_frequency)`` into ``self.system_gain`` and
 		``self.system_temp``.
-		 - noise_diode_temp_func: A function that takes frequencies_mhz and returns the noise diode temperature profile in Kelvin.
-		 - resistor_temp_k: The physical temperature of the resistor load in Kelvin.
+			- nd_k: Noise diode temperature, length = n_frequency.
+			- resistor_temp_k: The physical temperature of the resistor load in Kelvin.
 		"""
 		if self.frequencies_mhz is None:
 			self.prepare_frequency_axis()
 		if not self.state_power:
 			self.slice_state_frequency_range()
-		nd_temp_profile = self._noise_diode_temperature_profile(noise_diode_temp_func)
+		
+		nd_k = np.asarray(nd_k)
+		if nd_k.size != self.frequencies_mhz.size:
+			raise ValueError("Shape mismatch: nd_k and frequencies_mhz must have the same length.")
+
+		resistor_temp_k = np.full(self.frequencies_mhz.shape, resistor_temp_k) if np.isscalar(resistor_temp_k) else np.asarray(resistor_temp_k)
 
 		cycle_calibrations: dict[str, list[tuple[np.ndarray, np.ndarray | float | None]]] = {}
 		cycle_medians_by_state: dict[str, dict[int, np.ndarray]] = {}
@@ -325,7 +319,7 @@ class SystemCalibrationProcessor:
 			cycle_medians_by_state[name] = state_cycle_medians
 
 			if name == "noise_diode":
-				cal_value: np.ndarray | float | None = nd_temp_profile
+				cal_value: np.ndarray | float | None = nd_k
 			elif name == "resistor":
 				cal_value = resistor_temp_k
 			else:
@@ -361,7 +355,7 @@ class SystemCalibrationProcessor:
 		for cycle_id in paired_cycle_ids:
 			noise_diode_median = noise_diode_medians[int(cycle_id)]
 			resistor_median = resistor_medians[int(cycle_id)]
-			gain = (noise_diode_median - resistor_median) / (nd_temp_profile - resistor_temp_k)
+			gain = (noise_diode_median - resistor_median) / (nd_k - resistor_temp_k)
 			temp = resistor_median / gain - resistor_temp_k
 			cycle_gains.append(gain)
 			cycle_temps.append(temp)
@@ -370,7 +364,7 @@ class SystemCalibrationProcessor:
 		self.system_gain = np.asarray(cycle_gains)
 		self.system_temp = np.asarray(cycle_temps)
 		self.calibration_cycle_ids = np.asarray(paired_cycle_ids)
-		self.nd_temp = nd_temp_profile
+		self.nd_temp = nd_k
 
 		return cycle_calibrations
 
@@ -382,6 +376,7 @@ class SystemCalibrationProcessor:
 	def calibrate_2d_state_power(self, state_name: str) -> np.ndarray:
 		"""Convert a state's 2D power array into calibrated temperature."""
 		if self.system_gain is None or self.system_temp is None:
+			logging.warning("System gain/temp not found. Running calibrate_system_from_medians() to compute median calibration.")
 			self.calibrate_system_from_medians()
 
 		state_power = self.state_power[state_name]
@@ -609,11 +604,9 @@ class DSCalibrationProcessor(
 		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
 		return self.frequencies_mhz
 
-	def load_states(self, data_folder: str | Path,
-		convert: bool = False,
-		no_segments: int = 1,
-		seg_indx: int = 0,
-		states_to_load: list[str] | None = None,
+	def load_states(self, data_folder: str | Path, convert: bool = False,
+		no_segments: int = 1, seg_indx: int = 0, states_to_load: list[str] | None = None,
+		time_interval: tuple[dt.datetime, dt.datetime] | None = None
 	) -> dict[str, dict[str, Any]]:
 		"""Load all configured switch states using ``DSFileLoader``.
 
@@ -631,6 +624,8 @@ class DSCalibrationProcessor(
 			Zero-based index of the segment to load.
 		states_to_load : list[str] | None, optional
 			Subset of state names to load. If None, loads all states in ``state_list``.
+		time_interval : tuple[dt.datetime, dt.datetime] | None, optional
+			Time interval to filter the loaded data.
 		"""
 		if no_segments < 1:
 			raise ValueError("no_segments must be >= 1.")
@@ -655,12 +650,38 @@ class DSCalibrationProcessor(
 		time_dirs = DSFileLoader.get_sorted_time_dirs(str(data_folder))
 		if len(time_dirs) == 0:
 			raise ValueError(f"No time folders found under: {data_folder}")
+		
+		# convert timedirs HHMMSS into timestamps 
+		if time_interval is not None:
+			start_time, end_time = time_interval
+			if not isinstance(start_time, dt.datetime) or not isinstance(end_time, dt.datetime):
+				raise ValueError("time_interval must be a tuple of two datetime objects.")
+			if start_time >= end_time:
+				raise ValueError("time_interval start_time must be before end_time.")
 
-		segmented_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
-		if len(segmented_time_dirs) == 0:
-			raise ValueError(
-				f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
+			def time_dir_to_timestamp(td: str) -> dt.datetime:
+				try:
+					return dt.datetime.strptime(f"{date}{td}", "%H%M%S").replace(tzinfo=dt.timezone.utc)
+				except ValueError as e:
+					raise ValueError(f"Invalid time directory format: '{td}'. Expected HHMMSS.") from e
+
+			time_dir_timestamps = np.array([time_dir_to_timestamp(Path(td).name) for td in time_dirs])
+			time_mask = (time_dir_timestamps >= start_time) & (time_dir_timestamps <= end_time)
+			time_dirs = np.array(time_dirs)[time_mask]
+			if len(time_dirs) == 0:
+				logging.info("No time directories found within specified interval [%s, %s].", start_time, end_time)
+				return None
+
+			logging.info(
+				"Filtered time directories to %d entries within specified interval.",
+				len(time_dirs),
 			)
+		if no_segments > 1:
+			segmented_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
+			if len(segmented_time_dirs) == 0:
+				raise ValueError(
+					f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
+				)
 
 		loaded: dict[str, dict[str, Any]] = {}
 		for state_no, name in enumerate(self.state_list):
