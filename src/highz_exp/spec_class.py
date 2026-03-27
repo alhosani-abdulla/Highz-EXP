@@ -125,25 +125,113 @@ class Spectrum:
         else:
             return Spectrum(new_freq, new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
 
-    def resample(self, new_freq: Iterable[float], kind: str = "linear") -> "Spectrum":
+    def resample(self, new_freq: Iterable[float], kind: str = "linear", 
+                 reducer=None, inplace: bool = True, outlier_method: str = None,
+                 outlier_sigma: float = 3.0) -> "Spectrum":
         """
-        Resample spectrum onto new_freq. Uses numpy.interp for linear interpolation.
+        Resample spectrum onto new frequency grid with optional outlier exclusion.
+        
+        Parameters
+        ----------
+        new_freq : array-like
+            Target frequency bin centers (Hz).
+        kind : str, optional
+            Interpolation method: 'linear' for np.interp (default).
+            Ignored if reducer is provided.
+        reducer : callable, optional
+            Function to combine samples inside each frequency bin (e.g., np.nanmean, np.nanmedian).
+            If provided, performs bin-averaging instead of interpolation.
+            Recommended: np.nanmedian for spectra with RFI/outliers, np.nanmean for clean data.
+        inplace : bool, optional
+            If True, modify spectrum in place; otherwise return a new Spectrum object.
+            Applies only when reducer is provided.
+        outlier_method : str, optional
+            Method for detecting outliers within each bin before averaging:
+            - None (default): no outlier removal
+            - 'sigma_clip': exclude points > outlier_sigma standard deviations from bin mean
+            - 'mad': exclude points > outlier_sigma × MAD (Median Absolute Deviation) from bin median
+        outlier_sigma : float, optional
+            Threshold for outlier detection (default: 3.0).
+            For 'sigma_clip': points > mean ± outlier_sigma*std are excluded.
+            For 'mad': points > median ± outlier_sigma*MAD are excluded.
+        
+        Returns
+        -------
+        Spectrum
+            Resampled spectrum (self if inplace=True, new object otherwise).
+        
+        Notes
+        -----
+        For bin-averaging, new_freq should contain the desired bin centers. Bin edges are
+        computed automatically from the centers.
+        
+        Outlier removal is useful for suppressing RFI spikes or measurement artifacts while
+        preserving valid data. It is applied within each frequency bin independently.
+        
+        Examples
+        --------
+        Linear interpolation (default):
+            spec_interp = spec.resample(np.linspace(1e6, 400e6, 1000), kind='linear')
+        
+        Bin-averaging with median (robust to outliers/RFI):
+            spec_binned = spec.resample(
+                np.linspace(1e6, 400e6, 100), 
+                reducer=np.nanmedian, 
+                inplace=False
+            )
+        
+        Bin-averaging with outlier removal (sigma-clipping):
+            spec_binned = spec.resample(
+                np.linspace(1e6, 400e6, 100), 
+                reducer=np.nanmedian,
+                outlier_method='sigma_clip',
+                outlier_sigma=3.0,
+                inplace=False
+            )
+        
+        Bin-averaging with MAD-based outlier removal:
+            spec_binned = spec.resample(
+                np.linspace(1e6, 400e6, 100), 
+                reducer=np.nanmean,
+                outlier_method='mad',
+                outlier_sigma=2.5,
+                inplace=False
+            )
         """
         new_freq_arr = np.asarray(new_freq, dtype=float)
-        if kind != "linear":
-            raise NotImplementedError("only 'linear' interpolation is implemented")
-        # ensure monotonic x for interpolation
-        if not np.all(np.diff(self.freq) >= 0):
-            idx = np.argsort(self.freq)
-            freq_sorted = self.freq[idx]
-            spec_sorted = self.spec[idx]
+        
+        if reducer is not None:
+            # Bin-averaging mode
+            edges = _bin_edges_from_centers(new_freq_arr)
+            new_spec = _bin_average(
+                self.freq, self.spec, edges, reducer,
+                outlier_method=outlier_method,
+                outlier_sigma=outlier_sigma
+            )
+            
+            if inplace:
+                self.freq = new_freq_arr
+                self.spec = new_spec
+                return self
+            else:
+                return Spectrum(new_freq_arr.copy(), new_spec, self.name, 
+                              colorcode=self.colorcode, metadata=self.metadata.copy())
         else:
-            freq_sorted = self.freq
-            spec_sorted = self.spec
-        new_spec = np.interp(new_freq_arr, freq_sorted, spec_sorted)
-        self.freq = new_freq_arr
-        self.spec = new_spec
-        return self
+            # Linear interpolation mode (original behavior)
+            if kind != "linear":
+                raise NotImplementedError("only 'linear' interpolation is implemented")
+            # ensure monotonic x for interpolation
+            if not np.all(np.diff(self.freq) >= 0):
+                idx = np.argsort(self.freq)
+                freq_sorted = self.freq[idx]
+                spec_sorted = self.spec[idx]
+            else:
+                freq_sorted = self.freq
+                spec_sorted = self.spec
+            new_spec = np.interp(new_freq_arr, freq_sorted, spec_sorted)
+            self.freq = new_freq_arr
+            self.spec = new_spec
+            return self
     
     def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median",
                 inplace: bool = False) -> "Spectrum":
@@ -380,3 +468,129 @@ class Spectrum:
         loaded_states_kelvin = Spectrum.preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
 
         return loaded_states_kelvin, gain
+
+
+# ==============================================================================
+# Helper functions for bin-based resampling
+# ==============================================================================
+
+def _bin_edges_from_centers(f_centers):
+    """Convert frequency bin centers to bin edges.
+    
+    Parameters
+    ----------
+    f_centers : np.ndarray
+        Frequency bin centers.
+    
+    Returns
+    -------
+    np.ndarray
+        Frequency bin edges (length = len(f_centers) + 1).
+    """
+    edges = np.zeros(len(f_centers) + 1)
+    edges[1:-1] = 0.5 * (f_centers[1:] + f_centers[:-1])
+    edges[0] = f_centers[0] - (edges[1] - f_centers[0])
+    edges[-1] = f_centers[-1] + (f_centers[-1] - edges[-2])
+    return edges
+
+
+def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_sigma=3.0):
+    """Bin-average data using frequency bin edges with optional outlier exclusion.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        Frequency axis (Hz).
+    y : np.ndarray
+        Data values to bin-average.
+    edges : np.ndarray
+        Bin edges from _bin_edges_from_centers.
+    reducer : callable, optional
+        Function to combine values inside each bin (default: np.nanmean).
+    outlier_method : str, optional
+        Method for outlier detection within each bin:
+        - None: no outlier removal
+        - 'sigma_clip': exclude points > mean ± outlier_sigma*std
+        - 'mad': exclude points > median ± outlier_sigma*MAD (Median Absolute Deviation)
+    outlier_sigma : float, optional
+        Threshold for outlier detection (default: 3.0).
+    
+    Returns
+    -------
+    np.ndarray
+        Bin-averaged values at each bin.
+    
+    Notes
+    -----
+    Outlier removal is applied within each bin independently before the reducer is applied.
+    """
+    out = np.full(len(edges) - 1, np.nan)
+    
+    for i in range(len(out)):
+        mask = (x >= edges[i]) & (x < edges[i+1])
+        if np.any(mask):
+            bin_values = y[mask]
+            
+            # Apply outlier removal if specified
+            if outlier_method is not None:
+                bin_values = _filter_outliers(bin_values, method=outlier_method, sigma=outlier_sigma)
+            
+            # Apply reducer only if there are valid values left
+            if bin_values.size > 0:
+                out[i] = reducer(bin_values)
+    
+    return out
+
+
+def _filter_outliers(data, method='sigma_clip', sigma=3.0):
+    """Remove outliers from an array using specified method.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        Data array (may contain NaNs).
+    method : str
+        Outlier detection method:
+        - 'sigma_clip': exclude values > mean ± sigma*std
+        - 'mad': exclude values > median ± sigma*MAD
+    sigma : float
+        Threshold multiplier (default: 3.0).
+    
+    Returns
+    -------
+    np.ndarray
+        Data array with outliers removed (and NaNs preserved).
+    """
+    # Separate NaNs from valid data
+    valid_mask = np.isfinite(data)
+    if not np.any(valid_mask):
+        return data  # All NaN, return as-is
+    
+    valid_data = data[valid_mask]
+    
+    if method.lower() == 'sigma_clip':
+        # Standard deviation based clipping
+        mean = np.nanmean(valid_data)
+        std = np.nanstd(valid_data)
+        if std == 0:
+            # No variation, all points are valid
+            outlier_mask = np.ones_like(valid_data, dtype=bool)
+        else:
+            outlier_mask = np.abs(valid_data - mean) <= sigma * std
+    
+    elif method.lower() == 'mad':
+        # Median Absolute Deviation based clipping
+        median = np.nanmedian(valid_data)
+        mad = np.nanmedian(np.abs(valid_data - median))
+        if mad == 0:
+            # No variation, all points are valid
+            outlier_mask = np.ones_like(valid_data, dtype=bool)
+        else:
+            outlier_mask = np.abs(valid_data - median) <= sigma * mad
+    
+    else:
+        raise ValueError(f"Unknown outlier method: {method}. Use 'sigma_clip' or 'mad'.")
+    
+    # Return filtered data (keep NaNs where they were, remove outliers from valid data)
+    filtered_data = valid_data[outlier_mask]
+    return filtered_data
