@@ -87,6 +87,54 @@ def rebin(freq, power_spec, factor, mode='average'):
 
     return new_freq, new_power_spec
 
+
+def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_sigma=3.0):
+    """Bin-average values using provided bin edges with optional outlier removal."""
+    out = np.full(len(edges) - 1, np.nan)
+
+    for i in range(len(out)):
+        mask = (x >= edges[i]) & (x < edges[i + 1])
+        if not np.any(mask):
+            continue
+
+        bin_values = y[mask]
+
+        if outlier_method is not None:
+            bin_values = _filter_outliers(bin_values, method=outlier_method, sigma=outlier_sigma)
+
+        if bin_values.size > 0:
+            out[i] = reducer(bin_values)
+
+    return out
+
+
+def _filter_outliers(data, method='sigma_clip', sigma=3.0):
+    """Remove outliers from 1D data using sigma-clipping or MAD thresholding."""
+    valid_mask = np.isfinite(data)
+    if not np.any(valid_mask):
+        return data
+
+    valid_data = data[valid_mask]
+
+    if method.lower() == 'sigma_clip':
+        mean = np.nanmean(valid_data)
+        std = np.nanstd(valid_data)
+        if std == 0:
+            outlier_mask = np.ones_like(valid_data, dtype=bool)
+        else:
+            outlier_mask = np.abs(valid_data - mean) <= sigma * std
+    elif method.lower() == 'mad':
+        median = np.nanmedian(valid_data)
+        mad = np.nanmedian(np.abs(valid_data - median))
+        if mad == 0:
+            outlier_mask = np.ones_like(valid_data, dtype=bool)
+        else:
+            outlier_mask = np.abs(valid_data - median) <= sigma * mad
+    else:
+        raise ValueError(f"Unknown outlier method: {method}. Use 'sigma_clip' or 'mad'.")
+
+    return valid_data[outlier_mask]
+
 def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
     """
     Removes spike-like peaks in the PSD by detecting outliers and interpolating over them.

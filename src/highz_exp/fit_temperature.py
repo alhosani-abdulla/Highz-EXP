@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 import matplotlib.pyplot as plt
-import scipy
+import pickle
 import skrf as rf
 from os.path import join as pjoin
 from . import plotter
@@ -161,7 +161,22 @@ class Y_Factor_Thermometer:
         f_mhz = self.f / 1e6  # Convert frequency to MHz
         plotter.plot_gain(f_mhz, self.g, **kwargs)
     
-    def resample(self, new_freq, reducer=np.nanmean, inplace=True) -> 'Y_Factor_Thermometer':
+    def export_temperature(self, save_dir=None) -> tuple[Spectrum, Spectrum | None]:
+        """Export the system temperature and DUT temperature spectra as Spectrum objects."""
+        system_temp_spec = Spectrum(frequency=self.f, spectrum=self.T_sys, name=f'{self.label} System Temperature')
+        dut_temp_spec = None
+        if self.T_dut is not None:
+            dut_temp_spec = Spectrum(frequency=self.f, spectrum=self.T_dut, name=f'{self.label} DUT Temperature')
+        if save_dir is not None:
+            with open(pjoin(save_dir, f'{self.label}_Tsys.pkl'), 'wb') as f:
+                pickle.dump(system_temp_spec, f)
+            if dut_temp_spec is not None:
+                with open(pjoin(save_dir, f'{self.label}_Tdut.pkl'), 'wb') as f:
+                    pickle.dump(dut_temp_spec, f)
+        return system_temp_spec, dut_temp_spec
+    
+    def resample(self, new_freq, reducer=np.nanmean, inplace=True,
+                 return_uncertainty=False):
         """
         Resample spectra onto a lower-resolution frequency axis by bin-averaging.
 
@@ -172,25 +187,45 @@ class Y_Factor_Thermometer:
         reducer : callable, optional
             Function used to combine samples inside each bin
             (e.g. np.nanmean, np.nanmedian).
+        return_uncertainty : bool, optional
+            If True, also return per-bin uncertainty estimates and sample counts.
         inplace : bool, optional
             Modify object in place or return a copy.
 
         Returns
         -------
-        Y_Factor_Thermometer
+        Y_Factor_Thermometer or tuple[Y_Factor_Thermometer, dict]
         """
         new_freq = np.asarray(new_freq)
         edges = _bin_edges_from_centers(new_freq)
 
-        T_sys_new = _bin_average(self.frequency, self.T_sys, edges, reducer)
+        if return_uncertainty:
+            T_sys_new, T_sys_unc, _ = _bin_average_with_uncertainty(
+                self.frequency, self.T_sys, edges, reducer=reducer
+            )
+        else:
+            T_sys_new = spec_proc._bin_average(self.frequency, self.T_sys, edges, reducer)
+            T_sys_unc = None
 
         T_dut_new = None
+        T_dut_unc = None
         if self.T_dut is not None:
-            T_dut_new = _bin_average(self.frequency, self.T_dut, edges, reducer)
+            if return_uncertainty:
+                T_dut_new, T_dut_unc, _ = _bin_average_with_uncertainty(
+                    self.frequency, self.T_dut, edges, reducer=reducer
+                )
+            else:
+                T_dut_new = spec_proc._bin_average(self.frequency, self.T_dut, edges, reducer)
 
         g_new = None
+        g_unc = None
         if self.g is not None:
-            g_new = _bin_average(self.frequency, self.g, edges, reducer)
+            if return_uncertainty:
+                g_new, g_unc, _ = _bin_average_with_uncertainty(
+                    self.frequency, self.g, edges, reducer=reducer
+                )
+            else:
+                g_new = spec_proc._bin_average(self.frequency, self.g, edges, reducer)
 
         target = self if inplace else copy.deepcopy(self)
 
@@ -198,6 +233,9 @@ class Y_Factor_Thermometer:
         target.T_sys = T_sys_new
         target.T_dut = T_dut_new
         target.g = g_new
+        target.T_sys_unc = T_sys_unc
+        target.T_dut_unc = T_dut_unc
+        target.g_unc = g_unc
 
         return target
     
@@ -447,11 +485,41 @@ def _bin_edges_from_centers(f_centers):
     edges[-1] = f_centers[-1] + (f_centers[-1] - edges[-2])
     return edges
 
-def _bin_average(x, y, edges, reducer=np.nanmean):
-    out = np.full(len(edges) - 1, np.nan)
-    for i in range(len(out)):
+def _bin_average_with_uncertainty(x, y, edges, reducer=np.nanmean):
+    """
+    Bin-average values and estimate uncertainty per output bin as SEM from in-bin scatter.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        mean, sigma, n_samples for each output bin.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    n_bins = len(edges) - 1
+    mean_out = np.full(n_bins, np.nan)
+    sigma_out = np.full(n_bins, np.nan)
+    n_samples_out = np.full(n_bins, np.nan)
+
+    for i in range(n_bins):
         mask = (x >= edges[i]) & (x < edges[i+1])
-        if np.any(mask):
-            out[i] = reducer(y[mask])
-    return out
+        if not np.any(mask):
+            continue
+
+        yi = np.asarray(y[mask], dtype=float)
+
+        valid = np.isfinite(yi)
+        yi = yi[valid]
+        if yi.size == 0:
+            continue
+
+        mu = reducer(yi)
+        mean_out[i] = mu
+        n_samples_out[i] = yi.size
+
+        if yi.size > 1:
+            sigma_out[i] = np.nanstd(yi, ddof=1) / np.sqrt(yi.size)
+
+    return mean_out, sigma_out, n_samples_out
 

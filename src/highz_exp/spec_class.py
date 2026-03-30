@@ -203,7 +203,7 @@ class Spectrum:
         if reducer is not None:
             # Bin-averaging mode
             edges = _bin_edges_from_centers(new_freq_arr)
-            new_spec = _bin_average(
+            new_spec = spec_proc._bin_average(
                 self.freq, self.spec, edges, reducer,
                 outlier_method=outlier_method,
                 outlier_sigma=outlier_sigma
@@ -493,104 +493,3 @@ def _bin_edges_from_centers(f_centers):
     edges[-1] = f_centers[-1] + (f_centers[-1] - edges[-2])
     return edges
 
-
-def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_sigma=3.0):
-    """Bin-average data using frequency bin edges with optional outlier exclusion.
-    
-    Parameters
-    ----------
-    x : np.ndarray
-        Frequency axis (Hz).
-    y : np.ndarray
-        Data values to bin-average.
-    edges : np.ndarray
-        Bin edges from _bin_edges_from_centers.
-    reducer : callable, optional
-        Function to combine values inside each bin (default: np.nanmean).
-    outlier_method : str, optional
-        Method for outlier detection within each bin:
-        - None: no outlier removal
-        - 'sigma_clip': exclude points > mean ± outlier_sigma*std
-        - 'mad': exclude points > median ± outlier_sigma*MAD (Median Absolute Deviation)
-    outlier_sigma : float, optional
-        Threshold for outlier detection (default: 3.0).
-    
-    Returns
-    -------
-    np.ndarray
-        Bin-averaged values at each bin.
-    
-    Notes
-    -----
-    Outlier removal is applied within each bin independently before the reducer is applied.
-    """
-    out = np.full(len(edges) - 1, np.nan)
-    
-    for i in range(len(out)):
-        mask = (x >= edges[i]) & (x < edges[i+1])
-        if np.any(mask):
-            bin_values = y[mask]
-            
-            # Apply outlier removal if specified
-            if outlier_method is not None:
-                bin_values = _filter_outliers(bin_values, method=outlier_method, sigma=outlier_sigma)
-            
-            # Apply reducer only if there are valid values left
-            if bin_values.size > 0:
-                out[i] = reducer(bin_values)
-    
-    return out
-
-
-def _filter_outliers(data, method='sigma_clip', sigma=3.0):
-    """Remove outliers from an array using specified method.
-    
-    Parameters
-    ----------
-    data : np.ndarray
-        Data array (may contain NaNs).
-    method : str
-        Outlier detection method:
-        - 'sigma_clip': exclude values > mean ± sigma*std
-        - 'mad': exclude values > median ± sigma*MAD
-    sigma : float
-        Threshold multiplier (default: 3.0).
-    
-    Returns
-    -------
-    np.ndarray
-        Data array with outliers removed (and NaNs preserved).
-    """
-    # Separate NaNs from valid data
-    valid_mask = np.isfinite(data)
-    if not np.any(valid_mask):
-        return data  # All NaN, return as-is
-    
-    valid_data = data[valid_mask]
-    
-    if method.lower() == 'sigma_clip':
-        # Standard deviation based clipping
-        mean = np.nanmean(valid_data)
-        std = np.nanstd(valid_data)
-        if std == 0:
-            # No variation, all points are valid
-            outlier_mask = np.ones_like(valid_data, dtype=bool)
-        else:
-            outlier_mask = np.abs(valid_data - mean) <= sigma * std
-    
-    elif method.lower() == 'mad':
-        # Median Absolute Deviation based clipping
-        median = np.nanmedian(valid_data)
-        mad = np.nanmedian(np.abs(valid_data - median))
-        if mad == 0:
-            # No variation, all points are valid
-            outlier_mask = np.ones_like(valid_data, dtype=bool)
-        else:
-            outlier_mask = np.abs(valid_data - median) <= sigma * mad
-    
-    else:
-        raise ValueError(f"Unknown outlier method: {method}. Use 'sigma_clip' or 'mad'.")
-    
-    # Return filtered data (keep NaNs where they were, remove outliers from valid data)
-    filtered_data = valid_data[outlier_mask]
-    return filtered_data

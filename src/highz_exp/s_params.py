@@ -5,7 +5,9 @@ import pickle
 import os, copy
 from matplotlib import pyplot as plt
 
-from highz_exp.plotter import plot_gain
+from highz_exp.plotter import plot_gain, set_matplotlib_defaults
+
+set_matplotlib_defaults()
 
 pjoin = os.path.join
 
@@ -207,6 +209,9 @@ class S_Params:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
         plt.show()
+    
+    def plot_magnitude_phase(self, title="Impedance Magnitude"):
+        pass
 
     def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
             s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None):
@@ -513,26 +518,13 @@ class S_Params:
         Returns:
         - S_Params: New S_Params with filtered networks (inplace=False), or self (inplace=True).
         """
-        fmin, fmax = freq_range
-        new_ntwk_dict = {}
-        for label, ntwk in self.ntwk_dict.items():
-            ntwk_copy = copy.deepcopy(ntwk)
-            mask = np.ones(len(ntwk_copy.f), dtype=bool)
-            if fmin is not None:
-                mask &= ntwk_copy.f >= fmin * 1e6
-            if fmax is not None:
-                mask &= ntwk_copy.f <= fmax * 1e6
-            indices = np.where(mask)[0]
-            if len(indices) > 0:
-                new_ntwk_dict[label] = ntwk_copy[indices]
-            else:
-                print(f"Warning: No frequencies in range for {label}")
+        new_ntwk_dict = self._filter_ntwk_dict(freq_range)
         if inplace:
             self.ntwk_dict = new_ntwk_dict
             return self
-        return S_Params(ntwk_dict=new_ntwk_dict)
+        ntwk_copy_dict = {label: copy.deepcopy(ntwk) for label, ntwk in new_ntwk_dict.items()}
+        return S_Params(ntwk_dict=ntwk_copy_dict)
 
-    
     @staticmethod
     def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
         """

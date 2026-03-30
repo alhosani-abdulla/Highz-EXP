@@ -1,9 +1,6 @@
 import skrf as rf
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-import os
-from os.path import join as pjoin, basename as pbase
 
 def compute_spike_height_ratios(spike_data1, spike_data2, tolerance=0.1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
