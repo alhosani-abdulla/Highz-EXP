@@ -426,10 +426,17 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
     else:
         end_idx = np.argmin(np.abs(f_mhz - end_freq))
     plt.figure(figsize=(12, 8))
-    if not isinstance(gain, list):
+    is_multi = isinstance(gain, list)
+    if not is_multi:
         plt.errorbar(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1], **plot_kwargs)
     else:
-        for g, lab in zip(gain, label):
+        if label is None:
+            labels = [f'gain_{i}' for i in range(len(gain))]
+        else:
+            labels = list(label)
+            if len(labels) != len(gain):
+                raise ValueError("label length must match number of gain arrays")
+        for g, lab in zip(gain, labels):
             plt.errorbar(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab, **plot_kwargs)
         plt.legend()
    
@@ -441,18 +448,29 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         plt.ylim(bottom=ymin)
 
     if marker_freqs is not None:
-        for mf in marker_freqs:
-            # Find closest index
-            idx = np.argmin(np.abs(f_mhz - mf))
-            marker_gain = gain[idx] if not isinstance(gain, list) else gain[0][idx]
-            marker_freq_mhz = f_mhz[idx]
+        if not is_multi:
+            series_list = [gain]
+            series_labels = [None]
+        else:
+            series_list = gain
+            series_labels = labels
 
-            # Plot marker
-            plt.plot(marker_freq_mhz, marker_gain, 'ro')
-            plt.annotate(f'{marker_gain:.2f} @ {mf:.0f} MHz',
-                         (marker_freq_mhz, marker_gain),
-                         textcoords="offset points", xytext=(10, 10), ha='left',
-                         fontsize=16, color='darkred')
+        for series, series_label in zip(series_list, series_labels):
+            for mf in marker_freqs:
+                # Find closest index
+                idx = np.argmin(np.abs(f_mhz - mf))
+                marker_gain = series[idx]
+                marker_freq_mhz = f_mhz[idx]
+
+                # Plot marker
+                plt.plot(marker_freq_mhz, marker_gain, 'ro')
+                ann_text = f'{marker_gain:.2f} @ {mf:.0f} MHz'
+                if series_label is not None:
+                    ann_text = f'{series_label}: {ann_text}'
+                plt.annotate(ann_text,
+                             (marker_freq_mhz, marker_gain),
+                             textcoords="offset points", xytext=(10, 10), ha='left',
+                             fontsize=16, color='darkred')
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
