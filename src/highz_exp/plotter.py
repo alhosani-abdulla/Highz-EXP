@@ -347,7 +347,12 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
             color = spec.colorcode
         else:
             color = color_cycle[idx % len(color_cycle)]
-
+        
+        if freq_range[0] is not None:
+            valid_idx = (faxis_mhz >= freq_range[0])
+            faxis_mhz = faxis_mhz[valid_idx]
+            spectrum = spectrum[valid_idx]
+            
         plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, **kwargs)
         
         ymin, ymax = y_range if y_range is not None else (None, None)
@@ -385,7 +390,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
 
     plt.ylim(*ylim)
     if freq_range is not None:
-        plt.xlim(*freq_range)
+        plt.xlim(right=freq_range[1])
     plt.legend(ncol=2, loc='best')
     plt.ylabel(ylabel)
     plt.xlabel('Frequency [MHz]')
@@ -404,6 +409,26 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     else:
         plt.close()
 
+
+def _get_freq_range_indices(f_mhz: np.ndarray, freq_range: tuple = (None, None)) -> tuple[int, int]:
+    """Return inclusive start/end indices closest to the requested frequency range."""
+    if freq_range is None:
+        return 0, len(f_mhz) - 1
+
+    start_freq, end_freq = freq_range
+
+    if start_freq is None:
+        start_idx = 0
+    else:
+        start_idx = np.argmin(np.abs(f_mhz - start_freq))
+
+    if end_freq is None:
+        end_idx = len(f_mhz) - 1
+    else:
+        end_idx = np.argmin(np.abs(f_mhz - end_freq))
+
+    return start_idx, end_idx
+
 def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, None),
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
               marker_freqs=None, **plot_kwargs):
@@ -415,16 +440,7 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         - gain (np.ndarray or list of np.ndarray): Gain values.
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
     """
-    start_freq, end_freq = freq_range
-    # Find the index closest to start_freq and end_freq
-    if start_freq is None:
-        start_idx = 0
-    else:
-        start_idx = np.argmin(np.abs(f_mhz - start_freq))
-    if end_freq is None:
-        end_idx = len(f_mhz) - 1
-    else:
-        end_idx = np.argmin(np.abs(f_mhz - end_freq))
+    start_idx, end_idx = _get_freq_range_indices(f_mhz, freq_range)
     plt.figure(figsize=(12, 8))
     is_multi = isinstance(gain, list)
     if not is_multi:
@@ -442,10 +458,8 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
    
     ymin, ymax = y_range 
     
-    if ymax is not None:
-        plt.ylim(top=ymax)
-    if ymin is not None:
-        plt.ylim(bottom=ymin)
+    if ymax is not None: plt.ylim(top=ymax)
+    if ymin is not None: plt.ylim(bottom=ymin)
 
     if marker_freqs is not None:
         if not is_multi:
@@ -463,7 +477,7 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
                 marker_freq_mhz = f_mhz[idx]
 
                 # Plot marker
-                plt.plot(marker_freq_mhz, marker_gain, 'ro')
+                plt.plot(marker_freq_mhz, marker_gain, 'ro', markersize=8, zorder=10)
                 ann_text = f'{marker_gain:.2f} @ {mf:.0f} MHz'
                 if series_label is not None:
                     ann_text = f'{series_label}: {ann_text}'

@@ -210,8 +210,79 @@ class S_Params:
 
         plt.show()
     
-    def plot_magnitude_phase(self, title="Impedance Magnitude"):
-        pass
+    def plot_magnitude_phase(self, title="Impedance Magnitude and Phase", y_range=(None, None),
+                            s_type='s11', freq_range=(None, None), save_path=None):
+        """
+        Plot impedance magnitude and phase from S parameter Network objects.
+
+        Parameters:
+        - title (str): Title of the plot.
+        - y_range (tuple): (ymin, ymax) tuple for y-axis limits (for magnitude).
+        - s_type (str): S-parameter type to use ('s11' or 's22').
+        - freq_range (tuple): (fmin, fmax) tuple for frequency limits. In MHz.
+        - save_path (str): filepath to save the combined plot
+
+        Returns:
+        - dict: the filtered ntwk_dict
+        """
+        ntwk_dict = self._filter_ntwk_dict(freq_range)
+        ymin, ymax = y_range
+
+        if not ntwk_dict:
+            print("No networks provided.")
+            return ntwk_dict
+
+        fig, (ax_mag, ax_phase) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+
+        color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        for idx, (label, network) in enumerate(ntwk_dict.items()):
+            freq = network.f
+            # Extract only S11 for Smith chart plotting
+            if s_type == 's11':
+                s_data = network.s[:, 0, 0][:, np.newaxis, np.newaxis]
+                z0_data = network.z0[:, 0][:, np.newaxis]
+                s11_ntwk = rf.Network(f=network.f, s=s_data, z0=z0_data)
+            elif s_type == 's22':
+                s_data = network.s[:, 1, 1][:, np.newaxis, np.newaxis]
+                z0_data = network.z0[:, 1][:, np.newaxis]
+                s11_ntwk = rf.Network(f=network.f, s=s_data, z0=z0_data)
+            else:
+                raise ValueError(f"Unsupported s_type: {s_type}")
+            
+
+            mag = np.abs(s11_ntwk.z[:, 0, 0])
+            phase = np.angle(s11_ntwk.z[:, 0, 0], deg=True)
+
+            color = color_cycle[idx % len(color_cycle)]
+            ax_mag.plot(freq / 1e6, mag, label=f'{label}', color=color)
+            ax_phase.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label}')
+
+        ax_mag.set_ylabel('Impedance Magnitude [Ω]', fontsize=20)
+        ax_mag.grid(True)
+        ax_mag.tick_params(axis='both', which='major', labelsize=18)
+        if ymax is not None:
+            ax_mag.set_ylim(top=ymax)
+        if ymin is not None:
+            ax_mag.set_ylim(bottom=ymin)
+
+        ax_mag.legend(loc='best', fontsize=18)
+        ax_mag.set_title(title, fontsize=22)
+
+        ax_phase.set_xlabel('Frequency [MHz]', fontsize=20)
+        ax_phase.set_ylabel('Impedance Phase [deg]', fontsize=20)
+        ax_phase.grid(True)
+        ax_phase.tick_params(axis='both', which='major', labelsize=18)
+        ax_phase.legend(loc='best', fontsize=18)
+
+        fig.tight_layout()
+
+        if save_path is not None:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+
+        plt.show()
+        return ntwk_dict
 
     def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
             s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None):
@@ -526,6 +597,22 @@ class S_Params:
         return S_Params(ntwk_dict=ntwk_copy_dict)
 
     @staticmethod
+    def check_s_vs_z(ntwk, type='s11') -> bool:
+        """Check if the S-parameters and Z-parameters of a Network are consistent with the relation Z = Z0 * (1 + S) / (1 - S) for S11."""
+        if type == 's11':
+            s11 = ntwk.s[:, 0, 0]
+            z0 = ntwk.z0[:, 0]
+        elif type == 's22':
+            s11 = ntwk.s[:, 1, 1]
+            z0 = ntwk.z0[:, 1]
+        else:
+            raise ValueError("Unsupported type. Use 's11'.")
+
+        z_manual = z0 * (1 + s11) / (1 - s11)
+        
+        return np.allclose(z_manual, ntwk.z[:, 0, 0])
+
+    @staticmethod
     def subtract_s11_networks(ntwk1, ntwk2, new_name=None):
         """
         Create a new network where S11 = ntwk1.S11 - ntwk2.S11
@@ -591,6 +678,7 @@ def k_factor(s_params):
 
     k = numerator / denominator
     return k, delta
+
 
 
 def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:

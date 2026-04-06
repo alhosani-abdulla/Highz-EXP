@@ -19,7 +19,7 @@ class Y_Factor_Thermometer:
 
         Parameters:
             - frequency (np.ndarray): Frequency axis in Hz.
-            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW.
+            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW (or other linear power units).
             - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in mW.
             - frequency (np.ndarray): Frequency axis in Hz.
             - DUT_name (str): Name/label for the DUT.
@@ -40,12 +40,13 @@ class Y_Factor_Thermometer:
         self.label = DUT_name
         self.frequency = frequency
         self.T_sys = self.compute_system_temperature(self.Y_factor, T_hot, T_cold)
+        self.g = None # Gain will be calculated later
+
         if self.CAL_hot is not None and self.CAL_cold is not None:
             self.g = self.gain_with_cal(self.DUT_hot, self.DUT_cold, self.CAL_hot, self.CAL_cold)
             self.T_cal = self.compute_system_temperature(self.CAL_hot / self.CAL_cold, T_hot, T_cold)
             self.T_dut = self.DUT_temp_with_cal(self.T_cal, self.g, self.T_sys)
         else:
-            self.g = None # Gain will be calculated later
             if self.RBW is not None:
                 self.g = self.gain_wo_cal(self.DUT_hot*1e-3, self.DUT_cold*1e-3, T_hot, T_cold, self.RBW)
             self.T_dut = None
