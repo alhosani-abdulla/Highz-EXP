@@ -38,7 +38,7 @@ def set_matplotlib_defaults(style_overrides: dict | None = None) -> dict:
 
 set_matplotlib_defaults()
 
-def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum', show_residual=False, show_bottom_panel=True):
+def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path=None, ylabel='Magnitude', title='Measured vs Fitted Spectrum', show_residual=False, show_bottom_panel=True, return_handles=False):
     """
     Plot magnitude for measured and fitted spectrum data, and optionally a ratio panel (measured/fitted) or residual panel.
 
@@ -103,8 +103,11 @@ def plot_measured_vs_fitted(ntwk_dict, scale='linear', save_plot=True, save_path
 
     plt.show()
 
+    if return_handles:
+        return fig, axes
+
 def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None, ylabel='Magnitude', title='Network Data', s_param=(0, 0),
-                      ylim=None):
+                      ylim=None, return_handles=False):
     """
     Plot magnitude (and optionally phase) from a dictionary of scikit-rf Network objects.
     Can be used for S11, gain, power spectrum, or any S-parameter data.
@@ -168,79 +171,10 @@ def plot_network_data(ntwk_dict, save_plot=True, show_phase=True, save_path=None
 
     plt.show()
 
+    if return_handles:
+        return fig, axes
 
-def plot_s1p(ntwk_dict, db=True, title='Reflection Measurement (S11)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None):
-    """
-    Plot multiple reflections from .s1p Network objects on the same axes.
-
-    Parameters:
-    - ntwk_dict (dict): {'label': rf.Network}
-    - db (bool): If True, plot reflection in dB
-    - show_phase (bool): If True, also plot phase in degrees (dashed lines)
-    - attenuation (float): Attenuation added to the magnitude (dB)
-    - save_dir (str): directory to save the combined plot
-    - suffix (str): optional suffix for saved filename
-
-    Returns:
-    - dict: the same ntwk_dict passed in
-    """
-    if not ntwk_dict:
-        print("No networks provided.")
-        return ntwk_dict
-
-    fig, ax1 = plt.subplots(figsize=(14, 8))
-    if show_phase:
-        # replace the single axis with two stacked axes (top: magnitude, bottom: phase)
-        fig.clf()
-        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1])
-        ax1 = fig.add_subplot(gs[0])
-        ax2 = fig.add_subplot(gs[1], sharex=ax1)
-    else:
-        ax2 = None
-
-    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-    for idx, (label, network) in enumerate(ntwk_dict.items()):
-        freq = network.f
-        s11 = network.s[:, 0, 0]
-        mag = 20 * np.log10(np.abs(s11)) + attenuation if db else np.abs(s11)
-        phase = np.angle(s11, deg=True)
-
-        color = color_cycle[idx % len(color_cycle)]
-        ax1.plot(freq / 1e6, mag, label=f'{label}', color=color)
-        if show_phase:
-            ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
-
-    ax1.set_xlabel('Frequency [MHz]')
-    ax1.set_ylabel('Reflection' + (' [dB]' if db else ''))
-    ax1.grid(True)
-    if ymax is not None:
-        ax1.set_ylim(top=ymax)
-    if ymin is not None:
-        ax1.set_ylim(bottom=ymin)
-
-    if show_phase:
-        ax2.set_ylabel('Phase [deg]', color='r')
-
-        # Combine legends from both axes
-        h1, l1 = ax1.get_legend_handles_labels()
-        h2, l2 = ax2.get_legend_handles_labels()
-        ax1.legend(h1 + h2, l1 + l2, loc='best')
-    else:
-        ax1.legend(loc='best')
-
-    plt.title(title)
-    fig.tight_layout()
-
-    if save_dir is not None:
-        os.makedirs(save_dir, exist_ok=True)
-        safe_suffix = f"_{suffix}" if suffix else ""
-        plt.savefig(f'{save_dir}/Reflection{safe_suffix}.png', dpi=150, bbox_inches='tight')
-
-    plt.show()
-    return ntwk_dict
-
-def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None) -> rf.Network:
+def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement (S21)', ymax=None, ymin=None, show_phase=False, attenuation=0, save_dir=None, suffix=None, return_handles=False) -> rf.Network:
     """
     Plot and load gain from a .s2p file (or list of .s2p files) using scikit-rf.
 
@@ -303,6 +237,7 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
                     (marker_freq_ghz, marker_gain),
                     textcoords="offset points", xytext=(10, 10), ha='left',
                     fontsize=16, color='darkred')
+    ax2 = None
     if show_phase:
         ax2 = ax1.twinx()
         ax2.plot(freq / 1e9, phase, color='r', linestyle='--', label='Phase [deg]')
@@ -315,12 +250,14 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
         plt.savefig(f'{save_dir}/Gain_{suffix}.png')
     plt.show()
 
+    if return_handles:
+        return network, fig, (ax1, ax2)
     return network
 
 def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_range=None,
-                  marker_freqs=None, freq_range=None, yticks=None, 
-                  title='Recorded Spectrum', show_plot=True,
-                  **kwargs):
+        marker_freqs=None, freq_range=(None, None), yticks=None, 
+        title='Recorded Spectrum', show_plot=True, return_handles=False,
+        **kwargs):
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
@@ -334,7 +271,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
         - kwargs (dict): Additional keyword arguments for plt.plot() when plotting the spectra.
     """
-    plt.figure(figsize=(14, 8))
+    fig, ax = plt.subplots(figsize=(14, 8))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for idx, spec in enumerate(loaded_specs):
         freq = spec.freq  # in Hz
@@ -353,7 +290,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
             faxis_mhz = faxis_mhz[valid_idx]
             spectrum = spectrum[valid_idx]
             
-        plt.plot(faxis_mhz, spectrum, label=spec.name, color=color, **kwargs)
+        ax.plot(faxis_mhz, spectrum, label=spec.name, color=color, **kwargs)
         
         ymin, ymax = y_range if y_range is not None else (None, None)
         
@@ -378,27 +315,27 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
                 marker_freq_mhz = freq[idx] / 1e6
 
                 # Plot marker
-                plt.plot(marker_freq_mhz, marker_psd, 'ro')
-                plt.annotate(f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
-                             (marker_freq_mhz, marker_psd),
-                             textcoords="offset points", xytext=(10, 10), ha='left',
-                             fontsize=16, color='darkred')
+                ax.plot(marker_freq_mhz, marker_psd, 'ro')
+                ax.annotate(f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
+                            (marker_freq_mhz, marker_psd),
+                            textcoords="offset points", xytext=(10, 10), ha='left',
+                            fontsize=16, color='darkred')
 
     ylim = (ymin, ymax)
     if ylabel is None:
         ylabel = 'PSD [dBm]'
 
-    plt.ylim(*ylim)
+    ax.set_ylim(*ylim)
     if freq_range is not None:
-        plt.xlim(right=freq_range[1])
-    plt.legend(ncol=2, loc='best')
-    plt.ylabel(ylabel)
-    plt.xlabel('Frequency [MHz]')
+        ax.set_xlim(right=freq_range[1])
+    ax.legend(ncol=2, loc='best')
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel('Frequency [MHz]')
     if yticks is not None:
-        plt.yticks(yticks)
-    plt.title(title)
-    plt.grid(True)
-    plt.tight_layout()
+        ax.set_yticks(yticks)
+    ax.set_title(title)
+    ax.grid(True)
+    fig.tight_layout()
     
     # Save the plot
     if save_path is not None:
@@ -409,6 +346,101 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     else:
         plt.close()
 
+    if return_handles:
+        return fig, ax
+
+def plot_two_spectra_with_residual(spec_a: Spectrum, spec_b: Spectrum, save_path=None,
+        ylabel='PSD [dBm]', residual_ylabel='Residual [dB]', y_range=None,
+        residual_y_range=None, freq_range=(None, None), yticks=None,
+        marker_freqs=None, title='Recorded Spectra Comparison', show_plot=True,
+        residual_label=None, return_handles=False, **kwargs):
+    """Plot two spectra and a residual panel defined as spec_a - spec_b.
+
+    Parameters:
+        - spec_a (Spectrum): First spectrum object.
+        - spec_b (Spectrum): Second spectrum object.
+        - save_path (str, optional): Path to save the plot. If None, the plot is not saved.
+        - y_range (tuple, optional): Y-axis range for the top panel (ymin, ymax).
+        - residual_y_range (tuple, optional): Y-axis range for residual panel (ymin, ymax).
+        - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz.
+        - marker_freqs (list, optional): Frequencies in MHz to place residual markers.
+        - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
+        - kwargs (dict): Additional keyword arguments for top-panel line plots.
+    """
+    freq_a_hz = spec_a.freq
+    spec_a_vals = spec_a.spec
+
+    freq_b_hz = spec_b.freq
+    spec_b_vals = spec_b.spec
+
+    # Interpolate spec_b onto spec_a frequency grid if needed.
+    if len(freq_a_hz) != len(freq_b_hz) or not np.allclose(freq_a_hz, freq_b_hz):
+        spec_b_vals = np.interp(freq_a_hz, freq_b_hz, spec_b_vals)
+
+    faxis_mhz = freq_a_hz / 1e6
+    residual = spec_a_vals - spec_b_vals
+
+    start_idx, end_idx = _get_freq_range_indices(faxis_mhz, freq_range)
+    faxis_mhz = faxis_mhz[start_idx:end_idx + 1]
+    spec_a_vals = spec_a_vals[start_idx:end_idx + 1]
+    spec_b_vals = spec_b_vals[start_idx:end_idx + 1]
+    residual = residual[start_idx:end_idx + 1]
+
+    fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(14, 10), sharex=True,
+                                             gridspec_kw={'height_ratios': [3, 1]})
+
+    color_a = spec_a.colorcode if spec_a.colorcode is not None else 'C0'
+    color_b = spec_b.colorcode if spec_b.colorcode is not None else 'C1'
+
+    ax_top.plot(faxis_mhz, spec_a_vals, label=spec_a.name, color=color_a, **kwargs)
+    ax_top.plot(faxis_mhz, spec_b_vals, label=spec_b.name, color=color_b, **kwargs)
+    ax_top.set_ylabel(ylabel)
+    ax_top.grid(True)
+    ax_top.legend(loc='best')
+
+    if y_range is not None:
+        ax_top.set_ylim(*y_range)
+    if yticks is not None:
+        ax_top.set_yticks(yticks)
+
+    if residual_label is None:
+        residual_label = f'{spec_a.name} - {spec_b.name}'
+
+    ax_bottom.plot(faxis_mhz, residual, color='C2', label=residual_label)
+    ax_bottom.axhline(0, color='red', linestyle='-', linewidth=1.2)
+    ax_bottom.set_ylabel(residual_ylabel)
+    ax_bottom.set_xlabel('Frequency [MHz]')
+    ax_bottom.grid(True)
+    ax_bottom.legend(loc='best')
+
+    if residual_y_range is not None:
+        ax_bottom.set_ylim(*residual_y_range)
+
+    if marker_freqs is not None:
+        for mf in marker_freqs:
+            idx = np.argmin(np.abs(faxis_mhz - mf))
+            marker_residual = residual[idx]
+            marker_freq_mhz = faxis_mhz[idx]
+            ax_bottom.plot(marker_freq_mhz, marker_residual, 'ro', markersize=7, zorder=10)
+            ax_bottom.annotate(f'{marker_residual:.2f} @ {mf:.0f} MHz',
+                               (marker_freq_mhz, marker_residual),
+                               textcoords='offset points', xytext=(10, 10), ha='left',
+                               fontsize=14, color='darkred')
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+    if return_handles:
+        return fig, (ax_top, ax_bottom)
 
 def _get_freq_range_indices(f_mhz: np.ndarray, freq_range: tuple = (None, None)) -> tuple[int, int]:
     """Return inclusive start/end indices closest to the requested frequency range."""
@@ -431,7 +463,7 @@ def _get_freq_range_indices(f_mhz: np.ndarray, freq_range: tuple = (None, None))
 
 def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, None),
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
-              marker_freqs=None, **plot_kwargs):
+              marker_freqs=None, return_handles=False, **plot_kwargs):
     """Plot gain over a specified frequency range.
     
     Parameters:
@@ -441,10 +473,10 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
     """
     start_idx, end_idx = _get_freq_range_indices(f_mhz, freq_range)
-    plt.figure(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 8))
     is_multi = isinstance(gain, list)
     if not is_multi:
-        plt.errorbar(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1], **plot_kwargs)
+        ax.errorbar(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1], **plot_kwargs)
     else:
         if label is None:
             labels = [f'gain_{i}' for i in range(len(gain))]
@@ -453,13 +485,15 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
             if len(labels) != len(gain):
                 raise ValueError("label length must match number of gain arrays")
         for g, lab in zip(gain, labels):
-            plt.errorbar(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab, **plot_kwargs)
-        plt.legend()
+            ax.errorbar(f_mhz[start_idx:end_idx+1], g[start_idx:end_idx+1], label=lab, **plot_kwargs)
+        ax.legend()
    
     ymin, ymax = y_range 
     
-    if ymax is not None: plt.ylim(top=ymax)
-    if ymin is not None: plt.ylim(bottom=ymin)
+    if ymax is not None:
+        ax.set_ylim(top=ymax)
+    if ymin is not None:
+        ax.set_ylim(bottom=ymin)
 
     if marker_freqs is not None:
         if not is_multi:
@@ -477,26 +511,29 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
                 marker_freq_mhz = f_mhz[idx]
 
                 # Plot marker
-                plt.plot(marker_freq_mhz, marker_gain, 'ro', markersize=8, zorder=10)
+                ax.plot(marker_freq_mhz, marker_gain, 'ro', markersize=8, zorder=10)
                 ann_text = f'{marker_gain:.2f} @ {mf:.0f} MHz'
                 if series_label is not None:
                     ann_text = f'{series_label}: {ann_text}'
-                plt.annotate(ann_text,
-                             (marker_freq_mhz, marker_gain),
-                             textcoords="offset points", xytext=(10, 10), ha='left',
-                             fontsize=16, color='darkred')
+                ax.annotate(ann_text,
+                            (marker_freq_mhz, marker_gain),
+                            textcoords="offset points", xytext=(10, 10), ha='left',
+                            fontsize=16, color='darkred')
 
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
     if save_path is not None:
         plt.savefig(save_path)
     plt.show()
 
+    if return_handles:
+        return fig, ax
+
 def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20,
-                                  local_tz_obj=None):
+                                  local_tz_obj=None, return_handles=False):
     """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
     
     Parameters:
@@ -565,6 +602,9 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
     else:
         plt.close()
 
+    if return_handles:
+        return fig, ax, im
+
 # From Theo Dardio
 def generate_static_hp_map(frequency_mhz, utc_timestamp, location, observer='LFSM'):
     """
@@ -608,7 +648,7 @@ def generate_static_hp_map(frequency_mhz, utc_timestamp, location, observer='LFS
     return hmap
 
 # From Theo Dardio
-def visualize_static_hmap(hmap, title="Example Galactic Healpix Map"):
+def visualize_static_hmap(hmap, title="Example Galactic Healpix Map", return_handles=False):
     """
     Visualize the healpix map with azimuth and zenith angle labels.
 
@@ -644,9 +684,12 @@ def visualize_static_hmap(hmap, title="Example Galactic Healpix Map"):
 
     plt.show()
 
+    if return_handles:
+        return plt.gcf(), ax
+
 # Adapted from Marcus Bosca's code
 def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mode: str = "collection",
-    max_display_rows: int = 1000, max_display_cols: int = 1000) -> None:
+    max_display_rows: int = 1000, max_display_cols: int = 1000, return_handles: bool = False):
     """
     Creates an interactive heatmap with dynamic downsampling and UTC time ticks.
     """
@@ -761,3 +804,6 @@ def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mo
     render_view() 
     
     plt.show()
+
+    if return_handles:
+        return fig, ax, im

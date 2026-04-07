@@ -6,27 +6,27 @@ import skrf as rf
 from os.path import join as pjoin
 from . import plotter
 from scipy.constants import Boltzmann as k_B
-from . import spec_proc
+from . import spec_proc, unit_convert
 from .spec_class import Spectrum
 
 class Y_Factor_Thermometer:
     """
     Class to handle Y-Factor temperature measurements and calculations.
     """
-    def __init__(self, frequency, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, cal_hot=None, cal_cold=None, RBW=None):
+    def __init__(self, frequency, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, cal_hot=None, cal_cold=None, RBW=None, unit=None):
         """
         Initialize with DUT hot and cold spectra. Both in units of milliwatt.
 
         Parameters:
             - frequency (np.ndarray): Frequency axis in Hz.
-            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in mW (or other linear power units).
-            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in mW.
+            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in linear power units.
+            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in linear power units.
             - frequency (np.ndarray): Frequency axis in Hz.
             - DUT_name (str): Name/label for the DUT.
             - T_hot (float): Hot source temperature in Kelvin.
             - T_cold (float): Cold source temperature in Kelvin.
-            - cal_hot (np.ndarray, optional): Calibration spectrum without DUT at hot source temperature, in mW.
-            - cal_cold (np.ndarray, optional): Calibration spectrum without DUT at cold source temperature, in mW.
+            - cal_hot (np.ndarray, optional): Calibration spectrum without DUT at hot source temperature, in linear power units.
+            - cal_cold (np.ndarray, optional): Calibration spectrum without DUT at cold source temperature, in linear power units.
             - RBW (float, optional): Resolution Bandwidth in Hz, required if no calibration spectra provided.
         """
         self.DUT_hot = np.array(DUT_hot)
@@ -38,17 +38,19 @@ class Y_Factor_Thermometer:
         self.T_cold = T_cold
         self.RBW = RBW
         self.label = DUT_name
+        self.unit = unit
         self.frequency = frequency
         self.T_sys = self.compute_system_temperature(self.Y_factor, T_hot, T_cold)
         self.g = None # Gain will be calculated later
+        self.g_sys = None
 
         if self.CAL_hot is not None and self.CAL_cold is not None:
             self.g = self.gain_with_cal(self.DUT_hot, self.DUT_cold, self.CAL_hot, self.CAL_cold)
             self.T_cal = self.compute_system_temperature(self.CAL_hot / self.CAL_cold, T_hot, T_cold)
             self.T_dut = self.DUT_temp_with_cal(self.T_cal, self.g, self.T_sys)
+            if self.RBW is not None: self.g_sys = self.gain_wo_cal(self.DUT_hot, self.DUT_cold, T_hot, T_cold, self.RBW, self.unit)
         else:
-            if self.RBW is not None:
-                self.g = self.gain_wo_cal(self.DUT_hot*1e-3, self.DUT_cold*1e-3, T_hot, T_cold, self.RBW)
+            if self.RBW is not None: self.g = self.gain_wo_cal(self.DUT_hot, self.DUT_cold, T_hot, T_cold, self.RBW, self.unit)
             self.T_dut = None
             self.T_cal = None
     
@@ -84,22 +86,32 @@ class Y_Factor_Thermometer:
         return T_sys
     
     @staticmethod
-    def gain_wo_cal(DUT_hot, DUT_cold, T_hot, T_cold, RBW) -> np.ndarray:
+    def gain_wo_cal(DUT_hot, DUT_cold, T_hot, T_cold, RBW, unit) -> np.ndarray:
         """
         Calculation of DUT gain without calibration spectra at two source noise temperatures.
 
         Parameters:
-            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature, in Watts
-            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature, in Watts
+            - DUT_hot (np.ndarray): Measured spectrum with DUT connected at hot source temperature
+            - DUT_cold (np.ndarray): Measured spectrum with DUT connected at cold source temperature
             - T_hot (float): Hot source temperature in Kelvin.
             - T_cold (float): Cold source temperature in Kelvin.
             - RBW (float): Resolution Bandwidth in Hz.
+            - unit (str): Unit of the input spectra (DUT_hot, DUT_cold), either 'dBm', 'Kelvin', or None for linear power in Watts.
 
         Returns:
             - g_dut (np.ndarray): Inferred gain of the DUT at each frequency in db scale.
         """
-        g_dut = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold) * k_B * RBW))
-        return g_dut
+        if unit is None:
+            g = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold)))
+        elif unit.lower() == 'dbm':
+            DUT_hot = unit_convert.dbm_to_milliwatt(DUT_hot) * 1e-3
+            DUT_cold = unit_convert.dbm_to_milliwatt(DUT_cold) * 1e-3
+            g = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold) * k_B * RBW))
+        elif unit.lower() == 'kelvin':
+            g = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold)))
+        else:
+            raise ValueError(f"Unsupported unit '{unit}' for gain calculation. Supported units are 'dBm', 'Kelvin', or None for linear power.")
+        return g
     
     def export_gain(self, export_path=None) -> rf.Network:
         """Export the inferred gain spectrum as a scikit-rf Network object.
@@ -149,18 +161,33 @@ class Y_Factor_Thermometer:
         T_dut = T_sys - T_cal / (10**(g_dut / 10))
         return T_dut
     
-    def smooth_gain(self, kwargs={}):
+    def smooth_gain(self, inplace=False, **kwargs):
         """Smooth the gain spectrum using specified smoothing parameters.
 
         Parameters:
             - kwargs (dict): Keyword arguments for the smoothing function.
         """
+        if self.g is None:
+            raise ValueError("Gain spectrum is not available to smooth. Please check if calibration data and RBW are provided to compute it.")
+        if np.any(np.isnan(self.g)):
+            self.frequency = self.frequency[~np.isnan(self.g)]
+            self.g = self.g[~np.isnan(self.g)]
         smoothed_gain = spec_proc.smooth_spectrum(self.g, **kwargs)
+        if inplace:
+            self.g = smoothed_gain
         return smoothed_gain
     
-    def plot_gain(self, **kwargs):
+    def plot_gain(self, **kwargs) -> Spectrum:
         f_mhz = self.f / 1e6  # Convert frequency to MHz
         plotter.plot_gain(f_mhz, self.g, **kwargs)
+        gain_spec = Spectrum(frequency=self.f, spectrum=self.g, name=f'{self.label} Gain')
+        return gain_spec
+
+    def plot_sys_gain(self, **kwargs):
+        if not hasattr(self, 'g_sys'):
+            raise ValueError("System gain spectrum is not available. Please check if all calibration data and RBW are provided to compute it.")
+        f_mhz = self.f / 1e6  # Convert frequency to MHz
+        plotter.plot_gain(f_mhz, self.g_sys, **kwargs)
     
     def export_temperature(self, save_dir=None) -> tuple[Spectrum, Spectrum | None]:
         """Export the system temperature and DUT temperature spectra as Spectrum objects."""
@@ -227,6 +254,9 @@ class Y_Factor_Thermometer:
                 )
             else:
                 g_new = spec_proc._bin_average(self.frequency, self.g, edges, reducer)
+        
+        if hasattr(self, 'g_sys') and self.g_sys is not None:
+            g_sys_new = spec_proc._bin_average(self.frequency, self.g_sys, edges, reducer)
 
         target = self if inplace else copy.deepcopy(self)
 
@@ -237,6 +267,7 @@ class Y_Factor_Thermometer:
         target.T_sys_unc = T_sys_unc
         target.T_dut_unc = T_dut_unc
         target.g_unc = g_unc
+        target.g_sys = g_sys_new if hasattr(self, 'g_sys') else None
 
         return target
     
@@ -258,12 +289,13 @@ class Y_Factor_Thermometer:
         system_spec = Spectrum(frequency=self.f, spectrum=self.T_sys, name=f'{self.label} System Temperature')
         plotter.plot_spectra([system_spec], ylabel='Temperature (K)', **kwargs)
     
-    def plot_dut_temperature(self, **kwargs):
+    def plot_dut_temperature(self, **kwargs) -> Spectrum:
         """Plot the DUT temperature spectrum."""
         if self.T_dut is None:
             raise ValueError("DUT temperature spectrum is not available. Please compute it first.")
         dut_spec = Spectrum(frequency=self.f, spectrum=self.T_dut, name=f'{self.label} DUT Temperature')
         plotter.plot_spectra([dut_spec], ylabel='Temperature (K)', **kwargs)
+        return dut_spec
     
     @staticmethod
     def plot_temps(faxis: np.ndarray, temp_values: list[np.ndarray], labels, start_freq=10, end_freq=400, ymax=None,
@@ -410,7 +442,11 @@ class Y_Factor_Thermometer:
             end_idx = len(f) - 1
 
         # conversion of gain from dB to linear scale
-        g_values = 10**(self.g / 10)
+        if hasattr(self, 'g_sys') and self.g_sys is not None:
+            print("Using system gain for temperature inference.")
+            g_values = 10**(self.g_sys / 10)
+        else:
+            g_values = 10**(self.g / 10)
         noise_values = self.T_sys * g_values
 
         y_arr = np.asarray(spec, dtype=float)
