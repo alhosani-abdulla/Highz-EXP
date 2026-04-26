@@ -6,7 +6,7 @@ import skrf as rf
 import logging
 
 from highz_exp.unit_convert import rfsoc_spec_to_dbm
-from highz_exp.spec_proc import count_spikes
+from highz_exp.reflection_proc import count_spikes
 
 pjoin = os.path.join
 pbase = os.path.basename
@@ -280,6 +280,9 @@ class DSFileLoader():
                 If True, convert raw spectrum to dBm using rfsoc_spec_to_dbm.
             `time_range` : tuple, optional
                 A tuple of (start_time, end_time) to filter timestamps.
+
+        Returns:
+            tuple: (timestamps, spectra)
             
         """
         time_dirs = self.get_sorted_time_dirs(self.dir)

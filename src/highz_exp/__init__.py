@@ -17,6 +17,7 @@ from . import plotter
 from . import unit_convert
 from . import filterbank
 from . import filter_plotting
+from . import load_trc
 
 # Import reflection_proc conditionally (requires scikit-rf)
 try:
@@ -26,7 +27,7 @@ except ImportError:
     # scikit-rf not available
     pass
 
-__all__ = ['file_load', 'plotter', 'unit_convert', 'filterbank', 'filter_plotting']
+__all__ = ['file_load', 'plotter', 'unit_convert', 'filterbank', 'filter_plotting', 'load_trc']
 
 # Add reflection_proc to __all__ if it was successfully imported
 if 'reflection_proc' in locals():

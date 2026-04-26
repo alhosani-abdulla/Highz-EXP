@@ -92,12 +92,9 @@ def parse_trace_data(data_file):
                 trace_names.append(trace_name)
                 trace_col_pairs.append((i - 1, i))  # (frequency col, spectrum col)
     
-    print(f"Found {len(trace_names)} traces: {trace_names}")
-    print(f"Column pairs: {trace_col_pairs}")
     
     if not trace_names:
-        print("No traces found in the file.")
-        return {}
+        raise ValueError("No trace names found in the header row. Check the CSV format.")
     
     # Find the 'Trace Data' row
     trace_data_row_idx = None
@@ -107,10 +104,7 @@ def parse_trace_data(data_file):
             break
     
     if trace_data_row_idx is None:
-        print("Warning: 'Trace Data' marker not found in file")
-        trace_data_row_idx = 3  # Default assumption
-    
-    print(f"'Trace Data' found at row {trace_data_row_idx}")
+        raise ValueError("'Trace Data' marker not found in the CSV file. Check the format.")
     
     # Parse metadata rows (between header and 'Trace Data')
     metadata_dict = {}
@@ -145,8 +139,7 @@ def parse_trace_data(data_file):
                         spectra.append(spec)
                     except ValueError:
                         continue
-        
-        print(f"Trace '{trace_name}': parsed {len(frequencies)} data points")
+    
         
         if frequencies and spectra:
             traces[trace_name] = {
@@ -155,5 +148,4 @@ def parse_trace_data(data_file):
                 'spectrum': np.array(spectra)
             }
     
-    print(f"Successfully parsed {len(traces)} traces with data")
     return traces

@@ -8,12 +8,14 @@ from . import plotter
 from scipy.constants import Boltzmann as k_B
 from . import spec_proc, unit_convert
 from .spec_class import Spectrum
+from scipy.signal import medfilt
 
 class Y_Factor_Thermometer:
     """
     Class to handle Y-Factor temperature measurements and calculations.
     """
-    def __init__(self, frequency, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, cal_hot=None, cal_cold=None, RBW=None, unit=None):
+    def __init__(self, frequency, DUT_hot, DUT_cold, DUT_name, T_hot, T_cold, 
+                 cal_hot=None, cal_cold=None, RBW=None, unit=None):
         """
         Initialize with DUT hot and cold spectra. Both in units of milliwatt.
 
@@ -27,7 +29,7 @@ class Y_Factor_Thermometer:
             - T_cold (float): Cold source temperature in Kelvin.
             - cal_hot (np.ndarray, optional): Calibration spectrum without DUT at hot source temperature, in linear power units.
             - cal_cold (np.ndarray, optional): Calibration spectrum without DUT at cold source temperature, in linear power units.
-            - RBW (float, optional): Resolution Bandwidth in Hz, required if no calibration spectra provided.
+            - RBW (float, optional): Resolution Bandwidth in Hz, required if no calibration spectra provided.    
         """
         self.DUT_hot = np.array(DUT_hot)
         self.DUT_cold = np.array(DUT_cold)
@@ -109,6 +111,8 @@ class Y_Factor_Thermometer:
             g = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold) * k_B * RBW))
         elif unit.lower() == 'kelvin':
             g = 10 * np.log10((DUT_hot - DUT_cold) / ((T_hot - T_cold)))
+        elif unit.lower() == 'milliwatt':
+            g = 10 * np.log10(((DUT_hot - DUT_cold)) * 1e-3 / ((T_hot - T_cold) * k_B * RBW))
         else:
             raise ValueError(f"Unsupported unit '{unit}' for gain calculation. Supported units are 'dBm', 'Kelvin', or None for linear power.")
         return g
@@ -188,7 +192,7 @@ class Y_Factor_Thermometer:
             raise ValueError("System gain spectrum is not available. Please check if all calibration data and RBW are provided to compute it.")
         f_mhz = self.f / 1e6  # Convert frequency to MHz
         plotter.plot_gain(f_mhz, self.g_sys, **kwargs)
-    
+
     def export_temperature(self, save_dir=None) -> tuple[Spectrum, Spectrum | None]:
         """Export the system temperature and DUT temperature spectra as Spectrum objects."""
         system_temp_spec = Spectrum(frequency=self.f, spectrum=self.T_sys, name=f'{self.label} System Temperature')
@@ -257,6 +261,8 @@ class Y_Factor_Thermometer:
         
         if hasattr(self, 'g_sys') and self.g_sys is not None:
             g_sys_new = spec_proc._bin_average(self.frequency, self.g_sys, edges, reducer)
+        else:
+            g_sys_new = None
 
         target = self if inplace else copy.deepcopy(self)
 
@@ -372,6 +378,22 @@ class Y_Factor_Thermometer:
         else:
             new_thermo = copy.deepcopy(self)
             return _smooth_attributes(new_thermo)
+    
+    def medfilt_all(self, kernel_size=31, inplace=False):
+        """Apply median filtering to gain, system temperature, and DUT temperature spectra."""
+        def _medfilt_attributes(obj):
+            obj.g = medfilt(obj.g, kernel_size=kernel_size)
+            obj.T_sys = medfilt(obj.T_sys, kernel_size=kernel_size)
+            if obj.T_dut is not None:
+                obj.T_dut = medfilt(obj.T_dut, kernel_size=kernel_size)
+            if obj.g_sys is not None:
+                obj.g_sys = medfilt(obj.g_sys, kernel_size=kernel_size)
+            return obj
+        if inplace:
+            return _medfilt_attributes(self)
+        else:
+            new_thermo = copy.deepcopy(self)
+            return _medfilt_attributes(new_thermo)
 
     def infer_temp_with_known_gain(self, spectrum, s21_ntwk) -> np.ndarray:
         """Calculate the DUT temperature spectrum using a known gain spectrum from an S-parameter measurement.
@@ -401,10 +423,10 @@ class Y_Factor_Thermometer:
         return inferred_spectrum
     
     def infer_temperature(self, spectrum: Spectrum, freq_range=(None, None),
-                    marker_freqs=None,
-                    smoothing='savgol', window_size=31, 
-                    y_range=(None, None), title=None, show_plot=True,
-                    save_path=None):
+        marker_freqs=None,
+        smoothing='savgol', window_size=31, 
+        y_range=(None, None), title=None, show_plot=True,
+        save_path=None):
         """
         Plot temperature inference of a noise source with optional smoothing.
         This uses system gain and system temperature instead of just the DUT that's being measured. In other words,
@@ -433,13 +455,13 @@ class Y_Factor_Thermometer:
         # Find the index closest to start_freq and end_freq
         start_freq, end_freq = freq_range
         if start_freq is not None:
-            start_idx = np.argmin(np.abs(f - start_freq))
+            start_idx = np.argmin(np.abs(self.f/1e6 - start_freq))
         else:
             start_idx = 0
         if end_freq is not None:
-            end_idx = np.argmin(np.abs(f - end_freq))
+            end_idx = np.argmin(np.abs(self.f/1e6 - end_freq))
         else:
-            end_idx = len(f) - 1
+            end_idx = len(self.f/1e6) - 1
 
         # conversion of gain from dB to linear scale
         if hasattr(self, 'g_sys') and self.g_sys is not None:
@@ -449,16 +471,12 @@ class Y_Factor_Thermometer:
             g_values = 10**(self.g / 10)
         noise_values = self.T_sys * g_values
 
-        y_arr = np.asarray(spec, dtype=float)
-        
-        # interpolate gain and noise temp to match frequency axis of the input spectrum
-        g_arr = np.interp(f, self.f/1e6, g_values)
-        b_arr = np.interp(f, self.f/1e6, noise_values)
+        y_arr = np.interp(self.f/1e6, f, spec)
 
-        temp_arr = (y_arr - b_arr)/g_arr
+        temp_arr = (y_arr - noise_values)/g_values
 
         # Extract the frequency range
-        freq_range = f[start_idx:end_idx+1]
+        freq_range = (self.f/1e6)[start_idx:end_idx+1]
         temp_range = temp_arr[start_idx:end_idx+1]
 
         # Apply smoothing
@@ -511,7 +529,8 @@ class Y_Factor_Thermometer:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.show()
         
-        inferred_spectrum = Spectrum(frequency=spectrum.freq, spectrum=temp_arr, name=spectrum.name)
+        freq_range_hz = freq_range * 1e6
+        inferred_spectrum = Spectrum(frequency=freq_range_hz, spectrum=temp_range, name=spectrum.name)
 
         return inferred_spectrum
     
