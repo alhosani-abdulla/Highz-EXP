@@ -1,5 +1,6 @@
 import numpy as np
 from highz_exp.spec_proc import smooth_spectrum
+from highz_exp.plotter import MARKER_FREQS_COLOR_LIST
 import skrf as rf
 import pickle
 import os, copy
@@ -12,16 +13,17 @@ set_matplotlib_defaults()
 pjoin = os.path.join
 
 class S_Params:
-    def __init__(self, s_params_files=None, labels=None, ntwk_dict=None, pickle_file=None):
+    def __init__(self, s_params_files=None, labels=None, ntwk_dict=None, pickle_file=None, colorcode=None):
         """
         Construct S_Params in one of three ways:
 
-        - Provide s_params_files (str or list) and optional labels (str or list)
-        - Provide ntwk_dict: a dict of {label: rf.Network} or {label: filepath}
-        - Provide pickle_file: path to a pickled dict of networks (same format as ntwk_dict)
+        - s_params_files (str or list) and optional labels (str or list)
+        - ntwk_dict: a dict of {label: rf.Network} or {label: filepath}
+        - pickle_file: path to a pickled dict of networks (same format as ntwk_dict)
 
         Parameters:
         - labels (str or list): Labels for the S-parameter files.
+        - colorcode (dict or list): Optional dict mapping labels to color strings for plotting.
         """
         # Priority: ntwk_dict > pickle_file > s_params_files
         if ntwk_dict is not None:
@@ -35,6 +37,7 @@ class S_Params:
                     self.ntwk_dict[label] = rf.Network(val)
                 else:
                     raise TypeError("ntwk_dict values must be skrf.Network instances or filepath strings.")
+            self._init_colorcode(colorcode)
             return
 
         if pickle_file is not None:
@@ -45,7 +48,7 @@ class S_Params:
             if not isinstance(loaded, dict):
                 raise ValueError("Pickle must contain a dict of networks (label -> rf.Network or filepath).")
             # reuse ntwk_dict path
-            self.__init__(ntwk_dict=loaded)
+            self.__init__(ntwk_dict=loaded, colorcode=colorcode)
             return
 
         if s_params_files is None:
@@ -63,10 +66,31 @@ class S_Params:
             raise ValueError("Number of S-parameter files must match number of labels.")
 
         self.ntwk_dict = {label: rf.Network(file) for file, label in zip(s_params_files, labels)}
+        self._init_colorcode(colorcode)
+
+    def _init_colorcode(self, colorcode):
+        """Initialize colorcode dictionary for plotting."""
+        self.colorcode = colorcode
+        
+        if self.colorcode is None:
+            self.colorcode = {}
+            for idx, label in enumerate(self.ntwk_dict):
+                self.colorcode[label] = plt.rcParams['axes.prop_cycle'].by_key()['color'][idx % len(plt.rcParams['axes.prop_cycle'].by_key()['color'])]
+        elif isinstance(self.colorcode, dict):
+            # Ensure all labels have a color, assign default colors to any missing labels
+            for idx, label in enumerate(self.ntwk_dict):
+                if label not in self.colorcode:
+                    self.colorcode[label] = plt.rcParams['axes.prop_cycle'].by_key()['color'][idx % len(plt.rcParams['axes.prop_cycle'].by_key()['color'])]
+        elif isinstance(self.colorcode, list):
+            if len(self.colorcode) < len(self.ntwk_dict):
+                raise ValueError("Colorcode list must have at least as many colors as there are networks.")
+            self.colorcode = {label: self.colorcode[idx % len(self.colorcode)] for idx, label in enumerate(self.ntwk_dict)}
+        else:
+            raise TypeError("colorcode must be a dict mapping labels to color strings.")
 
     @classmethod
-    def from_files(cls, s_params_files, labels=None):
-        return cls(s_params_files=s_params_files, labels=labels)
+    def from_files(cls, s_params_files, labels=None, colorcode=None):
+        return cls(s_params_files=s_params_files, labels=labels, colorcode=colorcode)
 
     @classmethod
     def from_ntwk_dict(cls, ntwk_dict):
@@ -74,8 +98,8 @@ class S_Params:
 
     @classmethod
     def from_pickle(cls, pickle_file):
-        return cls(pickle_file=pickle_file)
-    
+        return cls(pickle_file=pickle_file, colorcode=None)
+
     def get_freq(self, MHz=True) -> np.ndarray:
         """
         Get frequency axis from the first Network in ntwk_dict.
@@ -254,7 +278,10 @@ class S_Params:
             mag = np.abs(s11_ntwk.z[:, 0, 0])
             phase = np.angle(s11_ntwk.z[:, 0, 0], deg=True)
 
-            color = color_cycle[idx % len(color_cycle)]
+            if self.colorcode and label in self.colorcode:
+                color = self.colorcode[label]
+            else:
+                color = color_cycle[idx % len(color_cycle)]
             ax_mag.plot(freq / 1e6, mag, label=f'{label}', color=color)
             ax_phase.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label}')
 
@@ -285,7 +312,8 @@ class S_Params:
         return ntwk_dict
 
     def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
-            s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None):
+            s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None,
+            **plot_kwargs):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -329,7 +357,7 @@ class S_Params:
             phase = np.angle(s11, deg=True)
 
             color = color_cycle[idx % len(color_cycle)]
-            ax1.plot(freq / 1e6, mag, label=f'{label}', color=color)
+            ax1.plot(freq / 1e6, mag, label=f'{label}', color=color, **plot_kwargs)
             if show_phase:
                 ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
 
@@ -339,6 +367,7 @@ class S_Params:
             ax2.set_xlabel('Frequency [MHz]', fontsize=20)
 
         ax1.set_ylabel('Reflection' + (' [dB]' if db else ''), fontsize=20)
+        ax1.set_xlim(left=0)
         ax1.grid(True)
         ax1.tick_params(axis='both', which='major', labelsize=18)
 
@@ -372,14 +401,17 @@ class S_Params:
 
         plt.show()
     
-    def plot_smith_chart(self, save_path=None, title='Smith Chart',
-            s_type='s11', freq_range=(None, None), marker_freqs=None, autoscale=False):
+    def plot_smith_chart(self, fig=None, ax=None, save_path=None, title='Smith Chart', s_type='s11', 
+        freq_range=(None, None), marker_freqs=None, radius=1.0, **plot_kwargs) -> tuple[plt.Figure, plt.Axes]:
         """Plot Smith chart from one or more scikit-rf Network objects.
+        
         Parameters:
             - suffix (str): Used for output filename if saving.
             - freq_range (tuple): (min_freq, max_freq) in MHz to restrict plotting range.
                                 Default (None, None) plots all frequencies.
             - marker_freqs (list): List of frequencies in Hz to mark on the Smith chart.
+            - radius (float): Radius of the Smith chart. Default is 1.0 (normalized to Z0).
+            - plot_kwargs: Additional keyword arguments, passed to Network.plot_s_smith()
         """
         ntwk_dict = self._filter_ntwk_dict(freq_range)
         
@@ -387,7 +419,8 @@ class S_Params:
             print("No networks to plot after frequency filtering")
             return
         
-        fig, ax = plt.subplots()
+        if fig is None or ax is None:
+            fig, ax = plt.subplots()
         fig.set_size_inches(14, 12)
         for label, ntwk in ntwk_dict.items():
             # Extract only S11 for Smith chart plotting
@@ -401,14 +434,11 @@ class S_Params:
                 s11_ntwk = rf.Network(f=ntwk.f, s=s_data, z0=z0_data)
             else:
                 raise ValueError(f"Unsupported s_type: {s_type}")
-            s11_ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True)
+            s11_ntwk.plot_s_smith(ax=ax, label=label, chart_type='z', draw_labels=True, label_axes=True, r=radius,
+                                  color=self.colorcode.get(label, None), **plot_kwargs)
 
         for text in ax.texts:
             text.set_fontsize(18)
-        
-        if autoscale:
-            ax.autoscale()
-            ax.set_xlim(1.0)
 
         # Update axis labels (Real and Imaginary)
         ax.set_xlabel(ax.get_xlabel(), fontsize=18, labelpad=16)
@@ -434,19 +464,31 @@ class S_Params:
                         label = f'{label} @ {mfreq/1e6:.2f} MHz: {impedance}' 
                     else:
                         label = f'{mfreq/1e6:.2f} MHz: {impedance}'
-                    ax.plot(np.real(s11_point), np.imag(s11_point), 'o', markersize=7, label=label)
-        
+                    ax.plot(np.real(s11_point), np.imag(s11_point), 'o', markersize=7, label=label, color=MARKER_FREQS_COLOR_LIST[len(ax.lines) % len(MARKER_FREQS_COLOR_LIST)])
+
         ax.legend(loc='upper left', borderaxespad=0, fontsize=18)
         plt.tight_layout()
         
         if save_path is not None:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             fig.savefig(save_path, bbox_inches='tight')
-        plt.show()
+        # plt.show()
+        
+        return fig, ax
+
+    def resample(self, f_resample):
+        """Resample all networks to a frequency axis"""
+        new_ntwk_dict = {}
+        for key, value in self.ntwk_dict.items():
+            ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
+            ntwk_copy.resample(f_resample)
+            new_ntwk_dict[key] = ntwk_copy
+        self.ntwk_dict = new_ntwk_dict
+        return new_ntwk_dict
     
     def plot_gain(self, attenuation=0, title='Gain Measurement', y_range=(None, None),
                   type='s21', marker_freqs=None, save_path=None, plot_kwargs={},
-                  smoothing=False, smoothing_kwargs=None, freq_range=(None, None)):
+                  scale='dB', smoothing=False, smoothing_kwargs=None, freq_range=(None, None)):
         """
         Plot gain from multiple .s2p Network objects on the same axes.
 
@@ -455,6 +497,7 @@ class S_Params:
         - attenuation (float): Attenuation used during measurement (dB). Plotted gain would be (measured gain + attenuation).
         - y_range (tuple): (y_min, y_max) limits for the y-axis. Use (None, None) for auto-scaling.
         - type (str): Type of gain to plot. Choose between 's21' (forward gain) and 's12' (reverse gain).
+        - scale (str): 'dB' or 'linear' scale for gain. Default is 'dB'.
         - save_path (str): full path to save the plot
         - marker_freqs (list): List of frequencies in MHz to mark on the gain plot.
         - smoothing (bool): Whether to apply smoothing to the gain curves.
@@ -480,7 +523,12 @@ class S_Params:
                 s = network.s[:, 0, 1]
             else:
                 raise ValueError(f"Invalid type: {type}")
-            gain[label] = 20 * np.log10(np.abs(s))
+            if scale == 'dB':
+                gain[label] = 20 * np.log10(np.abs(s))
+            elif scale == 'linear':
+                gain[label] = np.abs(s)
+            else:                
+                raise ValueError(f"Invalid scale: {scale}")
 
         # Apply smoothing if requested
         if smoothing:
@@ -680,7 +728,6 @@ def k_factor(s_params):
     return k, delta
 
 
-
 def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
     """
     Interpolate all ntwk objects in a dictionary to the target frequencies and remove frequencies outside the specified range.
@@ -734,3 +781,8 @@ def interpolate_ntwk_dict(ntwk_dict, target_freqs, freq_range=None) -> dict:
         new_ntwk_dict[label] = interp_ntwk
 
     return new_ntwk_dict
+
+def filter_ntwk(f_arr, ntwk):
+    """Filter a skrf.Network to only include frequencies in f_arr."""
+    mask = np.isin(ntwk.f, f_arr)
+    return ntwk[mask]
