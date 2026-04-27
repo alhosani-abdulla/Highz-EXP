@@ -13,8 +13,21 @@ class TraceLoader:
 
     def list_traces(self) -> list[str]:
         """Return the trace names available in a TRC file."""
+        return self._available_trace_tags()
+
+    def _available_trace_tags(self) -> list[str]:
+        """Return all TRACE* tags present under TRACE_DATA."""
         trace_data = self._find_trace_data_root()
         return [child.tag for child in trace_data if child.tag.upper().startswith("TRACE")]
+
+    def _normalize_trace_tag(self, trace: int | str) -> str:
+        """Normalize user input like 1 or 'trace1' into a TRACE* tag name."""
+        if isinstance(trace, int):
+            return f"TRACE{trace}"
+        text = trace.strip()
+        if text.upper().startswith("TRACE"):
+            return text.upper()
+        return text
 
     def _find_trace_data_root(self) -> ET.Element:
         """Find the TRACE_DATA element in the TRC XML tree."""
@@ -74,8 +87,6 @@ class TraceLoader:
 
         Parameters
         ----------
-        file_path:
-            Path to the .trc file.
         trace:
             Trace number like 1 or tag name like "TRACE1".
         freq_scale:
@@ -85,24 +96,15 @@ class TraceLoader:
         spectrum_offset:
             Offset added after scaling the spectrum values.
         """ 
-        trace_data = self._find_trace_data_root()
-
-        x_values = self._parse_float_array(trace_data.get("X")) * freq_scale
-
-        trace_tag = f"TRACE{trace}" if isinstance(trace, int) else trace
-        trace_element = trace_data.find(trace_tag)
-        if trace_element is None:
-            available = ", ".join(self.list_trc_traces())
-            raise ValueError(f"Trace {trace_tag!r} not found. Available traces: {available}")
-
-        y_values = self._parse_float_array(trace_element.get("Data"))
-        y_values = y_values * spectrum_scale + spectrum_offset
-
-        if x_values.size == 0 or y_values.size == 0:
-            raise ValueError(f"Empty frequency or spectrum data in trace {trace_tag!r}")
-
-        sample_count = min(x_values.size, y_values.size)
-        return x_values[:sample_count], y_values[:sample_count]
+        trace_tag = self._normalize_trace_tag(trace)
+        trace_data = self.load_traces(
+            traces=[trace],
+            freq_scale=freq_scale,
+            spectrum_scale=spectrum_scale,
+            spectrum_offset=spectrum_offset,
+        )
+        series = trace_data[trace_tag]
+        return series["frequency"], series["spectrum"]
 
     def load_traces(self, traces: list[int | str] | None = None,
         freq_scale: float = 1.0, spectrum_scale: float = 1.0, spectrum_offset: float = 0.0,
@@ -114,11 +116,11 @@ class TraceLoader:
         if x_values.size == 0:
             raise ValueError("Empty frequency axis (TRACE_DATA X attribute)")
 
-        available = [child.tag for child in trace_data if child.tag.upper().startswith("TRACE")]
+        available = self._available_trace_tags()
         if traces is None:
             trace_tags = available
         else:
-            trace_tags = [f"TRACE{t}" if isinstance(t, int) else t for t in traces]
+            trace_tags = [self._normalize_trace_tag(t) for t in traces]
 
         data: dict[str, dict[str, np.ndarray]] = {}
         for trace_tag in trace_tags:

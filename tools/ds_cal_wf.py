@@ -20,6 +20,7 @@ import numpy as np
 from textwrap import dedent
 from zoneinfo import ZoneInfo
 from tqdm.auto import tqdm
+import logging
 
 from highz_exp.argparse_utils import RichHelpFormatter, setup_cli_logging
 
@@ -52,7 +53,6 @@ NOISE_DIODE_TEMP_F2_K = 2110
 NOISE_DIODE_FREQ_F1_MHZ = 50
 NOISE_DIODE_FREQ_F2_MHZ = 200
 RESISTOR_TEMP_K = 273
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -138,7 +138,6 @@ def parse_timeline_info(timeline_file) -> pd.DataFrame:
 def calibrate_and_plot_loaded(
         proc,
         seg_indx,
-        logger,
         segment_output_dir,
         date,
         vmax,
@@ -147,6 +146,7 @@ def calibrate_and_plot_loaded(
         t_downsample=2,
         f_downsample=4):
     """Run calibration and generate all per-segment plots using a preloaded processor."""
+    logger = logging.getLogger("ds_cal_wf")
     logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
     frequencies_mhz = proc.prepare_state_medians()
     logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
@@ -268,8 +268,9 @@ def calibrate_and_plot_loaded(
         "segment_label": segment_local_label,
     }
 
-def run_segment(args, seg_indx, logger, data_folder, output_dir, date, timeline_info):
+def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info):
     """Run the calibration workflow for one segment index, including loading, calibration, and plotting."""
+    logger = logging.getLogger("ds_cal_wf")
     segment_output_dir = os.path.join(output_dir, f"seg_{seg_indx}")
     os.makedirs(segment_output_dir, exist_ok=True)
     logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
@@ -316,16 +317,15 @@ def run_segment(args, seg_indx, logger, data_folder, output_dir, date, timeline_
 
         nd_indx = row.get("ND")
         if nd_indx is None:
-            pass
+            logger.info("Processing data without calibrators...")
+            pass # Needs attention
         else:
             nd_indx = int(nd_indx)
             logger.info(
                 "[seg %d] Using noise diode index %d from timeline for calibration", seg_indx, nd_indx)
             nd_temp = ND_temperature(proc.frequencies_mhz * 1e6, indx=nd_indx)
             calibrated = calibrate_and_plot_loaded(
-                proc=proc,
-                seg_indx=seg_indx,
-                logger=logger,
+                proc=proc, seg_indx=seg_indx,
                 segment_output_dir=segment_output_dir,
                 date=date,
                 nd_temp_k=nd_temp,
@@ -335,7 +335,6 @@ def run_segment(args, seg_indx, logger, data_folder, output_dir, date, timeline_
             results.append(calibrated)
 
         return results
-
 
 def main():
     args = parse_args()

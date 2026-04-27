@@ -202,8 +202,8 @@ class CALModel:
         return fitted
     
     @staticmethod
-    def model_eval(f, *coeffs):
-        """Evaluate linear noise diode temperature model: T(f) = polyval(coeffs, f)."""
+    def model_eval(f, coeffs):
+        """Evaluate linear noise diode temperature model: T(f) = polyval(f, coeffs)."""
         coeffs = np.asarray(coeffs, dtype=float)
         return np.polynomial.polynomial.polyval(f, coeffs)
     
