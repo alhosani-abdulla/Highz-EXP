@@ -26,7 +26,7 @@ class AntennaGain():
         """
         self.gain_info = gain_info
     
-    def load_gain_pattern(self, freq_hz):
+    def load_gain_pattern(self, freq_hz) -> tuple[np.ndarray, np.ndarray]:
         """
         Load the gain pattern for a specific frequency from the gain_info DataFrame.
         
@@ -34,8 +34,8 @@ class AntennaGain():
         freq_hz (float): The frequency in Hz for which to load the gain pattern.
         
         Returns:
-        theta (np.ndarray): Incident angles in degrees.
-        gain (np.ndarray): 2D Gain map with (theta, phi) dimensions.
+            theta (np.ndarray): Incident angles in degrees.
+            gain (np.ndarray): 2D Gain map (effective height) with (theta, phi) dimensions.
         """
         # Filter the DataFrame for the specified frequency
         freq_data = self.gain_info[self.gain_info['Frequency (Hz)'] == freq_hz]
@@ -45,6 +45,37 @@ class AntennaGain():
         gain = freq_data['Voltage_Mag'].to_numpy().reshape((len(theta), 1)).repeat(181, axis=1)  # Using Voltage_Mag as a proxy for gain
         
         return theta, gain
+    
+    def load_max_gain(self) -> pd.DataFrame:
+        """Load the maximum gain values for each frequency from the gain_info DataFrame.
+        
+        Returns:
+            max_gain_df (pd.DataFrame): DataFrame containing all columns for rows with maximum gain per frequency.
+        """
+        max_gain_df = self.gain_info.loc[self.gain_info.groupby('Frequency (Hz)')['Voltage_Mag'].idxmax()]
+        return max_gain_df
+
+    def eff_height_freq_plot(self, title, unit='Voltage') -> pd.DataFrame:
+        """Create a plot of effective height vs frequency using the maximum gain values.
+        
+        Returns:
+            max_gain_df (pd.DataFrame): DataFrame containing all columns for rows with maximum gain per frequency.
+        """
+        max_gain_df = self.load_max_gain()
+        plt.figure(figsize=(10, 6))
+        plt.title(title)
+        plt.xlabel('Frequency (MHz)')
+        if unit == 'Voltage':
+            plt.ylabel('Effective Height (V)')
+            plt.plot(max_gain_df['Frequency (Hz)'] / 1e6, max_gain_df['Voltage_Mag'], marker='o')
+        elif unit == 'Power':
+            plt.ylabel('Effective Height (Power)')
+            plt.plot(max_gain_df['Frequency (Hz)'] / 1e6, max_gain_df['Voltage_Mag']**2, marker='o')
+        else:
+            raise ValueError("Invalid unit. Use 'Voltage' or 'Power'.")
+        plt.grid()
+        plt.show()
+        return max_gain_df
 
     def load_and_plot(self, freq_mhz) -> np.ndarray:
         """Load the gain pattern for a specific frequency, create a polar plot, and generate a beam map.
@@ -63,20 +94,20 @@ class AntennaGain():
 
     # By Theo Dardio
     @staticmethod
-    def generate_beam_map(gain_map) -> np.ndarray:
+    def generate_beam_map(effective_height_2d_map) -> np.ndarray:
         """
         Generate a beam map of the antenna with a given gain map using interpolation.
         
         Parameters:
-        - gain_map: 2D array of gain values with shape (num_theta, num_phi)
+        - effective_height_2d_map: 2D array of effective height values with shape (num_theta, num_phi)
         Returns:
-        - beam_map: 1D array of gain values for each HEALPix pixel, with the same ordering as hp.pix2ang
+        - beam_map: 1D array of length N_PIX containing the interpolated beam map values for each pixel
         """
-        num_theta, num_phi = gain_map.shape
+        num_theta, num_phi = effective_height_2d_map.shape
         theta1 = np.linspace(0, np.pi/2, num_theta)
         phi1 = np.linspace(0, 2*np.pi, num_phi)
         interpolator = RegularGridInterpolator(
-            (theta1, phi1), gain_map,
+            (theta1, phi1), effective_height_2d_map,
             bounds_error=False, fill_value=0
         )
         beam_map = np.full(N_PIX, 0.0)  # initialize with UNSEEN for masking
@@ -93,7 +124,7 @@ class AntennaGain():
         rot = hp.Rotator([0, 90, 0])
         beam_map = rot.rotate_map_pixel(beam_map)
         return beam_map
-        
+    
     # By Theo Dardio
     @staticmethod
     def visualize_beam_map(beam_map):
@@ -109,6 +140,7 @@ class AntennaGain():
             plt.text(0, np.sin(np.radians(za)) + 0.01, f"{za}°", color='white', ha='center')
 
         # Add azimuth angle labels
+        
         az_labels = [0, 90, 180, 270]
         label_pos = {
             0: (0, 1.05),       # North (up)
