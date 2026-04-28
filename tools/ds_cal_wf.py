@@ -10,11 +10,10 @@ What it does:
 - Computes system gain and system temperature.
 - Produces calibrated antenna-temperature waterfall plots (HTML) per segment.
 - Produces combined summary PNG spectra plots across the first 3 segments.
-
 """
 
 import argparse
-import os
+import os, pathlib
 import pandas as pd
 import numpy as np
 from textwrap import dedent
@@ -25,11 +24,12 @@ import logging
 from highz_exp.argparse_utils import RichHelpFormatter, setup_cli_logging
 
 from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
-from highz_exp.sys_cal import DSCalibrationProcessor
+from highz_exp.sys_cal import DSCalibrationProcessor, SystemCalibrationProcessor
 from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
 from highz_exp import plotter
 from highz_exp.unit_convert import convert_utc_list_to_local
+from highz_exp.load_db import get_T_data
 from CAL_VARS import ND_temperature
 
 # ===== Editable macros =====
@@ -48,17 +48,11 @@ PLOT_TIME_AXIS_STEP_LST_HOUR = 1
 
 NO_SEGMENTS = 1
 
-NOISE_DIODE_TEMP_F1_K = 1976
-NOISE_DIODE_TEMP_F2_K = 2110
-NOISE_DIODE_FREQ_F1_MHZ = 50
-NOISE_DIODE_FREQ_F2_MHZ = 200
-RESISTOR_TEMP_K = 273
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Calibrate one day of digital spectrometer data and generate summary outputs, including spectrum and temperature data in .fits and html formats."
-            "(median spectra, system temperature/gain, and antenna temperature waterfall)."
+            "(median spectra, system temperature/gain, and sky temperature waterfall)."
         ),
         formatter_class=RichHelpFormatter,
         epilog=dedent("""
@@ -135,43 +129,101 @@ def parse_timeline_info(timeline_file) -> pd.DataFrame:
 
     return df
 
-def calibrate_and_plot_loaded(
-        proc,
-        seg_indx,
-        segment_output_dir,
-        date,
-        vmax,
-        nd_temp_k,
-        resistor_temp_k=RESISTOR_TEMP_K,
-        t_downsample=2,
-        f_downsample=4):
+def plot_cal_ant_wf(
+    proc: SystemCalibrationProcessor,
+    seg_indx: int,
+    segment_output_dir,
+    date,
+    vmax,
+    frequencies_mhz,
+    antenna_utc_timestamps,
+    ant_T_wf,
+    t_downsample=2,
+    f_downsample=4,
+):
+    """Downsample and plot the calibrated antenna waterfall for one segment."""
+    logger = logging.getLogger("ds_cal_wf")
+    local_timezone = ZoneInfo("HST")
+    antenna_local_timestamps = convert_utc_list_to_local(
+        np.array(antenna_utc_timestamps),
+        local_timezone=local_timezone,
+    )
+
+    if t_downsample != 1 and f_downsample != 1:
+        _, frequency_bin_count = ant_T_wf.shape
+        waterfall_frequency_step = proc.choose_frequency_downsample_step(
+            frequency_bin_count=frequency_bin_count,
+            requested_step=f_downsample,
+        )
+        logger.info(
+            "Waterfall downsample factors selected: step_t=%d, step_f=%d",
+            t_downsample, f_downsample,
+        )
+        logger.info(
+            "[seg %d] local time span: %s -> %s",
+            seg_indx,
+            antenna_local_timestamps[0],
+            antenna_local_timestamps[-1],
+        )
+
+        downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
+            datetimes=np.array(antenna_local_timestamps),
+            faxis=np.array(frequencies_mhz),
+            spectra=ant_T_wf,
+            step_t=t_downsample,
+            step_f=waterfall_frequency_step,
+        )
+    else:
+        logger.info("[seg %d] skipping waterfall downsampling", seg_indx)
+        downsampled_datetimes = np.array(antenna_local_timestamps)
+        downsampled_frequencies_mhz = np.array(frequencies_mhz)
+        downsampled_spectra = ant_T_wf
+
+    ant_temp_waterfall_path = os.path.join(
+        segment_output_dir, f"{date}_ant_cal_temp.html"
+    )
+    plot_waterfall_heatmap_plotly(
+        datetimes=list(downsampled_datetimes),
+        spectra=downsampled_spectra,
+        faxis_mhz=downsampled_frequencies_mhz,
+        title="Antenna Calibrated Temperature",
+        unit="K",
+        output_path=ant_temp_waterfall_path,
+        vmin=10,
+        vmax=vmax,
+        step=50,
+    )
+
+    logger.info("[seg %d] saved waterfall=%s", seg_indx, ant_temp_waterfall_path)
+    logger.info(
+        "Waterfall shape: original=%s, downsampled=%s",
+        ant_T_wf.shape,
+        downsampled_spectra.shape,
+    )
+
+    return ant_temp_waterfall_path
+
+def calibrate_loaded(proc: SystemCalibrationProcessor, seg_indx: int, nd_temp_k, resistor_temp_k,):
     """Run calibration and generate all per-segment plots using a preloaded processor."""
     logger = logging.getLogger("ds_cal_wf")
     logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
     frequencies_mhz = proc.prepare_state_medians()
-    logger.info("Frequency bins retained in range: %d", len(frequencies_mhz))
 
     logger.info("[seg %d] computing system gain/temp from cycles", seg_indx)
-    _ = proc.calibrate_system_from_cycles(resistor_temp_k=resistor_temp_k,
-                                          nd_k=nd_temp_k)
-    if proc.system_gain is None or proc.system_temp is None:
+    proc.calibrate_per_cycle(resistor_temp_k=resistor_temp_k,
+        nd_k=nd_temp_k)
+    if proc.gain_per_cycle is None or proc.system_temp_per_cycle is None:
         raise RuntimeError(
             "Cycle calibration did not produce system gain/temperature.")
-    system_gain = proc.system_gain
-    system_temp = proc.system_temp
+    system_gain = proc.gain_per_cycle
+    system_temp = proc.system_temp_per_cycle
 
     system_temp_med = np.median(system_temp, axis=0)
     system_gain_med = np.median(system_gain, axis=0)
 
-    logger.info(
-        "Calibration outputs: system_gain=%s, system_temp=%s",
-        system_gain.shape,
-        system_temp.shape,
-    )
-
     antenna_spec_median = proc.state_medians["antenna"]
     resistor_median = proc.state_medians["resistor"]
-    noise_diode_spec_median = proc.state_medians["noise_diode"]
+    nd_spec_median = proc.state_medians["nd"]
 
     antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
     local_timezone = ZoneInfo("HST")
@@ -197,9 +249,9 @@ def calibrate_and_plot_loaded(
         spectrum=resistor_median,
         name=f"RS | {segment_local_label}",
     )
-    noise_diode_median_spec = Spectrum(
+    nd_median_spec = Spectrum(
         frequency=frequencies_mhz * 1e6,
-        spectrum=noise_diode_spec_median,
+        spectrum=nd_spec_median,
         name=f"ND | {segment_local_label}",
     )
     system_temp_spec = Spectrum(
@@ -214,68 +266,29 @@ def calibrate_and_plot_loaded(
     )
 
     logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
-    antenna_temperature_waterfall = proc.calibrate_2d_state_power("antenna")
+    ant_T_wf = proc.calibrate_2d_state_power("antenna")
 
-    if t_downsample != 1 and f_downsample != 1:
-        _, frequency_bin_count = antenna_temperature_waterfall.shape
-        waterfall_frequency_step = proc.choose_frequency_downsample_step(
-            frequency_bin_count=frequency_bin_count,
-            requested_step=f_downsample,
-        )
-        logger.info(
-            "Waterfall downsample factors selected: step_t=%d, step_f=%d",
-            t_downsample, f_downsample)
-
-        logger.info("[seg %d] local time span: %s -> %s", seg_indx,
-                    antenna_local_timestamps[0], antenna_local_timestamps[-1])
-
-        downsampled_datetimes, downsampled_frequencies_mhz, downsampled_spectra = downsample_waterfall(
-            datetimes=np.array(antenna_local_timestamps),
-            faxis=np.array(frequencies_mhz),
-            spectra=antenna_temperature_waterfall,
-            step_t=t_downsample, step_f=waterfall_frequency_step,
-        )
-    else:
-        logger.info("[seg %d] skipping waterfall downsampling", seg_indx)
-        downsampled_datetimes = np.array(antenna_local_timestamps)
-        downsampled_frequencies_mhz = np.array(frequencies_mhz)
-        downsampled_spectra = antenna_temperature_waterfall
-
-    ant_temp_waterfall_path = os.path.join(
-        segment_output_dir, f"{date}_ant_cal_temp.html")
-    plot_waterfall_heatmap_plotly(datetimes=list(downsampled_datetimes),
-                                  spectra=downsampled_spectra,
-                                  faxis_mhz=downsampled_frequencies_mhz,
-                                  title=f"Antenna Calibrated Temperature",
-                                  unit='K', output_path=ant_temp_waterfall_path,
-                                  vmin=10, vmax=vmax, step=50
-                                  )
-
-    logger.info("[seg %d] saved waterfall=%s",
-                seg_indx, ant_temp_waterfall_path)
-    logger.info(
-        "Waterfall shape: original=%s, downsampled=%s",
-        antenna_temperature_waterfall.shape,
-        downsampled_spectra.shape,
+    ant_T_sample_spec = Spectrum(
+        frequency=frequencies_mhz * 1e6,
+        spectrum=ant_T_wf[np.random.randint(ant_T_wf.shape[0]), :],
+        name=f"{segment_local_label} Sample Sky Temperature"
     )
 
     return {
         "resistor_median_spec": resistor_median_spec,
-        "noise_diode_median_spec": noise_diode_median_spec,
+        "nd_median_spec": nd_median_spec,
         "antenna_median_spec": antenna_median_spec,
         "system_temp_spec": system_temp_spec,
         "sys_gain_db_spec": sys_gain_spec,
         "segment_label": segment_local_label,
+        "ant_T_wf": ant_T_wf,
+        "ant_T_sample_spec": ant_T_sample_spec,
+        "antenna_utc_timestamps": antenna_utc_timestamps,
+        "frequencies_mhz": frequencies_mhz,
     }
 
-def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info):
-    """Run the calibration workflow for one segment index, including loading, calibration, and plotting."""
-    logger = logging.getLogger("ds_cal_wf")
-    segment_output_dir = os.path.join(output_dir, f"seg_{seg_indx}")
-    os.makedirs(segment_output_dir, exist_ok=True)
-    logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
-
-    logger.info("[seg %d] initializing calibration processor", seg_indx)
+def load_calibrator(args, seg_indx, data_folder, time_interval) -> DSCalibrationProcessor:
+    """Load data into calibrator processor."""
     proc = DSCalibrationProcessor(
         num_frequency_samples=NUM_FREQUENCY_SAMPLES,
         frequency_bin_size_mhz=FREQUENCY_BIN_SIZE_MHZ,
@@ -286,27 +299,35 @@ def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info):
         site_elevation_m=TEST_SITE_ELEVATION_METERS,
     )
 
-    states_to_load = ["antenna", "noise_diode", "resistor"]
-    logger.info("[seg %d] loading states=%s", seg_indx, states_to_load)
+    states_to_load = ["antenna", "nd", "resistor"]
+    _ = proc.load_states(data_folder, convert=False,
+        no_segments=args.no_segments, seg_indx=seg_indx, 
+        states_to_load=states_to_load,
+        time_interval=time_interval,
+    )
+    
+    return proc
+        
+def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info, temperature_df):
+    """Run the calibration workflow for one segment index, including loading, calibration, and plotting."""
+    segment_output_dir = os.path.join(output_dir, f"seg_{seg_indx}")
+    os.makedirs(segment_output_dir, exist_ok=True)
+    logger = logging.getLogger("ds_cal_wf")
+    logger.info("[seg %d] initializing calibration processor", seg_indx)
+    logger.info("[seg %d] output_dir=%s", seg_indx, segment_output_dir)
 
     results = []
+
     # iterate over timelines
     for row_idx, row in timeline_info.iterrows():
         start_hst = row["start_hst"]
         end_hst = row["end_hst"]
-        logger.info("[seg %d] processing timeline row %d: start=%s, end=%s",
-                    seg_indx, row_idx, start_hst, end_hst)
-        loaded = proc.load_states(
-            data_folder,
-            convert=False,
-            no_segments=args.no_segments,
-            seg_indx=seg_indx,
-            states_to_load=states_to_load,
-            time_interval=(start_hst, end_hst),
-        )
+
+        proc = load_calibrator(args, seg_indx, data_folder, time_interval=(start_hst, end_hst))
+        loaded = proc.raw_states
         if loaded is None:
             logger.info(
-                "Skipping timeline row %d due to no data loaded within interval.", row_idx)
+                "No observation set-up in timeline file row %d found in this segment.", row_idx)
         else:
             loaded_state_counts = {
                 name: len(proc.raw_states[name]["timestamps"])
@@ -314,7 +335,8 @@ def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info):
             }
         logger.info("[seg %d] Loaded spectra counts by state for timeline row %d: %s",
                     seg_indx, row_idx, loaded_state_counts)
-
+        
+        R_T = get_T_data(temperature_df, proc.raw_states["resistor"]["timestamps"])
         nd_indx = row.get("ND")
         if nd_indx is None:
             logger.info("Processing data without calibrators...")
@@ -324,14 +346,17 @@ def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info):
             logger.info(
                 "[seg %d] Using noise diode index %d from timeline for calibration", seg_indx, nd_indx)
             nd_temp = ND_temperature(proc.frequencies_mhz * 1e6, indx=nd_indx)
-            calibrated = calibrate_and_plot_loaded(
+            calibrated = calibrate_loaded(
+                proc=proc, seg_indx=seg_indx, nd_temp_k=nd_temp, resistor_temp_k=R_T)
+            plot_cal_ant_wf(
                 proc=proc, seg_indx=seg_indx,
                 segment_output_dir=segment_output_dir,
-                date=date,
-                nd_temp_k=nd_temp,
-                vmax=args.vmax,
-                fmin_mhz=args.fmin,
-                fmax_mhz=args.fmax)
+                date=date, vmax=args.vmax,
+                frequencies_mhz=calibrated["frequencies_mhz"],
+                antenna_utc_timestamps=calibrated["antenna_utc_timestamps"],
+                ant_T_wf=calibrated["ant_T_wf"],
+                t_downsample=2, f_downsample=4,
+            )
             results.append(calibrated)
 
         return results
@@ -344,6 +369,9 @@ def main():
     data_folder = os.path.normpath(os.path.expanduser(args.input_dir))
     output_dir = os.path.expanduser(args.output_dir)
     date = os.path.basename(data_folder)
+
+    #! change this in the future
+    temperature_df = pd.read_csv(pathlib.Path("/mnt/c/Users/Peterson Lab/Documents/highz2026/resistor_T_Mars.csv"))
 
     # Process timeline csv file to extract calibrator information (e.g., noise diode index) for each segment
     timeline_info = parse_timeline_info(args.timeline_file)
@@ -377,30 +405,15 @@ def main():
     for seg_indx in segment_indices:
         segment_indices.set_postfix_str(f"seg_{seg_indx}")
         segment_result = run_segment(
-            args=args,
-            seg_indx=seg_indx,
-            logger=logger,
-            data_folder=data_folder,
-            output_dir=output_dir,
+            args=args, seg_indx=seg_indx,
+            logger=logger, data_folder=data_folder,
+            output_dir=output_dir, timeline_info=timeline_info, temperature_df=temperature_df,
             date=date,
         )
         segment_results.append(segment_result)
-    logger.info("Completed %d segment(s)", len(segment_results))
 
     combined_segment_count = min(3, len(segment_results))
-    if combined_segment_count == 0:
-        raise RuntimeError(
-            "No segment results available for combined summary plotting")
-
-    if combined_segment_count < 3:
-        logger.warning(
-            "Requested combined summary from 3 segments, but only %d available",
-            combined_segment_count,
-        )
-
     combined_segments = segment_results[:combined_segment_count]
-    logger.info("Creating combined summary plots from first %d segment(s)",
-                combined_segment_count)
 
     combined_plot_paths = {
         "cal_median": os.path.join(output_dir, f"{date}_cal_median_combined.png"),
@@ -414,7 +427,7 @@ def main():
         {
             "name": "cal_median",
             "spectra": [spec["resistor_median_spec"] for spec in combined_segments]
-            + [spec["noise_diode_median_spec"] for spec in combined_segments],
+            + [spec["nd_median_spec"] for spec in combined_segments],
             "kwargs": {
                 "ylabel": "Raw Power (arb.)",
                 "title": "Median Spectra: Resistor vs Noise Diode (Combined Segments)",
@@ -442,16 +455,6 @@ def main():
             },
         },
         {
-            "name": "sys_gain",
-            "spectra": [spec["system_gain_spec"] for spec in combined_segments],
-            "kwargs": {
-                "ylabel": "Gain (arb.)",
-                "title": f"System Gain: ({date})",
-                "freq_range": (args.fmin, args.fmax),
-                "marker_freqs": (50, 100, 200),
-            },
-        },
-        {
             "name": "sys_gain_db",
             "spectra": [spec["sys_gain_db_spec"] for spec in combined_segments],
             "kwargs": {
@@ -462,6 +465,15 @@ def main():
                 "marker_freqs": (50, 100, 200),
             },
         },
+        {
+            "name": "sky_sample",
+            "spectra": [spec["ant_T_sample_spec"] for spec in combined_segments],
+            "kwargs": {
+                "y_range": (0, 1000),
+                "ylabel": "Temperature (K)",
+                "title": f"Sample Sky Temperature Spectra ({date})",
+            }
+        }
     ]
 
     for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
@@ -475,7 +487,6 @@ def main():
         logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
 
     logger.info("All outputs saved under: %s", output_dir)
-    logger.info("DS calibration workflow completed successfully")
 
 
 if __name__ == "__main__":
