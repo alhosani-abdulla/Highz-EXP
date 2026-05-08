@@ -85,4 +85,4 @@ def ENR_to_kelvin(enr_db, T_ref=290, T_off=300):
 
 def kelvin_to_ENR(kelvin, T_ref=290):
     """Convert noise temperature in Kelvin to Noise Figure in dB."""
-    return 10 * np.log10(1 + kelvin / T_ref)
+    return 10 * np.log10(kelvin / T_ref - 1)
