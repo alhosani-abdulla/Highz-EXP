@@ -28,6 +28,9 @@ DEFAULT_MATPLOTLIB_STYLE = {
     'figure.titlesize': 20,
 }
 
+MARKER_FREQS_COLOR_LIST = ['gold', 'lightcoral', 'darkcyan', 'darkmagenta', 'orangered', 'darkolivegreen',
+                           'aquamarine', 'cornflowerblue']
+
 def set_matplotlib_defaults(style_overrides: dict | None = None) -> dict:
     """Apply and return global matplotlib defaults for plotting in this module."""
     style = DEFAULT_MATPLOTLIB_STYLE.copy()
@@ -257,7 +260,7 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
 def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_range=None,
         marker_freqs=None, freq_range=(None, None), yticks=None, 
         title='Recorded Spectrum', show_plot=True, return_handles=False,
-        **kwargs):
+        **kwargs) -> tuple[plt.Figure, plt.Axes]:
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
     
     Parameters:
@@ -326,8 +329,9 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         ylabel = 'PSD [dBm]'
 
     ax.set_ylim(*ylim)
-    if freq_range is not None:
-        ax.set_xlim(right=freq_range[1])
+    if freq_range != (None, None):
+        ax.set_xlim(*freq_range)
+    
     ax.legend(ncol=2, loc='best')
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Frequency [MHz]')
@@ -343,8 +347,6 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
     if show_plot:
         plt.show()
-    else:
-        plt.close()
 
     if return_handles:
         return fig, ax
@@ -393,7 +395,7 @@ def plot_two_spectra_with_residual(spec_a: Spectrum, spec_b: Spectrum, save_path
     color_b = spec_b.colorcode if spec_b.colorcode is not None else 'C1'
 
     ax_top.plot(faxis_mhz, spec_a_vals, label=spec_a.name, color=color_a, **kwargs)
-    ax_top.plot(faxis_mhz, spec_b_vals, label=spec_b.name, color=color_b, **kwargs)
+    ax_top.plot(faxis_mhz, spec_b_vals, label=spec_b.name, color=color_b, ls='--', **kwargs)
     ax_top.set_ylabel(ylabel)
     ax_top.grid(True)
     ax_top.legend(loc='best')

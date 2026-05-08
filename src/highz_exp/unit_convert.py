@@ -76,3 +76,9 @@ def sidereal_hours_from_utcs(utc_list, longitude):
         Time(ts, scale="utc").sidereal_time("apparent", longitude=longitude).hour
         for ts in utc_list
     ])
+
+def ENR_to_kelvin(enr_db, T_ref=290, T_off=300):
+    """Convert ENR in dB to noise temperature in Kelvin."""
+    enr_linear = 10 ** (enr_db / 10)
+    T_on = (1 + enr_linear) * T_ref
+    return T_on

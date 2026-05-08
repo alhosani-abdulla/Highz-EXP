@@ -1,5 +1,5 @@
 from __future__ import annotations
-from highz_exp.fit_model import CALModel
+from highz_exp.circuit_model import CALModel
 
 from dataclasses import dataclass
 

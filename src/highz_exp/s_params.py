@@ -479,9 +479,10 @@ class S_Params:
     def resample(self, f_resample):
         """Resample all networks to a frequency axis"""
         new_ntwk_dict = {}
-        for key, value in self.ntwk_dict.items():
+        for key, _ in self.ntwk_dict.items():
             ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
-            ntwk_copy.resample(f_resample)
+            filtered = f_resample[(f_resample >= ntwk_copy.f.min()) & (f_resample <= ntwk_copy.f.max())]
+            ntwk_copy.resample(filtered)
             new_ntwk_dict[key] = ntwk_copy
         self.ntwk_dict = new_ntwk_dict
         return new_ntwk_dict

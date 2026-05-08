@@ -157,6 +157,15 @@ def s11_reflected_power(s11_db, p_in_k=50):
     R = 10 ** (s11_db / 10)  # power reflection coefficient
     return p_in_k * R
 
+def reflection_coefficient(in_ntwk, load_ntwk) -> rf.Network:
+    """Calculate the reflection coefficient at the interface between in_ntwk and load_ntwk."""
+    Z_in = in_ntwk.z[:, 0, 0]
+    Z_load = load_ntwk.z[:, 0, 0]
+    s = np.zeros_like(in_ntwk.s, dtype=complex)
+    s[:, 0, 0] = (Z_load - Z_in) / (Z_load + Z_in)
+    reflect_ntwk = rf.Network(f=in_ntwk.f, s=s)
+    return reflect_ntwk
+
 def impedance_from_s11(rho, Z0=50):
     """Convert reflection coefficient to impedance."""
     return Z0 * (1+rho)/(1-rho)
