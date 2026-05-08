@@ -135,7 +135,7 @@ def compute_spike_height_ratios(spike_data1, spike_data2, tolerance=0.1) -> tupl
     return np.array(ratios), np.array(matched_x1), np.array(matched_x2)
 
 def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk) -> rf.Network:
-    """Return the total reflection coefficient with multiple reflections between cable and LNA interfaces"""
+    """Return the total (voltage) reflection coefficient with multiple reflections between cable and LNA interfaces"""
     rho_cable = rho_cable_ntwk.s[:, 0, 0]
     rho_LNA = rho_LNA_ntwk.s[:, 0, 0]
     a_lna = rho_cable * 1 / (1 - rho_cable*rho_LNA)
