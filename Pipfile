@@ -14,14 +14,14 @@ astropy = "*"
 healpy = "*"
 h5py = "*"
 xarray = "*"
+setuptools = "*"
+wheel = "*"
 tqdm = "*"
 highz-exp = {path = ".", editable = true}
 jupyter = "*"
 ipykernel = "*"
 rich-argparse = "*"
-pygdsm = "*"
-highz-filterbank = {editable = true, git = "ssh://git@github.com/alhosani-abdulla/highz-filterbank.git"}
-"pyproject.toml" = "*"
+highz-filterbank = {editable = true, git = "https://github.com/alhosani-abdulla/highz-filterbank.git"}
 plotly = "*"
 
 [dev-packages]
