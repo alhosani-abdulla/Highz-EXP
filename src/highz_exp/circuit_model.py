@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 # metric (gain, temperature, noise figure, etc.) with an Nth-order polynomial.
 #
 # Examples:
-#   from highz_exp.fit_model import fit_polynomial_metric
+#   from highz_exp.circuit_model import fit_polynomial_metric
 #
 #   # Fit gain with 4th-order polynomial
 #   result_gain = fit_polynomial_metric(freq, gain_db, order=4, metric_name='gain')
@@ -445,57 +445,99 @@ class LNAModel:
         return np.real(V_load * np.conj(I))
     
     @staticmethod
-    def power_delivered_from_s11(source_ntwk, load_ntwk, T_source, Z0=50, B=1):
-        """Calculate the power delivered to a load from a Johnson noise source.
-        
-        Computes power delivered based on source and load reflection coefficients (S11),
-        source temperature, and characteristic impedance.
+    def V_delivered_from_s11(src_ntwk, load_ntwk, name, T_source=300, B=1, **kwargs) -> Spectrum:
+        """Calculate the voltage delivered to a load from a Johnson noise source.
 
         Parameters
         ----------
         source_ntwk : rf.Network
-            Network object with source reflection coefficient (S11).
+            source reflection coefficient (S11).
         load_ntwk : rf.Network
-            Network object with load reflection coefficient (S11).
+            load reflection coefficient (S11).
+        name : str
+            Name for the resulting spectrum.
         T_source : float
             Source temperature in Kelvin.
-        Z0 : float, optional
-            Characteristic impedance (default: 50 ohms).
         B : float, optional
             Bandwidth in Hz (default: 1).
+        **kwargs
+            Additional keyword arguments to pass to the Spectrum constructor.
 
-        Returns
-        -------
-        rf.Network
-            Network object with power in Kelvin per B Hz.
+        Return: Spectrum object with frequency and V^2 values.
         """
-        rho_source = source_ntwk.s[:, 0, 0]
-        rho_load = load_ntwk.s[:, 0, 0]
+        impd_src = src_ntwk.z[:, 0, 0]
+        impd_load = load_ntwk.z[:, 0, 0]
+
+        f = src_ntwk.f
+
+        V_src = LNAModel.johnson_voltage(T_source, impd_src, B)
+        V_load = V_src * (impd_load / (impd_src + impd_load))
+        V_sqr_Spec = Spectrum(frequency=f, spectrum=np.abs(V_load)**2, name=name, **kwargs)
         
-        impd_source = impedance_from_s11(rho_source, Z0)
-        impd_load = impedance_from_s11(rho_load, Z0)
+        return V_sqr_Spec
 
-        f = source_ntwk.f
+    def T_eff_from_noise_src(src_ntwk, load_ntwk, name, T_source=300, B=1, **kwargs) -> Spectrum:
+        """Calculate the effective temperature of a load if it's connected with a noisy source.
 
-        V_src = LNAModel.johnson_voltage(T_source, impd_source, B)
-        P_transferred = LNAModel.load_power(V_src, impd_source, impd_load)
-        P_dbm = watt_to_dbm(P_transferred)
-        P_kelvin = dbm_to_kelvin(P_dbm)
-        power_ntwk = rf.Network(s=P_kelvin, f=f)
+        Parameters
+        ----------
+        source_ntwk : rf.Network
+            source reflection coefficient (S11).
+        load_ntwk : rf.Network
+            load reflection coefficient (S11).
+        name : str
+            Name for the resulting spectrum.
+        T_source : float
+            Source temperature in Kelvin.
+        B : float, optional
+            Bandwidth in Hz (default: 1).
+        **kwargs
+            Additional keyword arguments to pass to the Spectrum constructor.
+
+        Return: Spectrum object with frequency and T values.
+        """
+        src_impd = src_ntwk.z[:, 0, 0]
+        load_impd = load_ntwk.z[:, 0, 0]
+        f = src_ntwk.f
         
-        return power_ntwk
+        T_eff = np.real(src_impd)/np.real(load_impd) * T_source * np.abs(load_impd/(src_impd + load_impd))**2
+        T_Spec = Spectrum(frequency=f, spectrum=T_eff, name=name, **kwargs)
+        return T_Spec
+    
+    def T_out_from_noise_src(src_ntwk, load_ntwk, gain=1, name=None, T_src=300, **kwargs) -> Spectrum:
+        """Calculate the output temperature of a noisy source after amplification by an LNA.
 
+        Parameters
+        ----------
+        gain : float or np.ndarray
+            Gain of the amplifier (linear scale).
+        T_source : float, optional
+            Source temperature in Kelvin (default: 300 K).
+        **kwargs
+            Additional keyword arguments to pass to the Spectrum constructor.
+
+        Return: Spectrum object with frequency and T_out values.
+        """
+        src_impd = src_ntwk.z[:, 0, 0]
+        load_impd = load_ntwk.z[:, 0, 0]
+        f = src_ntwk.f
+        
+        T_eff = np.real(src_impd)/50 * T_src * np.abs(load_impd/(src_impd + load_impd))**2
+        T_Spec = Spectrum(frequency=f, spectrum=T_eff, name=name, **kwargs)
+ 
+        return T_Spec
+
+    def g_dut(dut_s_ntwk, src_ntwk):
+        Z_S = src_ntwk.z[:, 0, 0]
+        
+        s21 = dut_s_ntwk.s[:, 1, 0]
+        
 
 # ==============================================================================
 # Backward compatibility aliases (deprecated)
 # ==============================================================================
 # These functions are kept for backward compatibility with old code.
 # New code should use LNAModel class methods directly.
-
-def johnson_voltage(T, Z, B=1):
-    """Deprecated: Use LNAModel.johnson_voltage instead."""
-    return LNAModel.johnson_voltage(T, Z, B)
-
 
 def load_power(V_source, Z_source, Z_load):
     """Deprecated: Use LNAModel.load_power instead."""

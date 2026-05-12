@@ -135,7 +135,7 @@ def compute_spike_height_ratios(spike_data1, spike_data2, tolerance=0.1) -> tupl
     return np.array(ratios), np.array(matched_x1), np.array(matched_x2)
 
 def LNA_total_reflection(rho_cable_ntwk, rho_LNA_ntwk) -> rf.Network:
-    """Return the total reflection coefficient with multiple reflections between cable and LNA interfaces"""
+    """Return the total (voltage) reflection coefficient with multiple reflections between cable and LNA interfaces"""
     rho_cable = rho_cable_ntwk.s[:, 0, 0]
     rho_LNA = rho_LNA_ntwk.s[:, 0, 0]
     a_lna = rho_cable * 1 / (1 - rho_cable*rho_LNA)
@@ -156,6 +156,15 @@ def s11_reflected_power(s11_db, p_in_k=50):
     """
     R = 10 ** (s11_db / 10)  # power reflection coefficient
     return p_in_k * R
+
+def reflection_coefficient(in_ntwk, load_ntwk) -> rf.Network:
+    """Calculate the reflection coefficient at the interface between in_ntwk and load_ntwk."""
+    Z_in = in_ntwk.z[:, 0, 0]
+    Z_load = load_ntwk.z[:, 0, 0]
+    s = np.zeros_like(in_ntwk.s, dtype=complex)
+    s[:, 0, 0] = (Z_load - Z_in) / (Z_load + Z_in)
+    reflect_ntwk = rf.Network(f=in_ntwk.f, s=s)
+    return reflect_ntwk
 
 def impedance_from_s11(rho, Z0=50):
     """Convert reflection coefficient to impedance."""

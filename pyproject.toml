@@ -14,7 +14,8 @@ dependencies = [
     "astropy",
     "scipy",
     "matplotlib",
-    "scikit-rf"
+    "scikit-rf",
+    "trsfile"
 ]
 
 [project.optional-dependencies]
