@@ -155,7 +155,7 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
             logging.warning(f"No spectra found in {spec_dir} for state {state_indx}")
             return
         # Temporal Processing: Convert UTC to Local
-        timestamps: List[datetime] = convert_utc_list_to_local(timestamps, local_timezone=ZoneInfo('HST'))
+        timestamps: List[datetime] = convert_utc_list_to_local(timestamps, local_timezone='HST')
         loaded_dict[f'state{state}'] = (timestamps, spectra)
         if i == 0:
             # Update date/time strings to reflect local conversion for filenames/titles

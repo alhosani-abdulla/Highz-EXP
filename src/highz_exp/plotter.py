@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import List
 import logging
 import skrf as rf
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 from .spec_class import Spectrum
 
@@ -348,6 +350,118 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
 
     if return_handles:
         return fig, ax
+
+def plot_spaghetti_spectra(loaded_specs: list[Spectrum],
+    values: list[float] | np.ndarray | None = None, value_key: str | None = None, cmap: str = "viridis",
+    norm: Normalize | None = None, save_path=None,
+    ylabel=None, y_range=None, freq_range=(None, None),
+    yticks=None, title="Spaghetti Spectrum", colorbar_label: str | None = None, show_plot=True,
+    return_handles=False,
+    **kwargs,
+):
+    """Plot a list of spectra colored by a scalar value.
+
+    Parameters
+    ----------
+    loaded_specs:
+        Spectrum objects to plot.
+    values:
+        Scalar value for each spectrum. If omitted, ``value_key`` is used.
+    value_key:
+        Metadata key to read from each spectrum when ``values`` is not supplied.
+        A small convenience for values such as temperature or time index.
+    cmap:
+        Matplotlib colormap name.
+    norm:
+        Optional normalization object. If not supplied, the helper builds one
+        from the min/max of the values.
+    colorbar_label:
+        Label for the colorbar. Defaults to ``value_key`` if provided.
+    """
+    if not loaded_specs:
+        raise ValueError("loaded_specs must not be empty")
+
+    if values is None:
+        if value_key is None:
+            raise ValueError("Provide either values or value_key for spaghetti coloring.")
+        extracted_values = []
+        for spec in loaded_specs:
+            if value_key not in spec.metadata:
+                raise KeyError(f"Spectrum '{spec.name}' is missing metadata key '{value_key}'.")
+            extracted_values.append(spec.metadata[value_key])
+        values_arr = np.asarray(extracted_values, dtype=float)
+    else:
+        values_arr = np.asarray(values, dtype=float)
+
+    if values_arr.ndim != 1:
+        raise ValueError("values must be a 1D sequence of scalars.")
+    if len(values_arr) != len(loaded_specs):
+        raise ValueError("values must have the same length as loaded_specs.")
+
+    if norm is None:
+        vmin = float(np.nanmin(values_arr))
+        vmax = float(np.nanmax(values_arr))
+        if vmin == vmax:
+            vmax = vmin + 1.0
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+    cmap_obj = plt.get_cmap(cmap)
+    sm = ScalarMappable(norm=norm, cmap=cmap_obj)
+    sm.set_array([])
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    ymin, ymax = y_range if y_range is not None else (None, None)
+
+    for idx, (spec, value) in enumerate(zip(loaded_specs, values_arr)):
+        freq = spec.freq
+        spectrum = spec.spec
+
+        faxis_mhz = freq / 1e6
+        if freq_range[0] is not None:
+            valid_idx = (faxis_mhz >= freq_range[0])
+            faxis_mhz = faxis_mhz[valid_idx]
+            spectrum = spectrum[valid_idx]
+
+        color = cmap_obj(norm(value))
+        ax.plot(faxis_mhz, spectrum, color=color, label=spec.name, lw=0.2, alpha=0.4, **kwargs)
+
+        if ymax is None:
+            ymax_state = np.max(spectrum)
+            if ymax_state > (ymax or -np.inf):
+                ymax = ymax_state
+
+        if ymin is None:
+            ymin_state = np.min(spectrum)
+            if ymin_state < (ymin or np.inf):
+                ymin = ymin_state
+
+    if ylabel is None:
+        ylabel = 'PSD [dBm]'
+
+    ax.set_ylim(ymin, ymax)
+    if freq_range is not None:
+        ax.set_xlim(right=freq_range[1])
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel('Frequency [MHz]')
+    if yticks is not None:
+        ax.set_yticks(yticks)
+    ax.set_title(title)
+    ax.grid(True)
+
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label(colorbar_label or value_key or "value")
+    fig.tight_layout()
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+    if return_handles:
+        return fig, ax, sm
 
 def plot_two_spectra_with_residual(spec_a: Spectrum, spec_b: Spectrum, save_path=None,
         ylabel='PSD [dBm]', residual_ylabel='Residual [dB]', y_range=None,
@@ -807,3 +921,4 @@ def plot_interactive_heatmap(spectra: np.ndarray, timestamps: List[datetime], mo
 
     if return_handles:
         return fig, ax, im
+

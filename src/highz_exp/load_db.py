@@ -14,7 +14,8 @@ def get_T_data(T_df, ts, local_tz=ZoneInfo('America/New_York'), df_colname='loca
         - df_colname: The name of timestampcolumn in thermocron readings.
         
     Return:
-        - np.ndarray: temperature readings corresponding to the target timestamps."""
+        - np.ndarray: temperature readings corresponding to the target timestamps.
+        - pd.DataFrame: the matched temperature readings with their timestamps for debugging."""
     if df_colname not in T_df.columns:
         raise ValueError(f"Column '{df_colname}' not found in the DataFrame.")
     
@@ -58,7 +59,7 @@ def get_T_data(T_df, ts, local_tz=ZoneInfo('America/New_York'), df_colname='loca
     T_readings = np.full(len(target_df), np.nan, dtype=float)
     T_readings[matched['_row_id'].to_numpy()] = matched['_value_k'].to_numpy(dtype=float)
 
-    return T_readings
+    return T_readings, matched
 
 class databaseReader():
     def __init__(self, db_path, mode='load'):

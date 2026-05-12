@@ -86,8 +86,13 @@ class FBCalibrationProcessor(SystemCalibrationProcessor):
 
             return timestamps, len(table)
         
-    def prepare_frequency_axis(self) -> np.ndarray:
-        """Create filterbank frequency axis from loaded/prepared frequencies."""
+    def _init_freq_axis(self) -> np.ndarray:
+        """Create filterbank frequency axis from loaded/prepared frequencies.
+        
+        Sets:
+        - self.frequency_idx_range: indices in [min_frequency_mhz, max_frequency_mhz]
+        - self.frequencies_mhz: the selected frequencies
+        """
         if self.total_frequencies_mhz is None:
             raise ValueError(
                 "Frequency axis is not available yet. "

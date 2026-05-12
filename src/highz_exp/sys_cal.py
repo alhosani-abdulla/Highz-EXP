@@ -47,7 +47,7 @@ class SystemCalibrationProcessor:
 	raw_states: dict[str, dict[str, Any]] = field(default_factory=dict)
 	state_power: dict[str, np.ndarray] = field(default_factory=dict)
 	sidereal_time: dict[str, Any] = field(default_factory=dict)
-	state_medians: dict[str, np.ndarray] = field(default_factory=dict)
+	sampled_raw: dict[str, np.ndarray] = field(default_factory=dict)
 
 	total_frequencies_mhz: np.ndarray | None = None
 	frequencies_mhz: np.ndarray | None = None
@@ -71,10 +71,7 @@ class SystemCalibrationProcessor:
 			lon=self.site_longitude_deg * u.deg,
 			height=self.site_elevation_m * u.m,
 		)
-		if self.frequencies_mhz is None:
-			self.prepare_frequency_axis()
-		if not self.state_power:
-			self.slice_state_frequency_range()
+		self._init_freq_axis()
 
 	def save_pickle(
 		self,
@@ -120,42 +117,50 @@ class SystemCalibrationProcessor:
 
 		return obj
 
-	def prepare_state_medians(self) -> np.ndarray:
-		"""Prepare frequency axis, slice states, and compute per-state medians."""
-		frequencies_mhz = self.prepare_frequency_axis()
-		self.slice_state_frequency_range()
-		self.compute_state_medians()
-		return frequencies_mhz
+	def sample_loaded_raw(self) -> dict[str, Any] | None:
+		"""Return a sample of the raw loaded data for inspection.
+		
+		Samples from state_power if available (frequency-sliced data),
+		otherwise samples from raw_states (full-spectrum data).
+		"""
+		if not self.raw_states:
+			logging.warning("No raw states loaded to sample.")
+			return None
+		
+		sampled = {}
+		# Use state_power if it's been populated (meaning frequency range has been applied)
+		data_source = self.state_power if self.state_power else self.raw_states
+		
+		for name in self.state_list:
+			if name not in data_source:
+				continue
+			
+			data = data_source[name]
+			if isinstance(data, np.ndarray):
+				# If source is state_power, data is directly the spectra array
+				sampled[name] = data[np.random.randint(len(data))]
+			elif isinstance(data, dict) and data.get("spectra") is not None:
+				# If source is raw_states, data is a dict with 'spectra' key
+				sampled[name] = data['spectra'][np.random.randint(len(data['spectra']))]
+			else:
+				logging.warning("State '%s' missing valid spectrum data for sampling.", name)
+		
+		self.sampled_raw = sampled
+		return sampled
 
 	def load_states(self, *args, **kwargs) -> dict[str, dict[str, Any]]:
 		"""Placeholder for state loading logic. To be implemented in subclass."""
 		raise NotImplementedError("load_states() must be implemented in a subclass.")
 
-	def prepare_frequency_axis(self) -> np.ndarray:
-		"""Build instrument-specific frequency axis and selected range."""
-		raise NotImplementedError("prepare_frequency_axis() must be implemented in a subclass.")
-
-	def load_resistor_median_for_segment(self, data_folder: str | Path,
-		date: str, no_segments: int, seg_indx: int, resistor_state_no: int = 5,
-	) -> tuple[np.ndarray, np.ndarray]:
-		"""Load one segment of resistor-state spectra and return timestamps + median."""
-		if self.frequency_idx_range is None:
-			self.prepare_frequency_axis()
-
-		time_dirs = DSFileLoader.get_sorted_time_dirs(str(data_folder))
-		resistor_time_dirs = np.array_split(time_dirs, no_segments)[seg_indx]
-		resistor_loaded = DSFileLoader.load_and_add_timestamps(
-			date,
-			list(resistor_time_dirs),
-			resistor_state_no,
-		)
-		timestamps, spectra, _ = DSFileLoader.read_loaded(
-			resistor_loaded,
-			sort="ascending",
-			convert=False,
-		)
-		resistor_median = np.median(spectra[:, self.frequency_idx_range], axis=0)
-		return timestamps, resistor_median
+	def _init_freq_axis(self) -> np.ndarray:
+		"""Initialize instrument-specific frequency axis and selected range.
+		
+		Called during __post_init__. Subclasses must implement to set:
+		- self.total_frequencies_mhz: all frequencies
+		- self.frequency_idx_range: indices within min/max range  
+		- self.frequencies_mhz: selected frequencies
+		"""
+		raise NotImplementedError("_init_freq_axis() must be implemented in a subclass.")
 
 	@staticmethod
 	def build_segment_local_label(local_timestamps, seg_indx: int, timezone_name: str = "HST") -> str:
@@ -180,11 +185,12 @@ class SystemCalibrationProcessor:
 		]
 		return max(valid_steps) if valid_steps else 1
 
-	def slice_state_frequency_range(self) -> dict[str, np.ndarray]:
-		"""Slice each state spectra to the configured frequency range."""
-		if self.frequency_idx_range is None:
-			self.prepare_frequency_axis()
-
+	def _apply_freq_range(self) -> dict[str, np.ndarray]:
+		"""Apply frequency range to all loaded state spectra.
+		
+		Slices each raw spectrum to frequency_idx_range and stores in self.state_power.
+		Expects raw_states to be already loaded with full-spectrum data.
+		"""
 		for name in self.state_list:
 			state = self.raw_states.get(name)
 			if state is None:
@@ -235,7 +241,7 @@ class SystemCalibrationProcessor:
 		return output
 
 	def compute_medians(self) -> dict[str, np.ndarray]:
-		"""Compute median spectrum for each loaded state, erasing cycle resolution."""
+		"""Compute median spectrum (median value for each frequency bin), erasing cycle resolution."""
 		medians = {}
 		for name, data in self.state_power.items():
 			medians[name] = np.median(data, axis=0)
@@ -243,8 +249,7 @@ class SystemCalibrationProcessor:
 		self.medians = medians
 		return medians
 
-	def calibrate_system_from_medians(
-		self, noide_diode_func,
+	def calibrate_system_from_medians(self, noide_diode_func,
 		resistor_temp_k: float = 275.0,
 		resistor_median: np.ndarray | None = None,
 	) -> tuple[np.ndarray, np.ndarray]:
@@ -256,7 +261,7 @@ class SystemCalibrationProcessor:
 		(noise_diode_freq_f2_mhz, noise_diode_temp_f2_k).
 		"""
 		if self.frequencies_mhz is None:
-			self.prepare_frequency_axis()
+			self._init_freq_axis()
 		if not self.medians:
 			self.compute_medians()
 		
@@ -284,6 +289,9 @@ class SystemCalibrationProcessor:
 			- resistor_temp_k: Ambient temperature of resistor. 
 		"""
 		nd_k = np.asarray(nd_k)
+		# Ensure frequency axis is initialized and spectra are sliced to freq range
+		self._init_freq_axis()
+		self._apply_freq_range()
 		if nd_k.size != self.frequencies_mhz.size:
 			raise ValueError("Shape mismatch: nd_k and frequencies_mhz must have the same length.")
 
@@ -393,14 +401,14 @@ class SystemCalibrationProcessor:
 		if self.cal_cycle_ids is None:
 			raise ValueError("cal_cycle_ids not set. Run calibrate_system_from_cycles() first.")
 
-		cycles = np.asarray(state_data["cycles"])
+		cycles = np.asarray(state_data["cycles"], dtype=int)
 		if len(cycles) != state_power.shape[0]:
 			raise ValueError(
 				f"Cycle label length mismatch for state '{state_name}': "
 				f"{len(cycles)} labels for {state_power.shape[0]} spectra."
 			)
 
-		cycle_ids = np.asarray(self.cal_cycle_ids)
+		cycle_ids = np.asarray(self.cal_cycle_ids, dtype=int)
 		row_idx = np.searchsorted(cycle_ids, cycles)
 		in_range = row_idx < len(cycle_ids)
 		valid_mask = np.zeros_like(in_range, dtype=bool)
@@ -573,8 +581,14 @@ class DSCalibrationProcessor(
 	num_frequency_samples: int = 16384
 	frequency_bin_size_mhz: float = 0.025
 
-	def prepare_frequency_axis(self) -> np.ndarray:
-		"""Create DS frequency axis and selected analysis range."""
+	def _init_freq_axis(self) -> np.ndarray:
+		"""Create DS frequency axis and selected analysis range.
+		
+		Sets:
+		- self.total_frequencies_mhz: all DS frequency bins
+		- self.frequency_idx_range: indices in [min_frequency_mhz, max_frequency_mhz]
+		- self.frequencies_mhz: the selected frequencies
+		"""
 		self.total_frequencies_mhz = np.arange(self.num_frequency_samples) * self.frequency_bin_size_mhz
 		frequency_idx_range = np.where(
 			(self.total_frequencies_mhz >= self.min_frequency_mhz)
@@ -643,8 +657,7 @@ class DSCalibrationProcessor(
 		data_folder = Path(data_folder)
 		date = data_folder.name
 		if not date or not date.isdigit() or len(date) != 8:
-			raise ValueError(
-				f"Unable to infer date from input directory '{data_folder}'. "
+			raise ValueError(f"Unable to infer date from input directory '{data_folder}'. "
 				"Expected a day folder named YYYYMMDD (e.g., /path/to/20260303)."
 			)
 
@@ -662,7 +675,7 @@ class DSCalibrationProcessor(
 
 			def time_dir_to_timestamp(td: str) -> dt.datetime:
 				try:
-					return dt.datetime.strptime(f"{date}{td}", "%H%M%S").replace(tzinfo=dt.timezone.utc)
+					return dt.datetime.strptime(f"{date}{td}", "%Y%m%d%H%M%S").replace(tzinfo=dt.timezone.utc)
 				except ValueError as e:
 					raise ValueError(f"Invalid time directory format: '{td}'. Expected HHMMSS.") from e
 
@@ -670,7 +683,8 @@ class DSCalibrationProcessor(
 			time_mask = (time_dir_timestamps >= start_time) & (time_dir_timestamps <= end_time)
 			time_dirs = np.array(time_dirs)[time_mask]
 			if len(time_dirs) == 0:
-				logging.info("No time directories found within specified interval [%s, %s].", start_time, end_time)
+				logging.warning("No time directories found within specified interval [%s, %s].", start_time, end_time)
+				self.raw_states = None
 				return None
 
 			logging.info(

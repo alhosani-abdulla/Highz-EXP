@@ -14,6 +14,7 @@ What it does:
 
 import argparse
 import os, pathlib
+import pickle
 import pandas as pd
 import numpy as np
 from textwrap import dedent
@@ -129,12 +130,9 @@ def parse_timeline_info(timeline_file) -> pd.DataFrame:
 
     return df
 
-def plot_cal_ant_wf(
-    proc: SystemCalibrationProcessor,
-    seg_indx: int,
-    segment_output_dir,
-    date,
-    vmax,
+def plot_cal_ant_wf(proc: SystemCalibrationProcessor,
+    seg_indx: int, segment_output_dir,
+    date, vmax,
     frequencies_mhz,
     antenna_utc_timestamps,
     ant_T_wf,
@@ -207,63 +205,31 @@ def calibrate_loaded(proc: SystemCalibrationProcessor, seg_indx: int, nd_temp_k,
     """Run calibration and generate all per-segment plots using a preloaded processor."""
     logger = logging.getLogger("ds_cal_wf")
     logger.info("[seg %d] preparing frequency axis and medians", seg_indx)
-    frequencies_mhz = proc.prepare_state_medians()
+    frequencies_mhz = proc.frequencies_mhz
 
     logger.info("[seg %d] computing system gain/temp from cycles", seg_indx)
-    proc.calibrate_per_cycle(resistor_temp_k=resistor_temp_k,
-        nd_k=nd_temp_k)
+    calibrator_data = proc.calibrate_per_cycle(resistor_temp_k=resistor_temp_k, nd_k=nd_temp_k)
     if proc.gain_per_cycle is None or proc.system_temp_per_cycle is None:
         raise RuntimeError(
             "Cycle calibration did not produce system gain/temperature.")
-    system_gain = proc.gain_per_cycle
-    system_temp = proc.system_temp_per_cycle
 
-    system_temp_med = np.median(system_temp, axis=0)
-    system_gain_med = np.median(system_gain, axis=0)
+    system_temp = [Spectrum(frequency=frequencies_mhz * 1e6, spectrum=proc.system_temp_per_cycle[i], 
+        name="System Temperature") for i in range(proc.system_temp_per_cycle.shape[0])]
+    system_gain = [Spectrum(frequency=frequencies_mhz * 1e6, spectrum=np.log10(proc.gain_per_cycle[i]) * 10,
+        name="System Gain (dB)") for i in range(proc.gain_per_cycle.shape[0])]
 
-    antenna_spec_median = proc.state_medians["antenna"]
-    resistor_median = proc.state_medians["resistor"]
-    nd_spec_median = proc.state_medians["nd"]
+    proc.sample_loaded_raw()
 
     antenna_utc_timestamps = np.array(proc.raw_states["antenna"]["timestamps"])
     local_timezone = ZoneInfo("HST")
-    antenna_local_timestamps = convert_utc_list_to_local(
-        antenna_utc_timestamps,
-        local_timezone=local_timezone,
-    )
+    antenna_local_timestamps = convert_utc_list_to_local(antenna_utc_timestamps,
+        local_timezone=local_timezone)
     segment_local_label = proc.build_segment_local_label(
         antenna_local_timestamps,
         seg_indx=seg_indx,
         timezone_name="HST",
     )
     logger.info("[seg %d] label=%s", seg_indx, segment_local_label)
-
-    antenna_median_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=antenna_spec_median,
-        name=f"{segment_local_label}",
-    )
-
-    resistor_median_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=resistor_median,
-        name=f"RS | {segment_local_label}",
-    )
-    nd_median_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=nd_spec_median,
-        name=f"ND | {segment_local_label}",
-    )
-    system_temp_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=system_temp_med,
-        name=f"{segment_local_label}",
-    )
-    sys_gain_spec = Spectrum(
-        frequency=frequencies_mhz * 1e6,
-        spectrum=np.log10(system_gain_med) * 10,
-        name=f"{segment_local_label} (dB)",
-    )
 
     logger.info("[seg %d] building calibrated antenna waterfall", seg_indx)
     ant_T_wf = proc.calibrate_2d_state_power("antenna")
@@ -275,12 +241,10 @@ def calibrate_loaded(proc: SystemCalibrationProcessor, seg_indx: int, nd_temp_k,
     )
 
     return {
-        "resistor_median_spec": resistor_median_spec,
-        "nd_median_spec": nd_median_spec,
-        "antenna_median_spec": antenna_median_spec,
-        "system_temp_spec": system_temp_spec,
-        "sys_gain_db_spec": sys_gain_spec,
         "segment_label": segment_local_label,
+        "calibrator_data": calibrator_data,
+        "gain_per_cycle": system_gain,
+        "system_temp_per_cycle": system_temp,
         "ant_T_wf": ant_T_wf,
         "ant_T_sample_spec": ant_T_sample_spec,
         "antenna_utc_timestamps": antenna_utc_timestamps,
@@ -299,7 +263,7 @@ def load_calibrator(args, seg_indx, data_folder, time_interval) -> DSCalibration
         site_elevation_m=TEST_SITE_ELEVATION_METERS,
     )
 
-    states_to_load = ["antenna", "nd", "resistor"]
+    states_to_load = ["antenna", "noise_diode", "resistor", "blackbody"]
     _ = proc.load_states(data_folder, convert=False,
         no_segments=args.no_segments, seg_indx=seg_indx, 
         states_to_load=states_to_load,
@@ -308,7 +272,7 @@ def load_calibrator(args, seg_indx, data_folder, time_interval) -> DSCalibration
     
     return proc
         
-def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info, temperature_df):
+def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info, temperature_df) -> list[dict] | None:
     """Run the calibration workflow for one segment index, including loading, calibration, and plotting."""
     segment_output_dir = os.path.join(output_dir, f"seg_{seg_indx}")
     os.makedirs(segment_output_dir, exist_ok=True)
@@ -326,8 +290,8 @@ def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info, te
         proc = load_calibrator(args, seg_indx, data_folder, time_interval=(start_hst, end_hst))
         loaded = proc.raw_states
         if loaded is None:
-            logger.info(
-                "No observation set-up in timeline file row %d found in this segment.", row_idx)
+            logger.info("No observation set-up in period [%s, %s] found in this segment.", start_hst, end_hst)
+            continue
         else:
             loaded_state_counts = {
                 name: len(proc.raw_states[name]["timestamps"])
@@ -336,7 +300,7 @@ def run_segment(args, seg_indx, data_folder, output_dir, date, timeline_info, te
         logger.info("[seg %d] Loaded spectra counts by state for timeline row %d: %s",
                     seg_indx, row_idx, loaded_state_counts)
         
-        R_T = get_T_data(temperature_df, proc.raw_states["resistor"]["timestamps"])
+        R_T, _ = get_T_data(temperature_df, proc.raw_states["resistor"]["timestamps"])
         nd_indx = row.get("ND")
         if nd_indx is None:
             logger.info("Processing data without calibrators...")
@@ -371,7 +335,7 @@ def main():
     date = os.path.basename(data_folder)
 
     #! change this in the future
-    temperature_df = pd.read_csv(pathlib.Path("/mnt/c/Users/Peterson Lab/Documents/highz2026/resistor_T_Mars.csv"))
+    temperature_df = pd.read_csv(pathlib.Path("~/highz2026/resistor_T_Mar.csv"))
 
     # Process timeline csv file to extract calibrator information (e.g., noise diode index) for each segment
     timeline_info = parse_timeline_info(args.timeline_file)
@@ -404,85 +368,50 @@ def main():
     )
     for seg_indx in segment_indices:
         segment_indices.set_postfix_str(f"seg_{seg_indx}")
-        segment_result = run_segment(
-            args=args, seg_indx=seg_indx,
-            logger=logger, data_folder=data_folder,
+        segment_result = run_segment(args=args, seg_indx=seg_indx, data_folder=data_folder,
             output_dir=output_dir, timeline_info=timeline_info, temperature_df=temperature_df,
             date=date,
         )
-        segment_results.append(segment_result)
-
-    combined_segment_count = min(3, len(segment_results))
-    combined_segments = segment_results[:combined_segment_count]
+        segment_results.extend(segment_result if segment_result is not None else [])
+    
+    combined_segments_path = os.path.join(output_dir, f"{date}_combined_segments.pkl")
+    with open(combined_segments_path, "wb") as fh:
+        pickle.dump(segment_results, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info("Saved combined calibrated segments pickle: %s", combined_segments_path)
 
     combined_plot_paths = {
-        "cal_median": os.path.join(output_dir, f"{date}_cal_median_combined.png"),
-        "ant_median": os.path.join(output_dir, f"{date}_ant_median_combined.png"),
-        "sys_temp": os.path.join(output_dir, f"{date}_sys_temp_combined.png"),
-        "sys_gain": os.path.join(output_dir, f"{date}_sys_gain_combined.png"),
+        "sys_temp": os.path.join(output_dir, f"{date}_sys_temp.png"),
         "sys_gain_db": os.path.join(output_dir, f"{date}_sys_gain_db_combined.png"),
     }
 
     plot_jobs = [
         {
-            "name": "cal_median",
-            "spectra": [spec["resistor_median_spec"] for spec in combined_segments]
-            + [spec["nd_median_spec"] for spec in combined_segments],
-            "kwargs": {
-                "ylabel": "Raw Power (arb.)",
-                "title": "Median Spectra: Resistor vs Noise Diode (Combined Segments)",
-                "freq_range": (args.fmin, args.fmax),
-            },
-        },
-        {
-            "name": "ant_median",
-            "spectra": [spec["antenna_median_spec"] for spec in combined_segments],
-            "kwargs": {
-                "ylabel": "Raw Power (arb.)",
-                "title": "Median Spectra: Antenna (Combined Segments)",
-                "freq_range": (args.fmin, args.fmax),
-            },
-        },
-        {
             "name": "sys_temp",
-            "spectra": [spec["system_temp_spec"] for spec in combined_segments],
+            "spectra": [spec for result in segment_results for spec in result["system_temp_per_cycle"]],
             "kwargs": {
-                "y_range": (0, 350),
-                "ylabel": "Temperature (K)",
-                "title": f"System Temperature: ({date})",
+                "ylabel": "Raw Power",
+                "title": f"System Temperature: {date}",
                 "freq_range": (args.fmin, args.fmax),
-                "marker_freqs": (50, 100, 200),
+                "y_range": (0, 300)
             },
         },
         {
             "name": "sys_gain_db",
-            "spectra": [spec["sys_gain_db_spec"] for spec in combined_segments],
+            "spectra": [spec for result in segment_results for spec in result["gain_per_cycle"]],
             "kwargs": {
-                "y_range": (20, 60),
-                "ylabel": "Gain (arb dB)",
-                "title": f"System Gain ({date})",
+                "ylabel": "Raw Power (arb.)",
+                "title": f"System Gain: {date}",
                 "freq_range": (args.fmin, args.fmax),
-                "marker_freqs": (50, 100, 200),
+                "y_range": (0, 60)
             },
-        },
-        {
-            "name": "sky_sample",
-            "spectra": [spec["ant_T_sample_spec"] for spec in combined_segments],
-            "kwargs": {
-                "y_range": (0, 1000),
-                "ylabel": "Temperature (K)",
-                "title": f"Sample Sky Temperature Spectra ({date})",
-            }
         }
     ]
 
     for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
         save_path = combined_plot_paths[job["name"]]
-        plotter.plot_spectra(
-            job["spectra"],
-            save_path=save_path,
-            show_plot=False,
-            **job["kwargs"],
+        plotter.plot_spaghetti_spectra(values=
+            job["spectra"], save_path=save_path,
+            show_plot=False, **job["kwargs"],
         )
         logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
 
