@@ -313,7 +313,7 @@ class S_Params:
 
     def plot_reflection_loss(self, db=True, title='Reflection Measurement (S11)', y_range=(None, None),
             s_type='s11', show_phase=False, attenuation=0, freq_range=(None, None), save_path=None,
-            **plot_kwargs):
+            marker_freqs=None, **plot_kwargs):
         """
         Plot multiple reflections from .s1p Network objects on the same axes.
 
@@ -360,6 +360,16 @@ class S_Params:
             ax1.plot(freq / 1e6, mag, label=f'{label}', color=color, **plot_kwargs)
             if show_phase:
                 ax2.plot(freq / 1e6, phase, color=color, linestyle='--', label=f'{label} (phase)')
+
+            if marker_freqs is not None:
+                for mfreq in marker_freqs:
+                    idx_closest = (np.abs(freq - mfreq)).argmin()
+                    mag_marker = mag[idx_closest]
+                    phase_marker = phase[idx_closest]
+                    ax1.plot(freq[idx_closest] / 1e6, mag_marker, 'o', color=color, markersize=7)
+                    if show_phase:
+                        ax2.plot(freq[idx_closest] / 1e6, phase_marker, 'o', color=color, markersize=7,
+                            label=f'{label} @ {mfreq/1e6:.2f} MHz: {mag_marker:.1f} dB, {phase_marker:.1f} deg' if db else f'{label} @ {mfreq/1e6:.2f} MHz: {mag_marker:.3f}, {phase_marker:.1f} deg')
 
         if not show_phase:
             ax1.set_xlabel('Frequency [MHz]', fontsize=20)

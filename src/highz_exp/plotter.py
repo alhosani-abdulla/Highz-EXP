@@ -258,7 +258,7 @@ def plot_load_s2p(file_path, db=True, x_scale='linear', title='Gain Measurement 
     return network
 
 def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_range=None,
-        marker_freqs=None, freq_range=(None, None), yticks=None, 
+        fig=None, ax=None, marker_freqs=None, freq_range=(None, None), yticks=None, 
         title='Recorded Spectrum', show_plot=True, return_handles=False,
         **kwargs) -> tuple[plt.Figure, plt.Axes]:
     """Plot the spectrum from a dictionary of scikit-rf Network objects and save the figure if save_dir is not None.
@@ -274,7 +274,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
         - kwargs (dict): Additional keyword arguments for plt.plot() when plotting the spectra.
     """
-    fig, ax = plt.subplots(figsize=(14, 8))
+    fig, ax = plt.subplots(figsize=(14, 8)) if fig is None or ax is None else (fig, ax)
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for idx, spec in enumerate(loaded_specs):
         freq = spec.freq  # in Hz
