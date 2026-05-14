@@ -1,9 +1,10 @@
 import numpy as np
 from scipy.constants import Boltzmann as k_B
 import copy, logging
-from datetime import datetime
+from datetime import datetime, timezone, tzinfo
 import skrf as rf
 from astropy.time import Time
+from zoneinfo import ZoneInfo
 
 # Define some helper functions
 def sparam_to_dB(s11):
@@ -39,9 +40,19 @@ def norm_factor(psd_ref, temperature=300):
     gain = temperature / dbm_to_kelvin(psd_ref)
     return gain
 
-def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
+def convert_utc_list_to_local(
+    utc_timestamps: list[datetime],
+    local_timezone: tzinfo | str | None = None,
+) -> np.ndarray:
     """
-    Converts a list of naive UTC datetime objects to local timezone-aware objects.
+    Converts a list of naive UTC datetime objects to timezone-aware local datetimes.
+    
+    Args:
+        utc_timestamps: List or array of UTC datetime objects
+        local_timezone: Target timezone or timezone name (defaults to system local timezone)
+    
+    Returns:
+        np.ndarray: Array of datetime objects in the specified timezone
     """
     if not isinstance(utc_timestamps, (list, np.ndarray)):
         raise TypeError("utc_timestamps must be a list or numpy array")
@@ -52,19 +63,24 @@ def convert_utc_list_to_local(utc_timestamps, local_timezone=None):
     if not all(isinstance(ts, datetime) for ts in utc_timestamps):
         raise TypeError("All elements in utc_timestamps must be datetime objects")
     
+    if isinstance(local_timezone, str):
+        try:
+            local_timezone = ZoneInfo(local_timezone)
+        except Exception as exc:
+            raise ValueError(f"Unknown timezone name: {local_timezone}") from exc
+
     if local_timezone is None:
-        local_timezone = datetime.now().astimezone().tzinfo 
-        logging.info("No local timezone provided; using system's local timezone.")
-    logging.info(f"Current timezone: {local_timezone}.")
-    local_timestamps = []
+        local_timezone = datetime.now().astimezone().tzinfo
+        logging.info(f"Using system local timezone: {local_timezone}")
 
-    for utc_dt in utc_timestamps:
-        local_aware_dt = utc_dt.astimezone(local_timezone)
-        local_timestamps.append(local_aware_dt)
-        
-    return local_timestamps
+    local_ts = np.array([
+        ts.replace(tzinfo=timezone.utc).astimezone(local_timezone)
+        for ts in utc_timestamps
+    ])
+    return local_ts
 
-def sidereal_hours_from_utcs(utc_list, longitude):
+def sidereal_hours_from_utcs(utc_list: list[datetime], longitude):
+
     """Convert a list of UTC datetime objects to sidereal hours at the given longitude.
      Args:
          utc_list (list): List of UTC datetime objects.

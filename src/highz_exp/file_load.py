@@ -345,11 +345,11 @@ class DSFileLoader():
         Returns:
             dict: Nested mapping keyed by cycle number (directory name), then timestamp:
                 {
-                    "2300": {
+                    "000523": {
                         "000101": {
                             "spectrum": np.ndarray,
                             "full_timestamp": datetime(..., tzinfo=UTC),
-                            "cycle_no": "2300",
+                            "cycle_no": "000523",
                             ...
                         },
                         ...
@@ -358,7 +358,7 @@ class DSFileLoader():
                 }
 
         Notes:
-            - Timestamp rollover near midnight follows the previous behavior:
+            - Timestamp rollover near midnight:
               for cycles starting with ``23``, timestamps from ``00:00``-``01:59``
               are assigned to the next UTC day.
             - If duplicate timestamps are encountered within the same cycle,
@@ -400,11 +400,6 @@ class DSFileLoader():
                     cycle_loaded[timestamp_str] = enriched_info
 
         return loaded_by_cycle
-
-    @staticmethod
-    def load_and_add_timestamp(date_str, time_dirs, state_no) -> dict:
-        """Backward-compatible wrapper for ``load_and_add_timestamps``."""
-        return DSFileLoader.load_and_add_timestamps(date_str, time_dirs, state_no)
 
     @staticmethod
     def read_loaded(loaded, sort='ascending', convert=False) -> tuple[np.array, np.array, np.array]:
