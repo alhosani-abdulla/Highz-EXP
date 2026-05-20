@@ -499,7 +499,7 @@ class Y_Factor_Thermometer:
                 for mf in marker_freqs:
                     # Find closest index
                     idx = np.argmin(np.abs(freq_range - mf))
-                    marker_temp = smoothed[idx]
+                    marker_temp = smoothed[idx] if smoothing is not None else temp_range[idx]
                     marker_freq_mhz = freq_range[idx]
 
                     # Plot marker

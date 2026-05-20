@@ -100,6 +100,7 @@ class Spectrum:
             spec_converted = watt_to_dbm(spec_converted)
         elif from_unit == 'kelvin':
             spec_converted = kelvin_to_dbm(spec_converted, channel_width=channel_width)
+
         # Now convert from dBm to target unit
         if to_unit == 'milliwatt':
             spec_converted = dbm_to_milliwatt(spec_converted)

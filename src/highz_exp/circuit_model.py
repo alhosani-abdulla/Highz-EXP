@@ -33,6 +33,26 @@ from matplotlib import pyplot as plt
 #
 # ==============================================================================
 
+def johnson_V(T, Z, B=1):
+    """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz).
+    
+    Parameters
+    ----------
+    T : float
+        Temperature in Kelvin.
+    Z : complex
+        Impedance (ohms).
+    B : float, optional
+        Bandwidth in Hz (default: 1).
+    
+    Returns
+    -------
+    float or np.ndarray
+        Johnson voltage in V/sqrt(Hz).
+    """
+    R = np.real(Z)
+    return np.sqrt(4 * k_B * T * B * R)
+
 def _poly_model(freq, *coeffs):
     """Evaluate polynomial at freq using coefficients in ascending order."""
     coeffs = np.asarray(coeffs, dtype=float)
@@ -400,27 +420,6 @@ class LNAModel:
             frequency, gain, order=order, metric_name='gain',
             method=method, initial_guess=initial_guess
         )
-    
-    @staticmethod
-    def johnson_voltage(T, Z, B=1):
-        """Calculate the Johnson-Nyquist noise voltage, in unit of Volts/sqrt(B Hz).
-        
-        Parameters
-        ----------
-        T : float
-            Temperature in Kelvin.
-        Z : complex
-            Impedance (ohms).
-        B : float, optional
-            Bandwidth in Hz (default: 1).
-        
-        Returns
-        -------
-        float or np.ndarray
-            Johnson voltage in V/sqrt(Hz).
-        """
-        R = np.real(Z)
-        return np.sqrt(4 * k_B * T * B * R)
     
     @staticmethod
     def load_power(V_source, Z_source, Z_load):
