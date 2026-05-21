@@ -54,6 +54,16 @@ class AntennaGain():
         """
         max_gain_df = self.gain_info.loc[self.gain_info.groupby('Frequency (Hz)')['Voltage_Mag'].idxmax()]
         return max_gain_df
+    
+    def load_frequency_range(self) -> np.ndarray:
+        """Load the unique frequency values from the gain_info DataFrame.
+        
+        Returns:
+            frequencies (np.ndarray): Array of unique frequency values in Hz.
+        """
+        frequencies = self.gain_info['Frequency (Hz)'].unique()
+        frequencies = np.sort(frequencies)  # Sort frequencies in ascending order
+        return frequencies
 
     def eff_height_freq_plot(self, title, unit='Voltage') -> pd.DataFrame:
         """Create a plot of effective height vs frequency using the maximum gain values.
