@@ -3,8 +3,6 @@
 # Basically, this script generates simulated sky temperature data based on the FEKO gain patterns and GSM sky maps, and saves the output in a pickle file for further analysis.
 import numpy as np
 import pandas as pd
-import datetime
-import pathlib
 import pickle, argparse
 
 from highz_exp.argparse_utils import (
@@ -13,6 +11,8 @@ from highz_exp.argparse_utils import (
     select_file_path as select_file,
     select_save_path as select_output_file,
 )
+from highz_exp.feko_utils import AntennaGain
+from CAL_VARS import location as site_location
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -71,3 +71,13 @@ if __name__ == "__main__":
         print(f"input: {args.input}")
         print(f"antenna_gain: {args.antenna_gain}")
         print(f"output: {args.output}")
+
+    # Load the input data and antenna gain information
+    utc_timestamp, antenna_T = load_timestamp(input_path)
+    gain_df = pd.read_csv(antenna_gain_path)
+    print(gain_df.head())
+    ant_gain = AntennaGain(gain_df)
+
+    simulated_wf = ant_gain.create_simulated_waterfall(utc_timestamp, site_location)
+    with open(output_path, "wb") as f:
+        pickle.dump(simulated_wf, f)

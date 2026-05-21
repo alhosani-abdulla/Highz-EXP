@@ -8,6 +8,30 @@ import healpy as hp
 from matplotlib import pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 
+try:
+    from tqdm.auto import tqdm
+except ImportError:
+    class _NullTqdm:
+        def __init__(self, iterable=None, *args, **kwargs):
+            self._iterable = iterable
+
+        def __iter__(self):
+            return iter(self._iterable or [])
+
+        def update(self, *args, **kwargs):
+            return None
+
+        def set_postfix(self, *args, **kwargs):
+            return None
+
+        def close(self):
+            return None
+
+    def tqdm(iterable=None, *args, **kwargs):
+        return _NullTqdm(iterable)
+
+from highz_exp.plotter import generate_static_hp_map, visualize_static_hmap
+
 # healpy variables
 N_SIDE = 256
 N_PIX = hp.nside2npix(N_SIDE)
@@ -25,6 +49,8 @@ class AntennaGain():
               'Frequency (Hz)', 'IncidentTheta (deg)', and 'Voltage_Mag'.
         """
         self.gain_info = gain_info
+        if not 'Voltage_Mag' in gain_info.columns:
+            self.gain_info['Voltage_Mag'] = np.sqrt(gain_info['Voltage_Real (V)']**2 + gain_info['Voltage_Imag (V)']**2)
     
     def load_gain_pattern(self, freq_hz) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -101,6 +127,38 @@ class AntennaGain():
         self.visualize_beam_map(beam_map)
 
         return beam_map
+    
+    # By Theo Dardio
+    def create_simulated_waterfall(self, utc_timestamps, location) -> np.ndarray:
+        """Create a simulated waterfall of antenna data based on healpix maps and beam patterns.
+        Parameters:
+            - utc_timestamps: List of UTC timestamps (datetime.datetime objects) for which to generate the data.
+            - location: Tuple of (latitude, longitude) for the observer's location.
+        Returns:
+            - simulated_antenna_data: 2D numpy array of shape (len(utc_timestamps), len(frequencies_mhz)) containing the simulated antenna data.
+        """
+        frequencies_mhz = self.load_frequency_range() / 1e6
+        # healpy variables
+        n_side = 256
+        n_pix = hp.nside2npix(n_side)
+        # Solid angle of each pixel
+        omega = hp.nside2pixarea(n_side)  # in steradians
+        simulated_antenna_data = np.zeros((len(utc_timestamps), len(frequencies_mhz)))
+        total_steps = len(utc_timestamps) * len(frequencies_mhz)
+        progress = tqdm(total=total_steps, desc="Simulating waterfall", unit="step", colour="cyan")
+        for j, freq in enumerate(tqdm(frequencies_mhz, desc="Frequencies", leave=False, colour="magenta")):
+            effective_heights_2d_map = self.load_gain_pattern(freq_hz=freq*1e6)[1]
+            beam_map = self.generate_beam_map(effective_heights_2d_map)
+            D = np.sum(beam_map**2) * omega
+            for i, timestamp in enumerate(utc_timestamps):
+                hmap = generate_static_hp_map(frequency_mhz=freq, 
+                        utc_timestamp=timestamp, location=location, observer='LFSM')
+                N = np.sum(hmap * beam_map ** 2) * omega
+                simulated_antenna_data[i, j] = N/D
+            progress.update(1)
+            progress.set_postfix(freq_mhz=f"{freq:.2f}", timestamp_index=i + 1, refresh=False)
+        progress.close()
+        return simulated_antenna_data
 
     # By Theo Dardio
     @staticmethod
