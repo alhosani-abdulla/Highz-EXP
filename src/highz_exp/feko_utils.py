@@ -129,13 +129,15 @@ class AntennaGain():
         return beam_map
     
     # By Theo Dardio
-    def create_simulated_waterfall(self, utc_timestamps, location) -> np.ndarray:
+    def create_simulated_waterfall(self, utc_timestamps, location) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Create a simulated waterfall of antenna data based on healpix maps and beam patterns.
         Parameters:
             - utc_timestamps: List of UTC timestamps (datetime.datetime objects) for which to generate the data.
             - location: Tuple of (latitude, longitude) for the observer's location.
         Returns:
             - simulated_antenna_data: 2D numpy array of shape (len(utc_timestamps), len(frequencies_mhz)) containing the simulated antenna data.
+            - utc_hour: Array of unique hourly timestamps.
+            - frequencies_mhz: Array of frequency values in MHz.
         """
         frequencies_mhz = self.load_frequency_range() / 1e6
         # healpy variables
@@ -143,22 +145,25 @@ class AntennaGain():
         n_pix = hp.nside2npix(n_side)
         # Solid angle of each pixel
         omega = hp.nside2pixarea(n_side)  # in steradians
-        simulated_antenna_data = np.zeros((len(utc_timestamps), len(frequencies_mhz)))
-        total_steps = len(utc_timestamps) * len(frequencies_mhz)
+        utc_hour = [utc_timestamps[i].replace(minute=0, second=0, microsecond=0) for i in range(len(utc_timestamps))]
+        utc_hour = np.unique(utc_hour)  # Get unique hourly timestamps
+        simulated_antenna_data = np.zeros((len(utc_hour), len(frequencies_mhz)))
+        total_steps = len(utc_hour) * len(frequencies_mhz)
         progress = tqdm(total=total_steps, desc="Simulating waterfall", unit="step", colour="cyan")
         for j, freq in enumerate(tqdm(frequencies_mhz, desc="Frequencies", leave=False, colour="magenta")):
             effective_heights_2d_map = self.load_gain_pattern(freq_hz=freq*1e6)[1]
             beam_map = self.generate_beam_map(effective_heights_2d_map)
             D = np.sum(beam_map**2) * omega
-            for i, timestamp in enumerate(utc_timestamps):
+            for i, timestamp in enumerate(utc_hour):
                 hmap = generate_static_hp_map(frequency_mhz=freq, 
                         utc_timestamp=timestamp, location=location, observer='LFSM')
                 N = np.sum(hmap * beam_map ** 2) * omega
                 simulated_antenna_data[i, j] = N/D
-            progress.update(1)
+            # Advance progress by the number of timestamps processed for this frequency
+            progress.update(len(utc_hour))
             progress.set_postfix(freq_mhz=f"{freq:.2f}", timestamp_index=i + 1, refresh=False)
         progress.close()
-        return simulated_antenna_data
+        return simulated_antenna_data, utc_hour, frequencies_mhz
 
     # By Theo Dardio
     @staticmethod

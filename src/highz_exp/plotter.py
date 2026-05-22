@@ -649,7 +649,7 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         return fig, ax
 
 def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20,
-                                  local_tz_obj=None, return_handles=False):
+        local_tz_obj=None, return_handles=False):
     """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
     
     Parameters:
@@ -740,6 +740,11 @@ def generate_static_hp_map(frequency_mhz, utc_timestamp, location, observer='LFS
         Tuple containing (latitude, longitude, elevation) of the observation site.
     observer: str
         Options: '08', '16', 'LFSM', 'Haslam'
+
+    Returns
+    -------
+    hmap : np.ndarray
+        Healpix map of the sky in equatorial coordinates, centered on the zenith, with values in Kelvin. The map is in the RING ordering scheme and has a resolution of nside
     """
     if observer == '08':
         ov = pygdsm.GSMObserver08()
