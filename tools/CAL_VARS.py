@@ -5,6 +5,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Adak Island location
+test_site_latitude = 51.8
+test_site_longitude = -176.6
+test_site_elevation_meters = 5 # meters
+
+location = (test_site_latitude, test_site_longitude, test_site_elevation_meters)
 
 @dataclass(frozen=True)
 class LinearNoiseDiodeProfile:
