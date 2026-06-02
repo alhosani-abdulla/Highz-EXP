@@ -6,9 +6,11 @@ import skrf as rf
 from os.path import join as pjoin
 from . import plotter
 from scipy.constants import Boltzmann as k_B
+from scipy.optimize import lsq_linear
 from . import spec_proc, unit_convert
 from .spec_class import Spectrum
 from scipy.signal import medfilt
+from scipy.interpolate import UnivariateSpline
 
 class Y_Factor_Thermometer:
     """
@@ -533,6 +535,96 @@ class Y_Factor_Thermometer:
         inferred_spectrum = Spectrum(frequency=freq_range_hz, spectrum=temp_range, name=spectrum.name)
 
         return inferred_spectrum
+
+class NF_Parameters_Fitter:
+    """
+    Class to fit noise figure parameters (Fmin, Rn, Gamma_opt) from Y-Factor measurements.
+    """
+    def __init__(self, Y_s, F):
+        self.Y_s = np.asarray(Y_s)
+        self.F = np.asarray(F)
+
+        if self.Y_s.shape != self.F.shape:
+            raise ValueError("Y_s and F must have the same shape.")
+        if self.Y_s.ndim != 2:
+            raise ValueError("Y_s and F must be 2-D arrays with shape (4, n_freq_points).")
+        if self.Y_s.shape[0] != 4:
+            raise ValueError("Y_s and F must have shape (4, n_freq_points); exactly four measurements are required at each frequency.")
+
+        self.params_ = None
+        self.R_n = None
+        self.F_min = None
+        self.G_opt = None
+        self.B_opt = None
+        self.Y_opt = None
+    
+    def fit_parameters(self):
+        """Fit Fmin, Rn, and Yopt = Gopt + jBopt at each frequency.
+
+        Returns
+        -------
+        np.ndarray
+            Array of shape (n_freq_points, 4) with columns [Rn, Fmin, Gopt, Bopt].
+        """
+        b_lower_bound = np.finfo(float).eps
+        num_freq_points = self.Y_s.shape[1]
+
+        params = np.full((num_freq_points, 4), np.nan, dtype=float)
+
+        valid_mask = np.ones(num_freq_points, dtype=bool)
+        for freq_idx in range(num_freq_points):
+            y_vals = self.Y_s[:, freq_idx]
+            f_vals = self.F[:, freq_idx]
+
+            g_vals = np.real(y_vals)
+            b_vals = np.imag(y_vals)
+            abs_sq = np.abs(y_vals) ** 2
+
+            if np.any(np.isclose(g_vals, 0.0)):
+                print(f"Encountered zero real admittance at frequency index {freq_idx}; cannot form the noise-parameter fit.")
+                valid_mask[freq_idx] = False
+                continue
+
+            system_matrix = np.column_stack((
+                np.ones(4),
+                abs_sq / g_vals,
+                1.0 / g_vals,
+                b_vals / g_vals,
+            ))
+
+            bounds = (
+                [b_lower_bound, b_lower_bound, b_lower_bound, -np.inf],
+                [np.inf, np.inf, np.inf, np.inf],
+            )
+            coeffs = lsq_linear(system_matrix, f_vals, bounds=bounds).x
+
+            a, b, c, d = coeffs
+            discriminant = 4.0 * c * b - d ** 2
+            if discriminant < 0 and np.isclose(discriminant, 0.0, atol=1e-12):
+                discriminant = 0.0
+            if discriminant < 0:
+                valid_mask[freq_idx] = False
+                continue
+
+            sqrt_term = np.sqrt(discriminant)
+            rn = b
+            fmin = a + sqrt_term
+            gopt = sqrt_term / (2.0 * b)
+            bopt = -d / (2.0 * b)
+
+            params[freq_idx, :] = [rn, fmin, gopt, bopt]
+
+        self.params_ = params
+        self.R_n = params[:, 0]
+        self.F_min = params[:, 1]
+        self.G_opt = params[:, 2]
+        self.B_opt = params[:, 3]
+        self.Y_opt = self.G_opt + 1j * self.B_opt
+        self.valid_mask = valid_mask
+        self.gamma_opt = (0.02 - self.Y_opt) / (0.02 + self.Y_opt)
+        print(f"Valid points: {valid_mask.sum()} out of {num_freq_points}")
+
+        return params
     
 def _bin_edges_from_centers(f_centers):
     edges = np.zeros(len(f_centers) + 1)
@@ -579,3 +671,36 @@ def _bin_average_with_uncertainty(x, y, edges, reducer=np.nanmean):
 
     return mean_out, sigma_out, n_samples_out
 
+def fill_nan_with_fit(freq, values, k=3, smoothing=0):
+    freq = np.asarray(freq, dtype=float)
+    values = np.asarray(values, dtype=float)
+    filled = values.copy()
+
+    valid_mask = np.isfinite(freq) & np.isfinite(values)
+    nan_mask = np.isnan(values) & np.isfinite(freq)
+
+    if not np.any(nan_mask):
+        return filled
+    if valid_mask.sum() < 2:
+        raise ValueError('Need at least two finite samples to fit NaN values.')
+
+    fit_order = min(k, valid_mask.sum() - 1)
+    if fit_order >= 2 and valid_mask.sum() > fit_order:
+        fit = UnivariateSpline(freq[valid_mask], values[valid_mask], k=fit_order, s=smoothing)
+        filled[nan_mask] = fit(freq[nan_mask])
+    else:
+        filled[nan_mask] = np.interp(freq[nan_mask], freq[valid_mask], values[valid_mask])
+
+    return filled
+
+def compute_NF(gamma_s, F_min, gamma_opt, R_n):
+    """Compute noise factor from source reflection coefficient (gamma_s) and noise parameters."""
+    gamma_s = np.asarray(gamma_s, dtype=complex)
+    F_min = np.asarray(F_min, dtype=float)
+    gamma_opt = np.asarray(gamma_opt, dtype=complex)
+    R_n = np.asarray(R_n, dtype=float)
+
+    numerator = 4 * R_n * np.abs(gamma_s - gamma_opt)**2
+    denominator = (1 - np.abs(gamma_s)**2) * (1 - np.abs(gamma_opt)**2)
+    F_linear = F_min + numerator / (denominator * 50)
+    return F_linear

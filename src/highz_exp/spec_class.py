@@ -469,6 +469,53 @@ class Spectrum:
         loaded_states_kelvin = Spectrum.preprocess_states(loaded_states, unit='kelvin', normalize=gain, system_gain=system_gain)
 
         return loaded_states_kelvin, gain
+    
+    def filter_by_spline_fit(self, order=3, smoothness=None, 
+        rel_tol=0.10, inplace=False) -> tuple["Spectrum", np.ndarray, np.ndarray]:
+        """Fit a smooth SciPy spline to a spectrum and remove points that deviate too far from it."""
+        from scipy.interpolate import UnivariateSpline
+        freq = np.asarray(self.f, dtype=float)
+        values = np.asarray(self.spec, dtype=float)
+
+        finite_mask = np.isfinite(freq) & np.isfinite(values)
+        if np.count_nonzero(finite_mask) < 2:
+            raise ValueError("Need at least two finite points to fit a spline.")
+
+        fit_freq = freq[finite_mask]
+        fit_values = values[finite_mask]
+        sort_idx = np.argsort(fit_freq)
+        fit_freq = fit_freq[sort_idx]
+        fit_values = fit_values[sort_idx]
+
+        spline_order = min(int(order), fit_freq.size - 1)
+        if spline_order < 1:
+            spline_order = 1
+
+        if smoothness is None:
+            smoothness = fit_freq.size * np.nanvar(fit_values) * 0.05
+
+        spline = UnivariateSpline(fit_freq, fit_values, k=spline_order, s=smoothness)
+        fitted = spline(freq)
+
+        scale = np.maximum(np.abs(fitted), np.finfo(float).eps)
+        keep_mask = finite_mask & (np.abs(values - fitted) <= rel_tol * scale)
+
+        filtered_freq = freq[keep_mask]
+        filtered_spec = values[keep_mask]
+
+        if inplace:
+            self.f = filtered_freq
+            self.spec = filtered_spec
+            return self, fitted, keep_mask
+
+        filtered = Spectrum(
+            filtered_freq.copy(),
+            filtered_spec.copy(),
+            name=f"{self.name} (filtered)",
+            colorcode=self.colorcode,
+            metadata=self.metadata.copy(),
+        )
+        return filtered, fitted, keep_mask
 
 
 # ==============================================================================

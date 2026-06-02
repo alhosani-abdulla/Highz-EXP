@@ -595,14 +595,20 @@ class S_Params:
             self.ntwk_dict = new_ntwk_dict
         return new_ntwk_dict
 
-    def interpolate_all(self, new_freqs, inplace=True):
+    def interpolate_all(self, new_freqs=None, inplace=True):
         """Interpolate all networks to a new frequency axis.
         
         Parameters:
         - new_freqs (np.ndarray): New frequency axis (Hz).
         - inplace (bool): If True, modify the ntwk_dict in place. """
         new_ntwk_dict = {}
-        for key, value in self.ntwk_dict.items():
+        if new_freqs is None:
+            # find the narrowest common frequency range across all networks
+            f_min = max(ntwk.f.min() for ntwk in self.ntwk_dict.values())
+            f_max = min(ntwk.f.max() for ntwk in self.ntwk_dict.values())
+            new_freqs = np.linspace(f_min, f_max, len(next(iter(self.ntwk_dict.values())).f))
+            
+        for key, _ in self.ntwk_dict.items():
             ntwk_copy = copy.deepcopy(self.ntwk_dict[key])
             ntwk_interp = ntwk_copy.interpolate(new_freqs)
             new_ntwk_dict[key] = ntwk_interp

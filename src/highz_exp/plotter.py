@@ -276,9 +276,9 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         - show_plot (bool): Whether to display the plot. If False, the plot is closed after saving.
         - kwargs (dict): Additional keyword arguments for plt.plot() when plotting the spectra.
     """
-    fig, ax = plt.subplots(figsize=(14, 8)) if fig is None or ax is None else (fig, ax)
+    fig, ax = plt.subplots(figsize=(12, 8)) if fig is None or ax is None else (fig, ax)
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    for idx, spec in enumerate(loaded_specs):
+    for spec_idx, spec in enumerate(loaded_specs):
         freq = spec.freq  # in Hz
         spectrum = spec.spec
         
@@ -288,7 +288,7 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         if spec.colorcode is not None:
             color = spec.colorcode
         else:
-            color = color_cycle[idx % len(color_cycle)]
+            color = color_cycle[spec_idx % len(color_cycle)]
         
         if freq_range[0] is not None:
             valid_idx = (faxis_mhz >= freq_range[0])
@@ -312,19 +312,53 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
         
         # Plot markers if specified
         if marker_freqs is not None:
-            for mf in marker_freqs:
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+            placed_bboxes = getattr(ax, '_marker_label_bboxes', [])
+            ax._marker_label_bboxes = placed_bboxes
+
+            for marker_idx, mf in enumerate(marker_freqs):
                 # Find closest index
                 target_freq_hz = mf * 1e6
-                idx = np.argmin(np.abs(freq - target_freq_hz))
-                marker_psd = spectrum[idx]
-                marker_freq_mhz = freq[idx] / 1e6
+                marker_sample_idx = np.argmin(np.abs(freq - target_freq_hz))
+                marker_psd = spectrum[marker_sample_idx]
+                marker_freq_mhz = freq[marker_sample_idx] / 1e6
+
+                # Try a few offsets and keep the first label that does not overlap.
+                base_offset = 10 + 10 * spec_idx + 6 * marker_idx
+                offset_candidates = [
+                    (base_offset, base_offset),
+                    (base_offset, -base_offset),
+                    (-base_offset, base_offset),
+                    (-base_offset, -base_offset),
+                    (base_offset * 2, 0),
+                    (0, base_offset * 2),
+                ]
 
                 # Plot marker
                 ax.plot(marker_freq_mhz, marker_psd, 'ro')
-                ax.annotate(f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
-                            (marker_freq_mhz, marker_psd),
-                            textcoords="offset points", xytext=(10, 10), ha='left',
-                            fontsize=16, color='darkred')
+
+                for text_offset in offset_candidates:
+                    annotation = ax.annotate(
+                        f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
+                        (marker_freq_mhz, marker_psd),
+                        textcoords="offset points", xytext=text_offset, ha='left',
+                        fontsize=16, color='darkred'
+                    )
+                    bbox = annotation.get_window_extent(renderer=renderer).expanded(1.05, 1.15)
+                    if any(bbox.overlaps(existing_bbox) for existing_bbox in placed_bboxes):
+                        annotation.remove()
+                        continue
+                    placed_bboxes.append(bbox)
+                    break
+                else:
+                    annotation = ax.annotate(
+                        f'{marker_psd:.2f} \n@ {mf:.0f} MHz',
+                        (marker_freq_mhz, marker_psd),
+                        textcoords="offset points", xytext=offset_candidates[-1], ha='left',
+                        fontsize=16, color='darkred'
+                    )
+                    placed_bboxes.append(annotation.get_window_extent(renderer=renderer).expanded(1.05, 1.15))
 
     ylim = (ymin, ymax)
     if ylabel is None:
@@ -334,7 +368,9 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     if freq_range != (None, None):
         ax.set_xlim(*freq_range)
     
-    ax.legend(ncol=2, loc='best')
+    if len(loaded_specs) > 1:
+        ax.legend(ncol=2, loc='best')
+        
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Frequency [MHz]')
     if yticks is not None:
