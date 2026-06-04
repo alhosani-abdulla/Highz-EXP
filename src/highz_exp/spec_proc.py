@@ -132,7 +132,6 @@ def rebin(freq, power_spec, factor, mode='average'):
 
     return new_freq, new_power_spec
 
-
 def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_sigma=3.0):
     """Bin-average values using provided bin edges with optional outlier removal."""
     out = np.full(len(edges) - 1, np.nan)
@@ -151,7 +150,6 @@ def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_s
             out[i] = reducer(bin_values)
 
     return out
-
 
 def _filter_outliers(data, method='sigma_clip', sigma=3.0):
     """Remove outliers from 1D data using sigma-clipping or MAD thresholding."""

@@ -332,7 +332,7 @@ class S_Params:
             print("No networks provided.")
             return ntwk_dict
 
-        fig, ax1 = plt.subplots(figsize=(14, 8))
+        fig, ax1 = plt.subplots(figsize=(12, 8))
         if show_phase:
             # replace the single axis with two stacked axes (top: magnitude, bottom: phase)
             fig.clf()

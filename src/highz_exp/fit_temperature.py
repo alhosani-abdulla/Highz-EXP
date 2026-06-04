@@ -53,6 +53,7 @@ class Y_Factor_Thermometer:
             self.T_cal = self.compute_system_temperature(self.CAL_hot / self.CAL_cold, T_hot, T_cold)
             self.T_dut = self.DUT_temp_with_cal(self.T_cal, self.g, self.T_sys)
             if self.RBW is not None: self.g_sys = self.gain_wo_cal(self.DUT_hot, self.DUT_cold, T_hot, T_cold, self.RBW, self.unit)
+            else: print("RBW is not provided, system gain spectrum will not be computed without calibration spectra.")
         else:
             if self.RBW is not None: self.g = self.gain_wo_cal(self.DUT_hot, self.DUT_cold, T_hot, T_cold, self.RBW, self.unit)
             self.T_dut = None
@@ -230,51 +231,30 @@ class Y_Factor_Thermometer:
         -------
         Y_Factor_Thermometer or tuple[Y_Factor_Thermometer, dict]
         """
+        target = self if inplace else copy.deepcopy(self)
         new_freq = np.asarray(new_freq)
         edges = _bin_edges_from_centers(new_freq)
 
-        if return_uncertainty:
-            T_sys_new, T_sys_unc, _ = _bin_average_with_uncertainty(
-                self.frequency, self.T_sys, edges, reducer=reducer
-            )
-        else:
-            T_sys_new = spec_proc._bin_average(self.frequency, self.T_sys, edges, reducer)
-            T_sys_unc = None
-
-        T_dut_new = None
-        T_dut_unc = None
-        if self.T_dut is not None:
-            if return_uncertainty:
-                T_dut_new, T_dut_unc, _ = _bin_average_with_uncertainty(
-                    self.frequency, self.T_dut, edges, reducer=reducer
-                )
-            else:
-                T_dut_new = spec_proc._bin_average(self.frequency, self.T_dut, edges, reducer)
-
-        g_new = None
-        g_unc = None
-        if self.g is not None:
-            if return_uncertainty:
-                g_new, g_unc, _ = _bin_average_with_uncertainty(
-                    self.frequency, self.g, edges, reducer=reducer
-                )
-            else:
-                g_new = spec_proc._bin_average(self.frequency, self.g, edges, reducer)
+        T_sys_new = spec_proc._bin_average(self.frequency, self.T_sys, edges, reducer)
+        T_dut_new = spec_proc._bin_average(self.frequency, self.T_dut, edges, reducer)
+        g_new = spec_proc._bin_average(self.frequency, self.g, edges, reducer)
+        CAL_cold_new = spec_proc._bin_average(self.frequency, self.CAL_cold, edges, reducer) if self.CAL_cold is not None else None
+        CAL_hot_new = spec_proc._bin_average(self.frequency, self.CAL_hot, edges, reducer) if self.CAL_hot is not None else None
+        DUT_hot_new = spec_proc._bin_average(self.frequency, self.DUT_hot, edges, reducer)
+        DUT_cold_new = spec_proc._bin_average(self.frequency, self.DUT_cold, edges, reducer)
         
         if hasattr(self, 'g_sys') and self.g_sys is not None:
             g_sys_new = spec_proc._bin_average(self.frequency, self.g_sys, edges, reducer)
-        else:
-            g_sys_new = None
-
-        target = self if inplace else copy.deepcopy(self)
+            target.g_sys = g_sys_new
 
         target.frequency = new_freq
         target.T_sys = T_sys_new
         target.T_dut = T_dut_new
         target.g = g_new
-        target.T_sys_unc = T_sys_unc
-        target.T_dut_unc = T_dut_unc
-        target.g_unc = g_unc
+        target.CAL_cold = CAL_cold_new
+        target.CAL_hot = CAL_hot_new
+        target.DUT_hot = DUT_hot_new
+        target.DUT_cold = DUT_cold_new
         target.g_sys = g_sys_new if hasattr(self, 'g_sys') else None
 
         return target
