@@ -625,7 +625,8 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
     """
     start_idx, end_idx = _get_freq_range_indices(f_mhz, freq_range)
-    fig, ax = plt.subplots(figsize=(12, 8))
+    figsize = plot_kwargs.pop('figsize', (12, 8))
+    fig, ax = plt.subplots(figsize=figsize)
     is_multi = isinstance(gain, list)
     if not is_multi:
         ax.errorbar(f_mhz[start_idx:end_idx+1], gain[start_idx:end_idx+1], **plot_kwargs)
