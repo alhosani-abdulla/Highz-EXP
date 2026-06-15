@@ -9,6 +9,51 @@ from typing import Sequence, Union
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import medfilt
 
+def fit_and_filter_spectrum_by_spline(spectrum, order=3, smoothness=None, rel_tol=0.10, inplace=False):
+    """Fit a smooth SciPy spline to a spectrum and remove points that deviate too far from it."""
+    freq = np.asarray(spectrum.f, dtype=float)
+    values = np.asarray(spectrum.spec, dtype=float)
+
+    finite_mask = np.isfinite(freq) & np.isfinite(values)
+    if np.count_nonzero(finite_mask) < 2:
+        raise ValueError("Need at least two finite points to fit a spline.")
+
+    fit_freq = freq[finite_mask]
+    fit_values = values[finite_mask]
+    sort_idx = np.argsort(fit_freq)
+    fit_freq = fit_freq[sort_idx]
+    fit_values = fit_values[sort_idx]
+
+    spline_order = min(int(order), fit_freq.size - 1)
+    if spline_order < 1:
+        spline_order = 1
+
+    if smoothness is None:
+        smoothness = fit_freq.size * np.nanvar(fit_values) * 0.05
+
+    spline = UnivariateSpline(fit_freq, fit_values, k=spline_order, s=smoothness)
+    fitted = spline(freq)
+
+    scale = np.maximum(np.abs(fitted), np.finfo(float).eps)
+    keep_mask = finite_mask & (np.abs(values - fitted) <= rel_tol * scale)
+
+    filtered_freq = freq[keep_mask]
+    filtered_spec = values[keep_mask]
+
+    if inplace:
+        spectrum.f = filtered_freq
+        spectrum.spec = filtered_spec
+        return spectrum, fitted, keep_mask
+
+    filtered = Spectrum(
+        filtered_freq.copy(),
+        filtered_spec.copy(),
+        name=f"{spectrum.name} (filtered)",
+        colorcode='red',
+        metadata=spectrum.metadata.copy(),
+    )
+    return filtered, fitted, keep_mask
+
 def smooth_spectrum(data, method='savgol', window=31, polyorder=3):
     """
     Return a smoothed copy of `data` (1D array) using the requested method.
@@ -87,7 +132,6 @@ def rebin(freq, power_spec, factor, mode='average'):
 
     return new_freq, new_power_spec
 
-
 def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_sigma=3.0):
     """Bin-average values using provided bin edges with optional outlier removal."""
     out = np.full(len(edges) - 1, np.nan)
@@ -106,7 +150,6 @@ def _bin_average(x, y, edges, reducer=np.nanmean, outlier_method=None, outlier_s
             out[i] = reducer(bin_values)
 
     return out
-
 
 def _filter_outliers(data, method='sigma_clip', sigma=3.0):
     """Remove outliers from 1D data using sigma-clipping or MAD thresholding."""

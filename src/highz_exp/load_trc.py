@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
+from highz_exp.spec_class import Spectrum
 import numpy as np
 
 class TraceLoader:
@@ -105,6 +106,10 @@ class TraceLoader:
         )
         series = trace_data[trace_tag]
         return series["frequency"], series["spectrum"]
+
+    def load_trc_to_spec(self, trace, name) -> Spectrum:
+        freq, spec = self.load_trace(trace)
+        return Spectrum(frequency=freq, spectrum=spec, name=name)
 
     def load_traces(self, traces: list[int | str] | None = None,
         freq_scale: float = 1.0, spectrum_scale: float = 1.0, spectrum_offset: float = 0.0,
