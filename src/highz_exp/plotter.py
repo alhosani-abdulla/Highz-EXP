@@ -648,8 +648,8 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
     if return_handles:
         return fig, ax
 
-def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_path=None, show_plot=True, vmin=-80, vmax=-20,
-        local_tz_obj=None, return_handles=False):
+def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, label='Power (dBm)', output_path=None, show_plot=True, 
+        vmin=-80, vmax=-20, local_tz_obj=None, return_handles=False):
     """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
     
     Parameters:
@@ -707,7 +707,7 @@ def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, output_p
 
     ax.set_title(title)
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Power (dBm)')
+    cbar.set_label(label)
 
     if output_path:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
