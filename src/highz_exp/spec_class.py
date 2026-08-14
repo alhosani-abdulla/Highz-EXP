@@ -115,16 +115,6 @@ class Spectrum:
             return self
         else:
             return Spectrum(self.freq.copy(), spec_converted, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
-    
-    def rebin(self, factor: int, mode: str = 'average', inplace=False) -> "Spectrum":
-        """Rebin a spectrum by an integer factor, either through 'average' or 'sum' mode."""
-        new_freq, new_spec = spec_proc.rebin(self.freq, self.spec, factor, mode=mode)
-        if inplace:
-            self.freq = new_freq
-            self.spec = new_spec
-            return self
-        else:
-            return Spectrum(new_freq, new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
 
     def resample(self, new_freq: Iterable[float], kind: str = "linear", 
                  reducer=None, inplace: bool = True, outlier_method: str = None,
@@ -190,14 +180,6 @@ class Spectrum:
                 inplace=False
             )
         
-        Bin-averaging with MAD-based outlier removal:
-            spec_binned = spec.resample(
-                np.linspace(1e6, 400e6, 100), 
-                reducer=np.nanmean,
-                outlier_method='mad',
-                outlier_sigma=2.5,
-                inplace=False
-            )
         """
         new_freq_arr = np.asarray(new_freq, dtype=float)
         
@@ -230,9 +212,13 @@ class Spectrum:
                 freq_sorted = self.freq
                 spec_sorted = self.spec
             new_spec = np.interp(new_freq_arr, freq_sorted, spec_sorted)
-            self.freq = new_freq_arr
-            self.spec = new_spec
-            return self
+            if inplace:
+                self.freq = new_freq_arr
+                self.spec = new_spec
+                return self
+            else:
+                return Spectrum(new_freq_arr.copy(), new_spec, self.name, 
+                              colorcode=self.colorcode, metadata=self.metadata.copy())
     
     def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median",
                 inplace: bool = False) -> "Spectrum":
@@ -330,6 +316,23 @@ class Spectrum:
         self.spec = self.spec[mask]
         return self
 
+    def remove_freq_range(self, min_freq: Optional[float] = None, max_freq: Optional[float] = None,
+            inplace=True) -> "Spectrum":
+        """Remove data between min_freq and max_freq (unit=Hz) (inclusive)."""
+        mask = np.ones_like(self.f, dtype=bool)
+        if min_freq is not None:
+            mask &= self.f < float(min_freq)
+        if max_freq is not None:
+            mask &= self.f > float(max_freq)
+        if inplace is True:
+            self.f = self.f[mask]
+            self.s = self.s[mask]
+            return self
+        else:
+            new_freq = self.f[mask]
+            new_spec = self.s[mask]
+            return Spectrum(new_freq, new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
+    
     def to_dict(self) -> Dict[str, Any]:
         """Return a serializable dict of the spectrum and metadata."""
         return {

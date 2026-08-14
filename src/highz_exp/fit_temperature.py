@@ -538,6 +538,29 @@ class NF_Parameters_Fitter:
         self.B_opt = None
         self.Y_opt = None
     
+    @staticmethod
+    def noise_factor_model_gamma(gamma_s, x, z0):
+        """
+        Compute noise factor using source reflection coefficients.
+
+        Parameters
+        ----------
+        gamma_s : ndarray (complex)
+        x : array_like
+            [Fmin, Rn, rho, theta]
+        z0 : float
+
+        Returns
+        -------
+        ndarray
+        """
+        Fmin, Rn, gamma, theta = x
+        gamma_opt = gamma * np.exp(1j * theta)
+        numerator = np.abs(gamma_s - gamma_opt) ** 2
+        denominator = (1.0 - np.abs(gamma_s) ** 2) * np.abs(1.0 + gamma_opt) ** 2
+
+        return Fmin + (4.0 * Rn / z0) * numerator / denominator
+    
     def fit_parameters(self):
         """Fit Fmin, Rn, and Yopt = Gopt + jBopt at each frequency.
 
@@ -582,9 +605,6 @@ class NF_Parameters_Fitter:
             discriminant = 4.0 * c * b - d ** 2
             if discriminant < 0 and np.isclose(discriminant, 0.0, atol=1e-12):
                 discriminant = 0.0
-            if discriminant < 0:
-                valid_mask[freq_idx] = False
-                continue
 
             sqrt_term = np.sqrt(discriminant)
             rn = b

@@ -346,6 +346,7 @@ def interpolate_arrs(target_freqs, arr_freq, arr) -> tuple[np.ndarray, float, fl
     return interpolated_arr, common_min, common_max
 
 
+
 # Adapted from Marcus Bosca's code
 def compile_heatmap_data(alltime_spectra: np.ndarray, timestamps: List[datetime]) -> None:
     """

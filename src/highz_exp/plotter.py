@@ -615,7 +615,7 @@ def _get_freq_range_indices(f_mhz: np.ndarray, freq_range: tuple = (None, None))
 
 def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, None),
               xlabel='Frequency (MHz)', ylabel='Gain (dB)', title=None, save_path=None, 
-              marker_freqs=None, return_handles=False, **plot_kwargs):
+              marker_freqs=None, return_handles=False, **plot_kwargs) -> tuple[plt.Figure, plt.Axes]:
     """Plot gain over a specified frequency range.
     
     Parameters:
@@ -623,6 +623,10 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
         - freq_range (tuple, optional): Frequency range to plot (fmin, fmax) in MHz. If (None, None), plots the entire range of f_mhz.
         - gain (np.ndarray or list of np.ndarray): Gain values.
         - marker_freqs (list, optional): Frequencies in MHz to place markers on the plot.
+
+    Returns:
+        - fig (plt.Figure): The matplotlib figure object.
+        - ax (plt.Axes): The matplotlib axes object.
     """
     start_idx, end_idx = _get_freq_range_indices(f_mhz, freq_range)
     figsize = plot_kwargs.pop('figsize', (12, 8))
