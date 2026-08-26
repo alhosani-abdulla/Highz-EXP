@@ -213,15 +213,46 @@ def remove_spikes_from_psd(freq, psd, threshold=5.0, window=5):
         psd_cleaned[spike_mask] = np.interp(freq[spike_mask], freq[keep_indices], psd[keep_indices])
 
     return psd_cleaned
-   
-def despike(arr, window: int = 11, threshold: float = 5.0, replace: str = "median") -> np.ndarray:
+
+def kernel_from_bw(freq, bw_hz) -> int:
+    """
+    Create a normalized kernel for smoothing based on the desired bandwidth.
+
+    Parameters:
+        freq: np.ndarray
+            Frequency axis (in Hz).
+        bw_hz: float
+            Desired bandwidth for smoothing (in Hz).
+
+    Returns:
+        kernel size: int
+    """
+    df = np.mean(np.diff(freq))
+    if df <= 0:
+        raise ValueError("Frequency axis must be monotonically increasing.")
+
+    kernel_size = int(np.round(bw_hz / df))
+    if kernel_size < 1:
+        kernel_size = 1
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+
+    return kernel_size
+
+def despike(freq, spec, bw, threshold=5, n_inter=5, fill='interp') -> tuple[np.ndarray, np.ndarray]:
     """
     Remove narrow RFI spikes by comparing each point to a local median and MAD.
 
     Parameters:
-        window: odd integer window size for local statistics (>=3).
+        freq: np.ndarray
+            Frequency axis (in Hz).
+        spec: np.ndarray
+            Input spectrum.
+        bw: float
+            Desired bandwidth for smoothing (in Hz).
         threshold: multiple of local MAD (median absolute deviation) above which a point is considered a spike.
-        replace: 'median' to replace spikes with local median, 'interp' to interpolate
+        n_inter: number of iterations for spike removal.
+        fill: 'median' to replace spikes with local median, 'interp' to interpolate
                     across spike points using neighboring good points.
 
     Notes:
@@ -229,63 +260,37 @@ def despike(arr, window: int = 11, threshold: float = 5.0, replace: str = "media
         as a fallback. Both scipy.signal.medfilt and numpy.lib.stride_tricks.sliding_window_view
         can be used to speed up the local-median computation.
     """
-    if window < 3:
-        return arr
-    wl = int(window)
-    if wl % 2 == 0:
-        wl += 1
-    pad = wl // 2
+    f = np.asarray(freq)
+    s = np.asarray(spec)
 
-    # try fast sliding-window median/MAD
-    try:
+    cleaned = copy.deepcopy(s)
+    kernel_size = kernel_from_bw(f, bw)
+    mask = np.zeros_like(cleaned, dtype=bool)
 
-        padded = np.pad(arr, pad, mode="edge")
-        windows = sliding_window_view(padded, wl)
-        local_med = np.median(windows, axis=1)
-        local_mad = np.median(np.abs(windows - local_med[:, None]), axis=1)
-    except Exception:
-        # fallback: try scipy medfilt for median; compute MAD with small local loops
-        try:
+    for _ in range(n_inter):
+        # Compute local median and MAD
+        local_median = medfilt(cleaned, kernel_size)
+        residual = cleaned - local_median
 
-            local_med = medfilt(arr, kernel_size=wl)
-            local_mad = np.empty_like(arr)
-            n = arr.size
-            for i in range(n):
-                i0 = max(0, i - pad)
-                i1 = min(n, i + pad + 1)
-                w = arr[i0:i1]
-                m = np.median(w)
-                local_mad[i] = np.median(np.abs(w - m))
-        except Exception:
-            # last resort: global median/MAD
-            gm = np.median(arr)
-            gmad = np.median(np.abs(arr - gm)) or 1.0
-            local_med = np.full_like(arr, gm)
-            local_mad = np.full_like(arr, gmad)
+        med = np.median(residual)
+        mad = np.median(np.abs(residual - med))
+        sigma = mad * 1.4826  # Convert MAD to standard deviation equivalent
 
-    # detect spikes using MAD (robust to outliers)
-    local_mad_safe = np.where(local_mad <= 0, 1e-12, local_mad)
-    diff = np.abs(arr - local_med)
-    spikes = diff > (threshold * local_mad_safe)
-    if not np.any(spikes):
-        return arr
+        if sigma == 0: break
 
-    if replace == "median":
-        arr = np.where(spikes, local_med, arr)
-    elif replace == "interp":
-        x = np.arange(len(arr))
-        good = (~spikes) & (~np.isnan(arr))
-        if good.sum() < 2:
-            # not enough points to interpolate, fallback to median replacement
-            arr = np.where(spikes, local_med, arr)
+        spike_mask = np.abs(residual - med) > threshold * sigma
+        mask |= spike_mask
+
+        if fill == 'median':
+            cleaned[spike_mask] = local_median[spike_mask]
+        elif fill == 'interp':
+            good_indices = np.where(~spike_mask)[0]
+            if len(good_indices) < 2:
+                break  # Not enough points to interpolate
+            cleaned[spike_mask] = np.interp(f[spike_mask], f[good_indices], cleaned[good_indices])
         else:
-            new = arr.copy()
-            new[spikes] = np.interp(x[spikes], x[good], arr[good])
-            arr = new
-    else:
-        raise ValueError("replace must be 'median' or 'interp'")
-
-    return arr
+            raise ValueError("fill must be 'median' or 'interp'.")
+    return cleaned, mask
 
 def remove_broad_rfi(arr, freq_width_hz: float, freq_axis: np.ndarray = None, 
                         method: str = "notch") -> np.ndarray:

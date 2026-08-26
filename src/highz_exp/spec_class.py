@@ -220,17 +220,16 @@ class Spectrum:
                 return Spectrum(new_freq_arr.copy(), new_spec, self.name, 
                               colorcode=self.colorcode, metadata=self.metadata.copy())
     
-    def despike(self, window: int = 11, threshold: float = 5.0, replace: str = "median",
-                inplace: bool = False) -> "Spectrum":
+    def despike(self, inplace=False, **kwargs) -> "Spectrum":
         """
         Remove narrow RFI spikes by comparing each point to a local median and MAD.
 
         Parameters:
-            window: odd integer window size for local statistics (>=3).
-            threshold: multiple of local MAD above which a point is considered a spike.
-            replace: 'median' to replace spikes with local median, 'interp' to interpolate
-                     across spike points using neighboring good points.
-            inplace: if True, modify the spectrum in place; otherwise, return a new Spectrum object.
+            kwargs: keyword arguments passed to spec_proc.despike, including:
+                - bw: desired bandwidth for smoothing (in Hz)
+                - threshold: multiple of local MAD above which a point is considered a spike
+                - n_inter: number of iterations for spike removal
+                - fill: 'median' to replace spikes with local median, 'interp' to interpolate
 
         Notes:
             This uses numpy's sliding_window_view when available, or scipy.signal.medfilt
@@ -238,10 +237,10 @@ class Spectrum:
             can be used to speed up the local-median computation.
         """
         if inplace:
-            self.spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+            self.spec, _ = spec_proc.despike(self.f, self.spec, **kwargs)
             return self
         else:
-            new_spec = spec_proc.despike(self.spec, window=window, threshold=threshold, replace=replace)
+            new_spec, _ = spec_proc.despike(self.f, self.spec, **kwargs)
             return Spectrum(self.freq.copy(), new_spec, self.name, colorcode=self.colorcode, metadata=self.metadata.copy())
     
     def median_smooth(self, kernel_size: int = 11, inplace: bool = False) -> "Spectrum":

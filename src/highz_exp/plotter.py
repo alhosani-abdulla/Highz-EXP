@@ -689,6 +689,55 @@ def plot_gain(f_mhz, gain, label=None, freq_range=(None, None), y_range=(None, N
     if return_handles:
         return fig, ax
 
+def plot_gamma_smith(gamma, temperature, ax=None, title=None, cmap='viridis',
+                     size=40, marker='o', cbar_label='Temperature (K)', antenna_ntwk=None,
+                     temp_range=None, **scatter_kwargs):
+    """Plot reflection coefficients on a Smith chart and color them by temperature."""
+    gamma = np.asarray(gamma)
+    temperature = np.asarray(temperature)
+
+    if gamma.shape != temperature.shape:
+        raise ValueError('gamma and temperature must have the same shape.')
+
+    gamma = gamma.ravel()
+    temperature = temperature.ravel()
+
+    if gamma.size == 0:
+        raise ValueError('gamma and temperature must not be empty.')
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 8))
+    else:
+        fig = ax.figure
+
+    try:
+        rf.plotting.smith(ax=ax)
+    except Exception:
+        try:
+            rf.plotting.plot_smith(ax=ax)
+        except Exception:
+            pass
+
+    scatter_kwargs = dict(scatter_kwargs)
+    if temp_range is not None:
+        scatter_kwargs.setdefault('vmin', temp_range[0])
+        scatter_kwargs.setdefault('vmax', temp_range[1])
+
+    scatter = ax.scatter(np.real(gamma), np.imag(gamma), c=temperature, cmap=cmap,
+                         s=size, marker=marker, **scatter_kwargs)
+    
+    if antenna_ntwk is not None:
+        ax.plot(np.real(antenna_ntwk.s[:, 0, 0]), np.imag(antenna_ntwk.s[:, 0, 0]), 
+                marker='x', label='Antenna S11', color='black')
+        ax.legend()
+    ax.set_aspect('equal', adjustable='box')
+    if title is not None:
+        ax.set_title(title)
+
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label(cbar_label)
+    return fig, ax, scatter
+
 def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, label='Power (dBm)', output_path=None, show_plot=True, 
         vmin=-80, vmax=-20, local_tz_obj=None, return_handles=False):
     """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
