@@ -6,13 +6,7 @@ and falls back to standard argparse formatter classes otherwise.
 
 from __future__ import annotations
 
-import argparse
-import os
-import logging
-import platform
-import shutil
-import subprocess
-import sys
+import argparse, os, logging, platform, shutil, subprocess, sys
 
 try:
     from rich_argparse import (  # type: ignore[import-not-found]
@@ -47,6 +41,37 @@ def _windows_path_to_wsl(path: str) -> str:
     )
     return completed.stdout.strip() or path
 
+def _run_wsl_dialog(script: str) -> str | None:
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Sta", "-Command", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    selected_path = completed.stdout.strip().splitlines()
+    if not selected_path:
+        return None
+    return _windows_path_to_wsl(selected_path[-1])
+
+
+def _run_tk_dialog(dialog_function, **kwargs) -> str | None:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise RuntimeError(
+            "tkinter is required to open a file dialog on this system"
+        ) from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected_path = dialog_function(**kwargs)
+    finally:
+        root.destroy()
+
+    return selected_path or None
 
 def select_file_path(
     *,
@@ -79,37 +104,44 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
     Write-Output $dialog.FileName
 }}
 """
-        completed = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-Sta", "-Command", powershell_script],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        selected_path = completed.stdout.strip().splitlines()[-1] if completed.stdout.strip() else ""
-        if not selected_path:
-            return None
-        return _windows_path_to_wsl(selected_path)
+        return _run_wsl_dialog(powershell_script)
 
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except ImportError as exc:
-        raise RuntimeError("tkinter is required to open a file dialog on this system") from exc
+    return _run_tk_dialog(
+        __import__("tkinter.filedialog", fromlist=["askopenfilename"]).askopenfilename,
+        title=title,
+        initialdir=initialdir,
+        filetypes=filetypes,
+    )
 
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    try:
-        selected_path = filedialog.askopenfilename(
-            title=title,
-            initialdir=initialdir,
-            filetypes=filetypes,
-        )
-    finally:
-        root.destroy()
+def select_folder_path(*, title: str = "Select a folder",
+    initialdir: str | None = None,
+) -> str | None:
+    """Open a folder picker and return the selected folder path.
 
-    return selected_path or None
+    In WSL, this prefers a Windows folder picker so the dialog can still appear
+    when the Python process is running inside Linux.
+    """
+    if _is_wsl() and shutil.which("powershell.exe") is not None:
+        safe_title = title.replace("'", "''")
+        safe_initialdir = (initialdir or "").replace("'", "''")
+        powershell_script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = '{safe_title}'
+if ('{safe_initialdir}' -ne '') {{
+    $dialog.SelectedPath = '{safe_initialdir}'
+}}
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
+    Write-Output $dialog.SelectedPath
+}}
+"""
+        return _run_wsl_dialog(powershell_script)
 
+    return _run_tk_dialog(
+        __import__("tkinter.filedialog", fromlist=["askdirectory"]).askdirectory,
+        title=title,
+        initialdir=initialdir,
+    )
 
 def select_save_path(
     *,
@@ -149,39 +181,16 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
     Write-Output $dialog.FileName
 }}
 """
-        completed = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-Sta", "-Command", powershell_script],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        selected_path = completed.stdout.strip().splitlines()[-1] if completed.stdout.strip() else ""
-        if not selected_path:
-            return None
-        return _windows_path_to_wsl(selected_path)
+        return _run_wsl_dialog(powershell_script)
 
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except ImportError as exc:
-        raise RuntimeError("tkinter is required to open a file dialog on this system") from exc
-
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    try:
-        selected_path = filedialog.asksaveasfilename(
-            title=title,
-            initialdir=initialdir,
-            initialfile=initialfile,
-            defaultextension=defaultextension,
-            filetypes=filetypes,
-        )
-    finally:
-        root.destroy()
-
-    return selected_path or None
-
+    return _run_tk_dialog(
+        __import__("tkinter.filedialog", fromlist=["asksaveasfilename"]).asksaveasfilename,
+        title=title,
+        initialdir=initialdir,
+        initialfile=initialfile,
+        defaultextension=defaultextension,
+        filetypes=filetypes,
+    )
 
 def setup_cli_logging(
     *,

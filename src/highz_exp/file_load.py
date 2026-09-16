@@ -7,16 +7,10 @@ import logging
 
 from highz_exp.unit_convert import rfsoc_spec_to_dbm
 from highz_exp.reflection_proc import count_spikes
+from highz_exp.rfsoc_params import *
 
 pjoin = os.path.join
 pbase = os.path.basename
-
-nfft = 32768
-fs = 3276.8/4
-fbins = np.arange(0, nfft//2)
-df = fs/nfft
-faxis = fbins*df
-faxis_hz = faxis*1e6
 
 class LegacyDSFileLoader():
     """
@@ -270,16 +264,16 @@ class DSFileLoader():
     def __init__(self, dir_path):
         self.dir = dir_path
     
-    def load(self, state_no, convert, time_range=None) -> tuple[np.array, np.array]:
-        """Load all spectrum files for a given date and state index, returning timestamps and spectra arrays.
+    def load(self, state_no, convert=False, time_range=(None, None), tolerance=20) -> tuple[np.array, np.array]:
+        """Load all spectrum files for a given state index, returning timestamps and 2D spectra arrays.
         
         Parameters:
-            `state_no` : int
-                State number to filter spectrum files.
             `convert` : bool
-                If True, convert raw spectrum to dBm using rfsoc_spec_to_dbm.
+                If True, convert raw spectrum to dBm
             `time_range` : tuple, optional
                 A tuple of (start_time, end_time) to filter timestamps.
+            `tolerance`: int, optional
+                Accept data recorded within +/- minutes of the specified time range. Default is 20 minutes.
 
         Returns:
             tuple: (timestamps, spectra)
@@ -287,10 +281,28 @@ class DSFileLoader():
         """
         time_dirs = self.get_sorted_time_dirs(self.dir)
         date = pbase(self.dir)
-        if time_range is not None:
-            pass  # To be implemented: filter time_dirs based on time_range
-        loaded = self.load_and_add_timestamps(date, time_dirs, state_no)
-        timestamps, spectra, _ = self.read_loaded(loaded, sort='ascending', convert=convert)
+        if time_range[0] is not None or time_range[1] is not None:
+            logging.info(f"Filtering timestamps between {time_range[0]} and {time_range[1]}")
+            filtered_dirs = []
+            for td in time_dirs:
+                cycle_time_str = pbase(td)
+                cycle_time = datetime.strptime(cycle_time_str, '%H%M%S').time()
+                # allow tolerated time range
+                if time_range[0] is not None:
+                    start_time = (datetime.combine(date, time_range[0]) - timedelta(minutes=tolerance)).time()
+                    if cycle_time < start_time:
+                        continue
+                if time_range[1] is not None:
+                    end_time = (datetime.combine(date, time_range[1]) + timedelta(minutes=tolerance)).time()
+                    if cycle_time > end_time:
+                        continue
+                filtered_dirs.append(td)
+            time_dirs = filtered_dirs
+            logging.info(f"Filtered to {len(time_dirs)} directories after applying time range filter.")
+
+        timestamps, spectra, _ = self.load_and_read(date, time_dirs, state_no, 
+            sort='ascending', convert=convert)
+        
         return timestamps, spectra
 
     @staticmethod
@@ -318,10 +330,6 @@ class DSFileLoader():
         Returns:
             List[str]: A sorted list of full paths to the subdirectories. 
                 Returns an empty list if no directories are found.
-
-        Example:
-            >>> get_sorted_time_dirs("/data/2023-10-27")
-            ['/data/2023-10-27/1000', '/data/2023-10-27/1100']
         """
         all_items = glob.glob(pjoin(date_dir, "*"))
         time_dirs = [d for d in all_items if os.path.isdir(d)]
@@ -332,56 +340,41 @@ class DSFileLoader():
             return
         
         return time_dirs
-        
+
     @staticmethod
-    def load_and_add_timestamps(date_str, time_dirs, state_no) -> dict:
-        """Load one state and attach metadata, grouped by acquisition cycle.
+    def load_and_read(date_str, time_dirs, state_no, sort='ascending', convert=False) -> tuple[np.array, np.array, np.array]:
+        """Load and flatten one state directly into aligned arrays.
 
         Parameters:
-            date_str (str): Day folder date in ``YYYYMMDD`` format.
+            date_str (str): date in ``YYYYMMDD`` format.
             time_dirs (str | list[str]): One or more cycle directories under the day folder.
             state_no (int): State index used in the filename filter ``*state{state_no}*``.
+            sort (str): ``'ascending'`` or ``'descending'`` by full timestamp.
+            convert (bool): If True, convert spectra to dBm.
 
         Returns:
-            dict: Nested mapping keyed by cycle number (directory name), then timestamp:
-                {
-                    "000523": {
-                        "000101": {
-                            "spectrum": np.ndarray,
-                            "full_timestamp": datetime(..., tzinfo=UTC),
-                            "cycle_no": "000523",
-                            ...
-                        },
-                        ...
-                    },
-                    ...
-                }
-
-        Notes:
-            - Timestamp rollover near midnight:
-              for cycles starting with ``23``, timestamps from ``00:00``-``01:59``
-              are assigned to the next UTC day.
-            - If duplicate timestamps are encountered within the same cycle,
-              later files overwrite earlier values and a warning is logged.
+            tuple[np.ndarray, np.ndarray, np.ndarray]: Timestamps, spectra, and cycle numbers.
         """
         if isinstance(time_dirs, str):
             time_dirs = [time_dirs]
 
-        loaded_by_cycle = {}
+        timestamps = []
+        spectra = []
+        cycles = []
         datestamp = datetime.strptime(date_str, '%Y%m%d').date()
         utc_tz = zoneinfo.ZoneInfo('UTC')
 
         for time_dir in time_dirs:
             cycle_no = pbase(time_dir)
             all_specs = sorted(glob.glob(pjoin(time_dir, f"*state{state_no}*")))
-            cycle_loaded = loaded_by_cycle.setdefault(cycle_no, {})
+            seen_timestamps = {}
 
             for spec_file in all_specs:
                 spec_dict = DSFileLoader.load_npy_dict(spec_file)
                 for timestamp_str, info_dict in spec_dict.items():
-                    if timestamp_str in cycle_loaded:
+                    if timestamp_str in seen_timestamps:
                         logging.warning(
-                            "Duplicate timestamp %s in cycle %s for state %s; overwriting prior value.",
+                            "Duplicate timestamp %s in cycle %s for state %s; using the later value.",
                             timestamp_str,
                             cycle_no,
                             state_no,
@@ -393,51 +386,21 @@ class DSFileLoader():
                     else:
                         timestamp_date = datestamp
 
-                    full_timestamp = datetime.combine(timestamp_date, timestamp, tzinfo=utc_tz)
-                    enriched_info = dict(info_dict)
-                    enriched_info['full_timestamp'] = full_timestamp
-                    enriched_info['cycle_no'] = cycle_no
-                    cycle_loaded[timestamp_str] = enriched_info
-
-        return loaded_by_cycle
-
-    @staticmethod
-    def read_loaded(loaded, sort='ascending', convert=False) -> tuple[np.array, np.array, np.array]:
-        """Flatten loaded cycle data into aligned timestamp/spectra/cycle arrays.
-
-        Parameters:
-            loaded (dict): Output of ``load_and_add_timestamps`` where the top-level
-                key is ``cycle_no`` and the second-level key is ``timestamp_str``.
-            sort (str): ``'ascending'`` or ``'descending'`` by ``full_timestamp``.
-            convert (bool): If True, convert spectra to dBm via ``rfsoc_spec_to_dbm``.
-
-        Returns:
-            tuple[np.ndarray, np.ndarray, np.ndarray]:
-                - timestamps: datetime array
-                - spectra: 2D spectra array
-                - cycles: cycle number array
-        """
-        timestamps = []
-        spectra = []
-        cycles = []
-        for cycle_no, cycle_data in loaded.items():
-            for timestamp_str, info_dict in cycle_data.items():
-                timestamps.append(info_dict['full_timestamp'])
-                cycles.append(cycle_no)
-                if convert:
-                    spectrum = rfsoc_spec_to_dbm(info_dict['spectrum'], offset=-128)
-                else:
                     spectrum = info_dict['spectrum']
-                if len(spectrum) != nfft//2:
-                    logging.warning(
-                        "Spectrum length %d does not match expected %d for timestamp %s (cycle %s)",
-                        len(spectrum),
-                        nfft//2,
-                        timestamp_str,
-                        cycle_no,
-                    )
-                    continue
-                spectra.append(spectrum)
+                    if convert:
+                        spectrum = rfsoc_spec_to_dbm(spectrum, offset=-128)
+
+                    full_timestamp = datetime.combine(timestamp_date, timestamp, tzinfo=utc_tz)
+                    row_index = seen_timestamps.get(timestamp_str)
+                    if row_index is None:
+                        seen_timestamps[timestamp_str] = len(timestamps)
+                        timestamps.append(full_timestamp)
+                        spectra.append(spectrum)
+                        cycles.append(cycle_no)
+                    else:
+                        timestamps[row_index] = full_timestamp
+                        spectra[row_index] = spectrum
+                        cycles[row_index] = cycle_no
 
         timestamps = np.array(timestamps)
         spectra = np.array(spectra)
@@ -452,9 +415,14 @@ class DSFileLoader():
         sort_idx = np.argsort(timestamps)
         if sort == 'descending':
             sort_idx = sort_idx[::-1]
-        
+
         logging.info("Loaded %d spectra. Returning sorted timestamps and spectra arrays.", len(spectra))
-        logging.info("Each spectra has shape %s. Timestamps range from %s to %s.", spectra[0].shape if len(spectra) > 0 else 'N/A', timestamps.min() if len(timestamps) > 0 else 'N/A', timestamps.max() if len(timestamps) > 0 else 'N/A')
+        logging.info(
+            "Each spectra has shape %s. Timestamps range from %s to %s.",
+            spectra[0].shape if len(spectra) > 0 else 'N/A',
+            timestamps.min() if len(timestamps) > 0 else 'N/A',
+            timestamps.max() if len(timestamps) > 0 else 'N/A',
+        )
 
         return timestamps[sort_idx], spectra[sort_idx], cycles[sort_idx]
 

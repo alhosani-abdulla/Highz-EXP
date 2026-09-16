@@ -148,8 +148,9 @@ def create_image_for_condensed(spec_dir: Union[str, Path], state_indx: int = 0,
     loaded_dict = {}
     if isinstance(state_indx, int): state_indx = [state_indx]
     for i, state in enumerate(state_indx):
-        loaded = DSFileLoader.load_and_add_timestamps(initial_date, [str(spec_path)], state)
-        timestamps, spectra, _ = DSFileLoader.read_loaded(loaded, convert=True)
+        timestamps, spectra, _ = DSFileLoader.load_and_read(
+            initial_date, [str(spec_path)], state, convert=True
+        )
 
         if len(spectra) == 0:
             logging.warning(f"No spectra found in {spec_dir} for state {state_indx}")

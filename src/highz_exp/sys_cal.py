@@ -702,13 +702,10 @@ class DSCalibrationProcessor(
 		for state_no, name in enumerate(self.state_list):
 			if name not in state_filter:
 				continue
-			state_loaded = DSFileLoader.load_and_add_timestamps(
+			timestamps, spectra, cycles = DSFileLoader.load_and_read(
 				date,
 				list(segmented_time_dirs),
 				state_no,
-			)
-			timestamps, spectra, cycles = DSFileLoader.read_loaded(
-				state_loaded,
 				sort="ascending",
 				convert=convert,
 			)
