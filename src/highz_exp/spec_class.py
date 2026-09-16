@@ -128,7 +128,6 @@ class Spectrum:
             Target frequency bin centers (Hz).
         kind : str, optional
             Interpolation method: 'linear' for np.interp (default).
-            Ignored if reducer is provided.
         reducer : callable, optional
             Function to combine samples inside each frequency bin (e.g., np.nanmean, np.nanmedian).
             If provided, performs bin-averaging instead of interpolation.
@@ -158,27 +157,6 @@ class Spectrum:
         
         Outlier removal is useful for suppressing RFI spikes or measurement artifacts while
         preserving valid data. It is applied within each frequency bin independently.
-        
-        Examples
-        --------
-        Linear interpolation (default):
-            spec_interp = spec.resample(np.linspace(1e6, 400e6, 1000), kind='linear')
-        
-        Bin-averaging with median (robust to outliers/RFI):
-            spec_binned = spec.resample(
-                np.linspace(1e6, 400e6, 100), 
-                reducer=np.nanmedian, 
-                inplace=False
-            )
-        
-        Bin-averaging with outlier removal (sigma-clipping):
-            spec_binned = spec.resample(
-                np.linspace(1e6, 400e6, 100), 
-                reducer=np.nanmedian,
-                outlier_method='sigma_clip',
-                outlier_sigma=3.0,
-                inplace=False
-            )
         
         """
         new_freq_arr = np.asarray(new_freq, dtype=float)

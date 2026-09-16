@@ -24,10 +24,10 @@ LEGEND = ['6" shorted', "8' cable open",'Black body','Ambient temperature load',
 DEFAULT_MATPLOTLIB_STYLE = {
     'axes.titlesize': 20,
     'axes.labelsize': 18,
-    'xtick.labelsize': 16,
-    'ytick.labelsize': 16,
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
     'legend.fontsize': 16,
-    'figure.titlesize': 20,
+    'figure.titlesize': 22,
 }
 
 MARKER_FREQS_COLOR_LIST = ['gold', 'lightcoral', 'darkcyan', 'darkmagenta', 'orangered', 'darkolivegreen',

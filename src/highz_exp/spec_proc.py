@@ -290,6 +290,7 @@ def despike(freq, spec, bw, threshold=5, n_inter=5, fill='interp') -> tuple[np.n
             cleaned[spike_mask] = np.interp(f[spike_mask], f[good_indices], cleaned[good_indices])
         else:
             raise ValueError("fill must be 'median' or 'interp'.")
+        
     return cleaned, mask
 
 def remove_broad_rfi(arr, freq_width_hz: float, freq_axis: np.ndarray = None, 
