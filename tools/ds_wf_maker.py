@@ -27,7 +27,6 @@ def _prompt_int(label, default, minimum=1):
             continue
         return value
 
-
 def main_cli():
     input_dir = select_folder_path(title="Select the day folder to process")
     if not input_dir:

@@ -28,17 +28,36 @@ def _is_wsl() -> bool:
 
 
 def _windows_path_to_wsl(path: str) -> str:
-    """Convert a Windows path to a WSL path when possible."""
+    """Convert a Windows path to a WSL path when possible.
+
+    External drives such as ``D:\`` are not always mounted under ``/mnt`` in WSL,
+    so return the original path instead of raising when conversion is unavailable.
+    """
+    if not path:
+        return path
+
+    normalized = path.replace('\\', '/')
+    drive_match = __import__('re').match(r"^([A-Za-z]):/(.*)$", normalized)
+    if drive_match:
+        drive = drive_match.group(1).lower()
+        remainder = drive_match.group(2).strip('/')
+        if remainder:
+            return f"/mnt/{drive}/{remainder}"
+        return f"/mnt/{drive}"
+
     wslpath = shutil.which("wslpath")
     if wslpath is None:
         return path
 
-    completed = subprocess.run(
-        [wslpath, "-u", path],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            [wslpath, "-u", path],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return path
     return completed.stdout.strip() or path
 
 def _run_wsl_dialog(script: str) -> str | None:
