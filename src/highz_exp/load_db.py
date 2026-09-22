@@ -23,6 +23,7 @@ def get_T_data(T_df, ts, local_tz=ZoneInfo('America/New_York'), df_colname='loca
     temp_df = T_df[[df_colname, 'value_c']].copy()
     temp_df[df_colname] = pd.to_datetime(temp_df[df_colname], errors='coerce')
 
+    # make timestamps timezone-aware if they are not already
     if temp_df[df_colname].dt.tz is None:
         temp_df[df_colname] = temp_df[df_colname].dt.tz_localize(
             local_tz,
