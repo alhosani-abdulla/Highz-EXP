@@ -33,22 +33,37 @@ class LinearNoiseDiodeProfile:
 
 
 # ND01 calibration: 50 MHz -> 1976 K, 200 MHz -> 2110 K
-ND01 = LinearNoiseDiodeProfile(
-	name="ND01",
-	f1_mhz=50.0,
-	t1_k=1976.0,
-	f2_mhz=200.0,
-	t2_k=2110.0,
-)
+# ND01 = LinearNoiseDiodeProfile(
+# 	name="ND01",
+# 	f1_mhz=50.0,
+# 	t1_k=1976.0,
+# 	f2_mhz=200.0,
+# 	t2_k=2110.0,
+# )
+
+ND01_KELVIN=2100
+ND02_KELVIN=2106
+ND03_KELVIN=2076
+
+def ND_kelvin(indx: int) -> float:
+	"""Return the noise diode temperature in Kelvin for a given index."""
+	if indx == 1:
+		return ND01_KELVIN
+	elif indx == 2:
+		return ND02_KELVIN
+	elif indx == 3:
+		return ND03_KELVIN
+	else:
+		raise ValueError("Unsupported noise diode index. Use 1, 2, or 3.")
 
 # ND02 calibration: 50 MHz -> 2037 K, 200 MHz -> 2177 K
-ND02 = LinearNoiseDiodeProfile(
-	name="ND02",
-	f1_mhz=50.0,
-	t1_k=2037.0,
-	f2_mhz=200.0,
-	t2_k=2177.0,
-)
+# ND02 = LinearNoiseDiodeProfile(
+# 	name="ND02",
+# 	f1_mhz=50.0,
+# 	t1_k=2037.0,
+# 	f2_mhz=200.0,
+# 	t2_k=2177.0,
+# )
 
 def nd01_temperature_k(frequencies_mhz: np.ndarray | float) -> np.ndarray:
 	"""Convenience wrapper for ND01 frequency-to-temperature mapping."""

@@ -40,6 +40,15 @@ def norm_factor(psd_ref, temperature=300):
     gain = temperature / dbm_to_kelvin(psd_ref)
     return gain
 
+def convert_local_to_utc(timestamp_str, local_tz: tzinfo) -> datetime:
+    """Convert a local timestamp string to a UTC datetime object."""
+    local_dt = datetime.fromisoformat(timestamp_str)
+
+    if local_dt.tzinfo is None:
+        local_dt = local_dt.replace(tzinfo=local_tz)
+    utc_dt = local_dt.astimezone(timezone.utc)
+    return utc_dt
+
 def convert_utc_list_to_local(
     utc_timestamps: list[datetime],
     local_timezone: tzinfo | str | None = None,

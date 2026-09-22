@@ -2,7 +2,7 @@ import os, logging
 import numpy as np
 from zoneinfo import ZoneInfo
 
-from highz_exp.argparse_utils import select_file_path, select_save_path, select_folder_path
+from highz_exp.argparse_utils import select_file_path, select_save_path, select_folder_path, prompt_int
 from highz_exp.unit_convert import convert_utc_list_to_local
 from highz_exp.file_load import DSFileLoader
 from digital_spectrometer.io_utils import setup_logging
@@ -11,21 +11,6 @@ from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
 from digital_spectrometer.params import *
 
 MAX_PLOT_FREQ_MHZ = 300
-
-def _prompt_int(label, default, minimum=1):
-    while True:
-        value = input(f"{label} [{default}]: ").strip()
-        if not value:
-            return default
-        try:
-            value = int(value)
-        except ValueError:
-            print("Please enter a whole number.")
-            continue
-        if value < minimum:
-            print(f"Please enter a number >= {minimum}.")
-            continue
-        return value
 
 def main_cli():
     input_dir = select_folder_path(title="Select the day folder to process")
@@ -43,10 +28,10 @@ def main_cli():
         raise SystemExit("No output location selected.")
 
     print(f"Input day: {input_dir}")
-    state_index = _prompt_int("State index", 0, minimum=0)
-    segment = _prompt_int("Number of segments", 4)
-    step_f = _prompt_int("Frequency downsample step", 4)
-    step_t = _prompt_int("Time downsample step", 1)
+    state_index = prompt_int("State index", 0, minimum=0)
+    segment = prompt_int("Number of segments", 4)
+    step_f = prompt_int("Frequency downsample step", 4)
+    step_t = prompt_int("Time downsample step", 1)
     setup_logging()
 
     return input_dir, state_index, step_f, step_t, segment, os.path.dirname(output_file)

@@ -18,6 +18,8 @@ import logging
 
 from highz_exp.file_load import DSFileLoader
 
+SITE_ADAK = [51.8, -176.6, 5.0]  # Adak, Alaska: lat, lon, elevation (m)
+
 @dataclass
 class SystemCalibrationProcessor:
 	"""Shared calibration processing pipeline.
@@ -26,24 +28,14 @@ class SystemCalibrationProcessor:
 	common across instruments. Instrument-specific subclasses must implement
 	state loading and frequency-axis construction.
 	"""
+	min_frequency_mhz: float = 10.0
+	max_frequency_mhz: float = 250.0
 
-	min_frequency_mhz: float = 25.0
-	max_frequency_mhz: float = 220.0
-	site_latitude_deg: float = 51.8
-	site_longitude_deg: float = -176.6
-	site_elevation_m: float = 5.0
-	state_list: list[str] = field(
-		default_factory=lambda: [
-			"antenna",
-			"open_circuit",
-			"short_circuit",
-			"long_cable",
-			"blackbody",
-			"resistor",
-			"noise_diode",
-		]
-	)
+	site_latitude_deg: float = SITE_ADAK[0]
+	site_longitude_deg: float = SITE_ADAK[1]
+	site_elevation_m: float = SITE_ADAK[2]
 
+	state_list: list[str] | None = None
 	raw_states: dict[str, dict[str, Any]] = field(default_factory=dict)
 	state_power: dict[str, np.ndarray] = field(default_factory=dict)
 	sidereal_time: dict[str, Any] = field(default_factory=dict)
@@ -73,11 +65,8 @@ class SystemCalibrationProcessor:
 		)
 		self._init_freq_axis()
 
-	def save_pickle(
-		self,
-		file_path: str | Path,
-		protocol: int = pickle.HIGHEST_PROTOCOL,
-	) -> Path:
+	def save_pickle(self, file_path: str | Path,
+		protocol: int = pickle.HIGHEST_PROTOCOL) -> Path:
 		"""Serialize this processor instance to a pickle file.
 
 		Notes
@@ -281,23 +270,23 @@ class SystemCalibrationProcessor:
 		self.system_temp_med = resistor / self.system_gain_med - resistor_temp_k
 		return self.system_gain_med, self.system_temp_med
 
-	def calibrate_per_cycle(self, nd_k, resistor_temp_k):
+	def calibrate_per_cycle(self, nd_k, resistor_temp_k, nd_state='6', resistor_state='5') -> dict[str, list[tuple[np.ndarray, float]]]:
 		"""Compute per-cycle calibration metric (gain and system temperature).
 
 		Parameters:
 			- nd_k: Noise diode temperature, length = n_frequency.
 			- resistor_temp_k: Ambient temperature of resistor. 
+			- nd_state: Name of the noise diode state in raw_states.
+			- resistor_state: Name of the resistor state in raw_states.
 		"""
 		nd_k = np.asarray(nd_k)
-		# Ensure frequency axis is initialized and spectra are sliced to freq range
-		self._init_freq_axis()
 		self._apply_freq_range()
 		if nd_k.size != self.frequencies_mhz.size:
 			raise ValueError("Shape mismatch: nd_k and frequencies_mhz must have the same length.")
 
 		resistor_temp_k = np.asarray(resistor_temp_k)
-		if resistor_temp_k.ndim > 0 and "resistor" in self.raw_states:
-			resistor_cycles = self.raw_states["resistor"].get("cycles")
+		if resistor_temp_k.ndim > 0 and resistor_state in self.raw_states:
+			resistor_cycles = self.raw_states[resistor_state].get("cycles")
 			if resistor_cycles is not None and resistor_temp_k.shape[0] != len(resistor_cycles):
 				raise ValueError(
 					"resistor_temp_k must be either scalar or have one value per resistor spectrum."
@@ -305,7 +294,7 @@ class SystemCalibrationProcessor:
 
 		cycle_medians: dict[str, dict[int, np.ndarray]] = {}
 		cycle_temps: dict[int, float] = {}
-		for name in ("noise_diode", "resistor"):
+		for name in (nd_state, resistor_state):
 			state = self.raw_states.get(name)
 			spectra = self.state_power.get(name)
 			if state is None or spectra is None:
@@ -328,7 +317,7 @@ class SystemCalibrationProcessor:
 			for cycle_id in np.unique(cycles):
 				cycle_mask = cycles == cycle_id
 				per_cycle[int(cycle_id)] = np.median(spectra[cycle_mask], axis=0)
-				if name == "resistor":
+				if name == resistor_state:
 					if resistor_temp_k.ndim == 0:
 						cycle_temps[int(cycle_id)] = float(resistor_temp_k)
 					else:
@@ -336,8 +325,8 @@ class SystemCalibrationProcessor:
 
 			cycle_medians[name] = per_cycle
 
-		noise_diode_medians = cycle_medians.get("noise_diode", {})
-		resistor_medians = cycle_medians.get("resistor", {})
+		noise_diode_medians = cycle_medians.get(nd_state, {})
+		resistor_medians = cycle_medians.get(resistor_state, {})
 		cal_cycle_ids = np.array(sorted(noise_diode_medians.keys() & resistor_medians.keys()), dtype=int)
 		if len(cal_cycle_ids) == 0:
 			raise ValueError("No overlapping cycle IDs found between 'noise_diode' and 'resistor'.")
@@ -379,6 +368,7 @@ class SystemCalibrationProcessor:
 		Return
 			- Calibrated temperature array with the same shape as the input state power.
 		"""
+		# make sure per-cycle calibration is available
 		if self.gain_per_cycle is None or self.system_temp_per_cycle is None:
 			logging.warning("Cycle-resolved gain/temp not found. Running calibrate_per_cycle() to compute cycle-resolved calibration.")
 			nd_k = getattr(self, "nd_temp", None)
@@ -588,6 +578,7 @@ class DSCalibrationProcessor(
 		- self.total_frequencies_mhz: all DS frequency bins
 		- self.frequency_idx_range: indices in [min_frequency_mhz, max_frequency_mhz]
 		- self.frequencies_mhz: the selected frequencies
+		- self.min_frequency_mhz, self.max_frequency_mhz: the selected range
 		"""
 		self.total_frequencies_mhz = np.arange(self.num_frequency_samples) * self.frequency_bin_size_mhz
 		frequency_idx_range = np.where(
@@ -619,8 +610,8 @@ class DSCalibrationProcessor(
 		self.frequencies_mhz = self.total_frequencies_mhz[self.frequency_idx_range]
 		return self.frequencies_mhz
 
-	def load_states(self, data_folder: str | Path, convert: bool = False,
-		no_segments: int = 1, seg_indx: int = 0, states_to_load: list[str] | None = None,
+	def load_states(self, data_folder: str | Path, states_to_load: list[int], 
+		convert: bool = False, no_segments: int = 1, seg_indx: int = 0, 
 		time_interval: tuple[dt.datetime, dt.datetime] | None = None
 	) -> dict[str, dict[str, Any]]:
 		"""Load all configured switch states using ``DSFileLoader``.
@@ -637,22 +628,11 @@ class DSCalibrationProcessor(
 			Number of segments to split the day folder into.
 		seg_indx : int, optional
 			Zero-based index of the segment to load.
-		states_to_load : list[str] | None, optional
-			Subset of state names to load. If None, loads all states in ``state_list``.
+		states_to_load : list[int]
 		time_interval : tuple[dt.datetime, dt.datetime] | None, optional
 			Time interval to filter the loaded data.
 		"""
-		if no_segments < 1:
-			raise ValueError("no_segments must be >= 1.")
-		if not (0 <= seg_indx < no_segments):
-			raise ValueError(f"seg_indx must satisfy 0 <= seg_indx < no_segments ({no_segments}).")
-		if states_to_load is not None:
-			unknown = sorted(set(states_to_load) - set(self.state_list))
-			if unknown:
-				raise ValueError(f"Unknown states requested: {unknown}")
-			state_filter = set(states_to_load)
-		else:
-			state_filter = set(self.state_list)
+		self.state_list = [str(state_no) for state_no in states_to_load]
 
 		data_folder = Path(data_folder)
 		date = data_folder.name
@@ -699,16 +679,13 @@ class DSCalibrationProcessor(
 				)
 
 		loaded: dict[str, dict[str, Any]] = {}
-		for state_no, name in enumerate(self.state_list):
-			if name not in state_filter:
-				continue
+		for state_no in states_to_load:
 			timestamps, spectra, cycles = DSFileLoader.load_and_read(
-				date,
-				list(segmented_time_dirs),
-				state_no,
-				sort="ascending",
-				convert=convert,
+				date, list(segmented_time_dirs), state_no,
+				sort="ascending", convert=convert,
 			)
-			loaded[name] = {"timestamps": timestamps, "spectra": spectra, "cycles": cycles}
+			loaded[str(state_no)] = {"timestamps": timestamps, 
+				"spectra": spectra, "cycles": cycles}
+			
 		self.raw_states = loaded
 		return loaded

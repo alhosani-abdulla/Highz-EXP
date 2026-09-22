@@ -211,6 +211,32 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
         filetypes=filetypes,
     )
 
+def prompt_int(label, default, minimum=1):
+    while True:
+        value = input(f"{label} [{default}]: ").strip()
+        if not value:
+            return default
+        try:
+            value = int(value)
+        except ValueError:
+            print("Please enter a whole number.")
+            continue
+        if value < minimum:
+            print(f"Please enter a number >= {minimum}.")
+            continue
+        return value
+
+def prompt_bool(label, default):
+    while True:
+        value = input(f"{label} [{default}]: ").strip().lower()
+        if not value:
+            return default
+        if value in ("y", "yes", "true", "1"):
+            return True
+        if value in ("n", "no", "false", "0"):
+            return False
+        print("Please enter 'y' or 'n'.")
+    
 def setup_cli_logging(
     *,
     verbose: bool = False,
