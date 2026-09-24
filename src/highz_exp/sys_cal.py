@@ -278,7 +278,12 @@ class SystemCalibrationProcessor:
 			- resistor_temp_k: Ambient temperature of resistor. 
 			- nd_state: Name of the noise diode state in raw_states.
 			- resistor_state: Name of the resistor state in raw_states.
+
+		Returns:
+			- dict with keys 'noise_diode' and 'resistor', each containing a list of tuples:
+				(noise_diode_median_spectrum, nd_k) and (resistor_median_spectrum, resistor_temp_k)
 		"""
+
 		nd_k = np.asarray(nd_k)
 		self._apply_freq_range()
 		if nd_k.size != self.frequencies_mhz.size:

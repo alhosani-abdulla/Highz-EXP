@@ -170,7 +170,7 @@ def calibrate_loaded(proc: DSCalibrationProcessor, seg_indx: int, nd_temp_k, res
 
     antenna_utc_timestamps = np.array(proc.raw_states["0"]["timestamps"])
     antenna_local_timestamps = convert_utc_list_to_local(antenna_utc_timestamps,
-        local_timezone=LOCAL_TZ)
+        local_timezone=local_TZ)
     segment_local_label = proc.build_segment_local_label(
         antenna_local_timestamps,
         seg_indx=seg_indx,
@@ -197,6 +197,7 @@ def calibrate_loaded(proc: DSCalibrationProcessor, seg_indx: int, nd_temp_k, res
         "antenna_utc_timestamps": antenna_utc_timestamps,
         "antenna_local_timestamps": antenna_local_timestamps,
         "frequencies_mhz": frequencies_mhz,
+        "resistor_temp_k": resistor_temp_k,
     }
 
 def load_calibrator(seg_indx, data_folder, time_interval, fmin, fmax, segment) -> DSCalibrationProcessor:
@@ -307,6 +308,8 @@ def main():
         "sys_gain_db": os.path.join(output_dir, f"{date}_sys_gain_db_combined.png"),
     }
 
+    R_T = [temp for result in segment_results for temp in result["resistor_temp_k"]]
+
     plot_jobs = [
         {
             "name": "sys_temp",
@@ -332,8 +335,7 @@ def main():
 
     for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
         save_path = combined_plot_paths[job["name"]]
-        plotter.plot_spaghetti_spectra(values=
-            job["spectra"], save_path=save_path,
+        plotter.plot_spaghetti_spectra(loaded_specs=job["spectra"], values=R_T, save_path=save_path,
             show_plot=False, **job["kwargs"],
         )
         logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
