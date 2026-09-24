@@ -682,6 +682,8 @@ class DSCalibrationProcessor(
 				raise ValueError(
 					f"Selected segment {seg_indx} is empty for no_segments={no_segments}."
 				)
+		else:
+			segmented_time_dirs = time_dirs
 
 		loaded: dict[str, dict[str, Any]] = {}
 		for state_no in states_to_load:

@@ -303,44 +303,46 @@ def main():
         pickle.dump(segment_results, fh, protocol=pickle.HIGHEST_PROTOCOL)
     logger.info("Saved combined calibrated segments pickle: %s", combined_segments_path)
 
-    combined_plot_paths = {
-        "sys_temp": os.path.join(output_dir, f"{date}_sys_temp.png"),
-        "sys_gain_db": os.path.join(output_dir, f"{date}_sys_gain_db_combined.png"),
-    }
+    # combined_plot_paths = {
+    #     "sys_temp": os.path.join(output_dir, f"{date}_sys_temp.png"),
+    #     "sys_gain_db": os.path.join(output_dir, f"{date}_sys_gain_db_combined.png"),
+    # }
 
-    R_T = [temp for result in segment_results for temp in result["resistor_temp_k"]]
+    # R_T = [temp for result in segment_results for temp in result["resistor_temp_k"]]
+    # logging.info(f"{len(R_T)} resistor temperature samples across all segments.")
 
-    plot_jobs = [
-        {
-            "name": "sys_temp",
-            "spectra": [spec for result in segment_results for spec in result["system_temp_per_cycle"]],
-            "kwargs": {
-                "ylabel": "Raw Power",
-                "title": f"System Temperature: {date}",
-                "freq_range": (fmin, fmax),
-                "y_range": (0, 300)
-            },
-        },
-        {
-            "name": "sys_gain_db",
-            "spectra": [spec for result in segment_results for spec in result["gain_per_cycle"]],
-            "kwargs": {
-                "ylabel": "Raw Power (arb.)",
-                "title": f"System Gain: {date}",
-                "freq_range": (fmin, fmax),
-                "y_range": (0, 60)
-            },
-        }
-    ]
+    # plot_jobs = [
+    #     {
+    #         "name": "sys_temp",
+    #         "spectra": [spec for result in segment_results for spec in result["system_temp_per_cycle"]],
+    #         "kwargs": {
+    #             "ylabel": "Raw Power",
+    #             "title": f"System Temperature: {date}",
+    #             "freq_range": (fmin, fmax),
+    #             "y_range": (0, 300)
+    #         },
+    #     },
+    #     {
+    #         "name": "sys_gain_db",
+    #         "spectra": [spec for result in segment_results for spec in result["gain_per_cycle"]],
+    #         "kwargs": {
+    #             "ylabel": "Raw Power (arb.)",
+    #             "title": f"System Gain: {date}",
+    #             "freq_range": (fmin, fmax),
+    #             "y_range": (0, 60)
+    #         },
+    #     }
+    # ]
 
-    for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
-        save_path = combined_plot_paths[job["name"]]
-        plotter.plot_spaghetti_spectra(loaded_specs=job["spectra"], values=R_T, save_path=save_path,
-            show_plot=False, **job["kwargs"],
-        )
-        logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
+    # for job in tqdm(plot_jobs, desc="Generating combined plots", unit="plot", dynamic_ncols=True):
+    #     save_path = combined_plot_paths[job["name"]]
+    #     logging.info("Generating combined plot [%s] with %d spectra", job["name"], len(job["spectra"]))
+    #     plotter.plot_spaghetti_spectra(loaded_specs=job["spectra"], values=R_T, save_path=save_path,
+    #         show_plot=False, **job["kwargs"],
+    #     )
+    #     logger.info("Saved combined plot [%s]: %s", job["name"], save_path)
 
-    logger.info("All outputs saved under: %s", output_dir)
+    # logger.info("All outputs saved under: %s", output_dir)
 
 
 if __name__ == "__main__":
