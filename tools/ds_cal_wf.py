@@ -24,7 +24,7 @@ import logging
 from highz_exp.argparse_utils import (select_file_path, setup_cli_logging, 
     select_folder_path, prompt_int, prompt_bool)
 
-from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap_plotly
+from digital_spectrometer.waterfall_utils import plot_waterfall_heatmap
 from highz_exp.sys_cal import DSCalibrationProcessor, SystemCalibrationProcessor
 from highz_exp.spec_proc import downsample_waterfall
 from highz_exp.spec_class import Spectrum
@@ -99,7 +99,6 @@ def plot_cal_ant_wf(calibrated, proc: SystemCalibrationProcessor,
     """Downsample and plot the calibrated antenna waterfall for one segment."""
     logger = logging.getLogger("ds_cal_wf")
 
-
     if t_downsample != 1 and f_downsample != 1:
         _, frequency_bin_count = calibrated['ant_T_wf'].shape
         waterfall_frequency_step = proc.choose_frequency_downsample_step(
@@ -130,19 +129,27 @@ def plot_cal_ant_wf(calibrated, proc: SystemCalibrationProcessor,
         downsampled_frequencies_mhz = np.array(calibrated['frequencies_mhz'])
         downsampled_spectra = calibrated['ant_T_wf']
 
+    antenna_no = int(calibrated['antenna_no'])
     ant_temp_waterfall_path = os.path.join(
-        segment_output_dir, f"{date}_ant_cal_temp.html"
+        segment_output_dir, f"{date}_ant_cal_temp_{antenna_no}.png"
     )
-    plot_waterfall_heatmap_plotly(
-        datetimes=list(downsampled_datetimes),
-        spectra=downsampled_spectra,
+    # plot_waterfall_heatmap_plotly(
+    #     datetimes=list(downsampled_datetimes),
+    #     spectra=downsampled_spectra,
+    #     faxis_mhz=downsampled_frequencies_mhz,
+    #     title="Antenna Calibrated Temperature",
+    #     unit="K",
+    #     output_path=ant_temp_waterfall_path,
+    #     vmin=10,
+    #     vmax=vmax,
+    #     step=50,
+    # )
+    plot_waterfall_heatmap(
+        datetimes=list(downsampled_datetimes), spectra=downsampled_spectra, 
         faxis_mhz=downsampled_frequencies_mhz,
-        title="Antenna Calibrated Temperature",
-        unit="K",
-        output_path=ant_temp_waterfall_path,
-        vmin=10,
-        vmax=vmax,
-        step=50,
+        title=f"Antenna {antenna_no} Temperature", unit="K", 
+        output_path=ant_temp_waterfall_path, vmin=10, vmax=vmax, step=50,
+        format='png'
     )
 
     logger.info("[seg %d] saved waterfall=%s", seg_indx, ant_temp_waterfall_path)
@@ -234,6 +241,7 @@ def run_segment(seg_indx, data_folder, output_dir, date, timeline_info,
         # convert hst to utc
         start_hst = row['start_hst']
         end_hst = row['end_hst']
+        antenna_no = row['antenna']
 
         proc = load_calibrator(seg_indx, data_folder, time_interval=(start_hst, end_hst), fmin=fmin, fmax=fmax, segment=segment)
         loaded = proc.raw_states
@@ -260,6 +268,7 @@ def run_segment(seg_indx, data_folder, output_dir, date, timeline_info,
             nd_temp = np.full_like(proc.frequencies_mhz, ND_kelvin(indx=nd_indx))
             calibrated = calibrate_loaded(
                 proc=proc, seg_indx=seg_indx, nd_temp_k=nd_temp, resistor_temp_k=R_T)
+            calibrated['antenna_no'] = antenna_no
             plot_cal_ant_wf(calibrated,
                 proc=proc, seg_indx=seg_indx,
                 segment_output_dir=segment_output_dir,

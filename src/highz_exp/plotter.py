@@ -383,11 +383,13 @@ def plot_spectra(loaded_specs:list[Spectrum], save_path=None, ylabel=None, y_ran
     if save_path is not None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    if return_handles:
+        return fig, ax
     if show_plot:
         plt.show()
 
-    if return_handles:
-        return fig, ax
+
+
 
 def plot_spaghetti_spectra(loaded_specs: list[Spectrum],
     values: list[float] | np.ndarray | None = None, value_key: str | None = None, cmap: str = "viridis",
@@ -737,79 +739,6 @@ def plot_gamma_smith(gamma, temperature, ax=None, title=None, cmap='viridis',
     cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
     cbar.set_label(cbar_label)
     return fig, ax, scatter
-
-def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, label='Power (dBm)', output_path=None, show_plot=True, 
-        vmin=-80, vmax=-20, local_tz_obj=None, return_handles=False):
-    """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
-    
-    Parameters:
-    -----------
-    - datetimes: np.array of datetime objects. 
-    - spectra: 2D np.array of shape (num_time_points, num_freq_points) containing power levels in dBm.
-    - faxis_mhz: 1D np.array of frequency values in MHz corresponding to the columns of spectra.
-    - output_path: Optional string path to save the plot image. If None, the plot is not saved.
-    - local_tz_obj: A datetime.timezone object (e.g., timezone(timedelta(hours=-5))). 
-                     If None, it will be inferred from the first datetime entry."""
-
-    from datetime import timezone
-    
-    fig, ax = plt.subplots(figsize=(18, 10))
-
-    # 1. Primary Y-axis (Local Time)
-    # If no local_tz_obj is provided, we grab it from the first entry
-    if local_tz_obj is None:
-        local_tz_obj = datetimes[0].tzinfo
-
-    time_hours = mdates.date2num(datetimes)
-
-    # Clip spectra to maximum power level
-    spectra_clipped = np.clip(spectra, vmin, vmax)
-
-    # Format y-axis as time
-    ax.yaxis_date()
-    # Format left axis with local timezone
-    local_form = mdates.DateFormatter('%d - %H:%M', tz=local_tz_obj)
-    ax.yaxis.set_major_formatter(local_form)
-    locator = mdates.HourLocator(interval=2)
-    ax.yaxis.set_major_locator(locator)
-    ax.set_ylabel(f"Time ({local_tz_obj})")
-
-    # 2. Secondary Y-axis (GMT/UTC)
-    # ax_gmt = ax.twinx()
-    # ax_gmt.set_ylim(ax.get_ylim())
-    # ax_gmt.yaxis_date()
-    
-    # Format right axis strictly as UTC
-    # ax_gmt.yaxis.set_major_locator(ax.yaxis.get_major_locator())
-
-    # gmt_form = mdates.DateFormatter('%H:%M', tz=timezone.utc)
-    # ax_gmt.yaxis.set_major_formatter(gmt_form)
-    # ax_gmt.set_ylabel("GMT / UTC")
-    # ax_gmt.tick_params(axis='y', which='both', length=5, labelsize=15)
-
-    # Create heatmap
-    im = ax.imshow(spectra_clipped, aspect='auto', origin='upper',
-                   extent=[faxis_mhz[0], faxis_mhz[-1],
-                           time_hours[-1], time_hours[0]],
-                   cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
-
-    ax.set_xlabel('Frequency (MHz)')
-
-    ax.set_title(title)
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label(label)
-
-    if output_path:
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        logging.info("Heatmap saved to %s", output_path)
-
-    if show_plot:
-        plt.show()
-    else:
-        plt.close()
-
-    if return_handles:
-        return fig, ax, im
 
 # From Theo Dardio
 def generate_static_hp_map(frequency_mhz, utc_timestamp, location, observer='LFSM'):

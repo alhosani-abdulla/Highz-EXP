@@ -1,8 +1,10 @@
 # Adapted from Marcus's waterfall plotter for digital spectrometer data
 import os, logging
 import numpy as np
+import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from datetime import datetime
+from matplotlib import dates as mdates
 from typing import List, Tuple
 
 pjoin = os.path.join
@@ -50,6 +52,80 @@ def inject_gap_spacers(datetimes: List[datetime],
                 new_spectra_list.append(nan_row)
 
     return new_ts, np.array(new_spectra_list)
+
+def plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, unit='K', 
+        output_path=None, show_plot=True, vmin=-80, vmax=-20, 
+        local_tz_obj=None, return_handles=False):
+    """Create a heatmap of spectra with power levels as color coding. Static version with Matplotlib without interactivity.
+    
+    Parameters:
+    -----------
+    - datetimes: np.array of datetime objects. 
+    - spectra: 2D np.array of shape (num_time_points, num_freq_points) containing power levels in dBm.
+    - faxis_mhz: 1D np.array of frequency values in MHz corresponding to the columns of spectra.
+    - output_path: Optional string path to save the plot image. If None, the plot is not saved.
+    - local_tz_obj: A datetime.timezone object (e.g., timezone(timedelta(hours=-5))). 
+                     If None, it will be inferred from the first datetime entry."""
+
+    from datetime import timezone
+    
+    fig, ax = plt.subplots(figsize=(18, 10))
+
+    # 1. Primary Y-axis (Local Time)
+    # If no local_tz_obj is provided, we grab it from the first entry
+    if local_tz_obj is None:
+        local_tz_obj = datetimes[0].tzinfo
+
+    time_hours = mdates.date2num(datetimes)
+
+    # Clip spectra to maximum power level
+    spectra_clipped = np.clip(spectra, vmin, vmax)
+
+    # Format y-axis as time
+    ax.yaxis_date()
+    # Format left axis with local timezone
+    local_form = mdates.DateFormatter('%d - %H:%M', tz=local_tz_obj)
+    ax.yaxis.set_major_formatter(local_form)
+    locator = mdates.HourLocator(interval=2)
+    ax.yaxis.set_major_locator(locator)
+    ax.set_ylabel(f"Time ({local_tz_obj})")
+
+    # 2. Secondary Y-axis (GMT/UTC)
+    # ax_gmt = ax.twinx()
+    # ax_gmt.set_ylim(ax.get_ylim())
+    # ax_gmt.yaxis_date()
+    
+    # Format right axis strictly as UTC
+    # ax_gmt.yaxis.set_major_locator(ax.yaxis.get_major_locator())
+
+    # gmt_form = mdates.DateFormatter('%H:%M', tz=timezone.utc)
+    # ax_gmt.yaxis.set_major_formatter(gmt_form)
+    # ax_gmt.set_ylabel("GMT / UTC")
+    # ax_gmt.tick_params(axis='y', which='both', length=5, labelsize=15)
+
+    # Create heatmap
+    im = ax.imshow(spectra_clipped, aspect='auto', origin='upper',
+                   extent=[faxis_mhz[0], faxis_mhz[-1],
+                           time_hours[-1], time_hours[0]],
+                   cmap='viridis', interpolation='nearest', vmin=vmin, vmax=vmax)
+
+    ax.set_xlabel('Frequency (MHz)')
+
+    ax.set_title(title)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label(f"Power ({unit})")
+
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        logging.info("Heatmap saved to %s", output_path)
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+    if return_handles:
+        return fig, ax, im
 
 def plot_waterfall_heatmap_plotly(
     datetimes: List[datetime],
@@ -207,3 +283,18 @@ def plot_waterfall_heatmap_plotly(
     logging.info("=============================================================")
     logging.info(f"Waterfall plot saved to {output_path}.")
     logging.info("=============================================================")
+
+def plot_waterfall_heatmap(datetimes, spectra, faxis_mhz, title, output_path, unit="dBm",
+    vmin: int = -80, vmax: int = -20, step: int = 5, format='html'):
+    """
+    Creates a waterfall plot using Plotly.
+    
+    `format`: html (interactive) or png (static)
+    """
+    if format == 'html':
+        plot_waterfall_heatmap_plotly(datetimes, spectra, faxis_mhz, title, output_path,
+            unit=unit, vmin=vmin, vmax=vmax, step=step)
+    elif format == 'png':
+        plot_waterfall_heatmap_static(datetimes, spectra, faxis_mhz, title, 
+            output_path=output_path, unit=unit, vmin=vmin, vmax=vmax)
+        

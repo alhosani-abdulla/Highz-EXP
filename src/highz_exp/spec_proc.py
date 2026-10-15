@@ -88,9 +88,9 @@ def smooth_spectrum(data, method='savgol', window=31, polyorder=3):
         # unknown method -> return original
         return data.copy()
     
-def rebin(freq, power_spec, factor, mode='average'):
+def rebin(freq, power_spec, factor, mode='sum'):
     """
-    Rebin a power spectrum to a new size. This does not convert the RBW of the original spectra.
+    Rebin a power spectrum to a new size. This conserves total power if mode='sum'.
 
     Parameters:
         freq: np.ndarray
